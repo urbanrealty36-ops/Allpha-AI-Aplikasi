@@ -350,3 +350,113 @@ def test_deletion_governance_worker_calls_service_only_evaluator():
         assert calls == [("evaluate_account_deletion_governance", {"p_limit": 100})]
 
     asyncio.run(scenario())
+
+
+def test_deletion_execution_worker_is_disabled_by_default(monkeypatch):
+    async def scenario():
+        worker = _worker()
+        calls = []
+
+        async def rpc(name, payload):
+            calls.append(name)
+            return []
+
+        worker.rpc = rpc
+        monkeypatch.delenv("ACCOUNT_DELETION_EXECUTION_ENABLED", raising=False)
+        assert await worker.deletion_execution_batch() == 0
+        assert calls == []
+
+    asyncio.run(scenario())
+
+
+def test_deletion_execution_worker_deletes_queued_storage_then_executes_database_job(monkeypatch):
+    async def scenario():
+        worker = _worker()
+        monkeypatch.setenv("ACCOUNT_DELETION_EXECUTION_ENABLED", "true")
+        calls = []
+        deleted = []
+        execution_id = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+        execution_lease = "ffffffff-ffff-4fff-8fff-ffffffffffff"
+        storage_id = "99999999-9999-4999-8999-999999999999"
+        storage_lease = "88888888-8888-4888-8888-888888888888"
+        storage_batches = 0
+
+        async def rpc(name, payload):
+            nonlocal storage_batches
+            calls.append((name, payload))
+            if name == "prepare_account_deletion_execution_batch":
+                return [{"processed_count": 1, "queued_count": 1, "blocked_count": 0}]
+            if name == "claim_account_deletion_execution_jobs":
+                return [{"id": execution_id, "lease_token": execution_lease, "attempts": 1}]
+            if name == "claim_account_deletion_storage_jobs":
+                storage_batches += 1
+                if storage_batches == 1:
+                    return [{
+                        "id": storage_id,
+                        "lease_token": storage_lease,
+                        "storage_bucket": "content-media",
+                        "storage_path": "owner/content/asset.mp4",
+                        "attempts": 1,
+                    }]
+                return []
+            if name == "complete_account_deletion_storage_job":
+                return True
+            if name == "execute_account_deletion_execution_job":
+                return True
+            raise AssertionError(name)
+
+        async def delete_storage_object(bucket, object_path):
+            deleted.append((bucket, object_path))
+
+        worker.rpc = rpc
+        worker.delete_storage_object = delete_storage_object
+        assert await worker.deletion_execution_batch() == 1
+        assert deleted == [("content-media", "owner/content/asset.mp4")]
+        names = [name for name, _ in calls]
+        assert names.index("complete_account_deletion_storage_job") < names.index("execute_account_deletion_execution_job")
+        assert calls[1][1]["p_lease_seconds"] == 3600
+        assert calls[2][1]["p_job_lease_token"] == execution_lease
+
+    asyncio.run(scenario())
+
+
+def test_deletion_execution_worker_retries_storage_failure_without_running_row_deletion(monkeypatch):
+    async def scenario():
+        worker = _worker()
+        monkeypatch.setenv("ACCOUNT_DELETION_EXECUTION_ENABLED", "true")
+        calls = []
+        execution_id = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+        execution_lease = "ffffffff-ffff-4fff-8fff-ffffffffffff"
+        storage_id = "99999999-9999-4999-8999-999999999999"
+        storage_lease = "88888888-8888-4888-8888-888888888888"
+
+        async def rpc(name, payload):
+            calls.append((name, payload))
+            if name == "prepare_account_deletion_execution_batch":
+                return [{"processed_count": 1, "queued_count": 1, "blocked_count": 0}]
+            if name == "claim_account_deletion_execution_jobs":
+                return [{"id": execution_id, "lease_token": execution_lease, "attempts": 2}]
+            if name == "claim_account_deletion_storage_jobs":
+                return [{
+                    "id": storage_id,
+                    "lease_token": storage_lease,
+                    "storage_bucket": "content-media",
+                    "storage_path": "owner/content/asset.mp4",
+                    "attempts": 2,
+                }]
+            if name in {"fail_account_deletion_storage_job", "fail_account_deletion_execution_job"}:
+                return True
+            raise AssertionError(f"storage failure must not execute account deletion: {name}")
+
+        async def delete_storage_object(bucket, object_path):
+            raise RuntimeError("storage unavailable")
+
+        worker.rpc = rpc
+        worker.delete_storage_object = delete_storage_object
+        assert await worker.deletion_execution_batch() == 1
+        names = [name for name, _ in calls]
+        assert "fail_account_deletion_storage_job" in names
+        assert "fail_account_deletion_execution_job" in names
+        assert "execute_account_deletion_execution_job" not in names
+
+    asyncio.run(scenario())
