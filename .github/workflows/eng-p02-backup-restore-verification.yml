@@ -422,7 +422,7 @@ jobs:
           do $deletion_governance_verifier$
           declare
             v_actor uuid := current_setting('request.jwt.claim.sub')::uuid;
-            v_subject text := encode(gen_random_bytes(32),'hex');
+            v_subject text := (md5(gen_random_uuid()::text) || md5(gen_random_uuid()::text));
             v_request uuid;
             v_hold uuid;
             v_result record;
@@ -450,7 +450,7 @@ jobs:
             end if;
             update public.account_deletion_requests set status='cancelled' where id=v_request;
             insert into public.account_deletion_requests(user_id,subject_ref,status,request_metadata)
-            values(v_actor,encode(gen_random_bytes(32),'hex'),'awaiting_policy','{}'::jsonb)
+            values(v_actor,(md5(gen_random_uuid()::text) || md5(gen_random_uuid()::text)),'awaiting_policy','{}'::jsonb)
             returning id into v_request;
             select * into v_result from public.evaluate_account_deletion_governance(100);
             if v_result.policy_pending_count<>1 then raise exception 'missing deletion policy was not held pending'; end if;
