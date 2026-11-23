@@ -124,8 +124,24 @@ select public.remove_organization_member_for_actor(current_setting('app.test_org
 reset role;
 set role authenticated;
 select set_config('request.jwt.claim.sub','44444444-4444-4444-8444-444444444444',false);
-do $$
+-- Keep the outsider RLS assertion diagnosable: distinguish stale JWT context,
+-- a permissive legacy policy, and an unexpected membership row.
+select current_user as effective_role, session_user as session_role,
+       auth.uid() as effective_auth_uid,
+       private.is_organization_member(current_setting('app.test_org_id')::uuid) as is_member,
+       private.is_organization_admin(current_setting('app.test_org_id')::uuid) as is_admin;
+select policyname, cmd, qual, roles
+  from pg_policies
+ where schemaname='public' and tablename='organizations'
+ order by policyname;
+do $
 begin
+ if auth.uid() <> '44444444-4444-4444-8444-444444444444'::uuid then
+   raise exception 'test harness JWT context mismatch: %', auth.uid();
+ end if;
+ if private.is_organization_member(current_setting('app.test_org_id')::uuid) then
+   raise exception 'outsider unexpectedly remains an organization member';
+ end if;
  if (select count(*) from public.organizations where slug='eng-p02-repair-check')<>0 then raise exception 'cross-user organization read leaked'; end if;
  if (select count(*) from public.organization_memberships where user_id='11111111-1111-4111-8111-111111111111')<>0 then raise exception 'cross-user membership read leaked'; end if;
  begin
