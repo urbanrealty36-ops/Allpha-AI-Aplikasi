@@ -60,3 +60,11 @@ def test_interest_ontology_exposes_semantic_relationships_and_sensitive_inferenc
 def test_interest_upsert_uses_named_primary_key_to_avoid_output_column_ambiguity():
     source = MIGRATION.read_text(encoding="utf-8").lower()
     assert "on conflict on constraint user_interests_pkey do update" in source
+
+
+def test_allpha_cinema_live_and_agent_ontology_relationships_are_seeded():
+    source = MIGRATION.read_text(encoding="utf-8").lower()
+    assert "('technology','ai_agents','parent_of',1)" in source
+    assert "('social_network','content_creator','related_to',0.8)" in source
+    assert "('content_creator','ai_cinema','related_to',0.8)" in source
+    assert "('ai_cinema','live_streaming','related_to',0.9)" in source
