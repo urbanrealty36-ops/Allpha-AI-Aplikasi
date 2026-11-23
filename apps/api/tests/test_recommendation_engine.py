@@ -64,3 +64,25 @@ def test_optional_scoring_schema_fallback_only_handles_missing_migration(monkeyp
         assert exc.detail["code"] == "CONTENT_DATABASE_UNAVAILABLE"
     else:
         raise AssertionError("database outage must not be hidden")
+
+
+def test_policy_weights_preserve_large_creator_priority_without_falling_back():
+    weights = normalize_weights({
+        "followed_creator": 2500,
+        "explicit_interest": 250,
+        "passion": 50,
+        "habit": 20,
+        "engagement": 2,
+        "mutual_connection": 4,
+        "shared_interest": 6,
+    })
+    assert weights["followed_creator"] == 2500
+    assert weights["explicit_interest"] == 250
+    assert score_content_candidate(
+        followed_creator=True,
+        explicit_interest_matches=1,
+        passion_affinity=0,
+        habit_affinity=0,
+        engagement_total=0,
+        weights=weights,
+    ) == 2750
