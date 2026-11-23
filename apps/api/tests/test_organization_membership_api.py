@@ -65,7 +65,7 @@ def test_add_member_uses_authenticated_actor_and_target_scope(monkeypatch):
     calls = []
     async def rpc(name, *, body):
         calls.append((name, body))
-        return [{"organization_id": ORG, "user_id": TARGET, "role": "member"}]
+        return [{"organization_id": ORG, "user_id": TARGET, "role": "member", "invited_by": OWNER["id"]}]
     client = _client(monkeypatch, rpc)
     try:
         response = client.post(f"/v1/organizations/{ORG}/memberships", json={"user_id": TARGET, "role": "member"})
