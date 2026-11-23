@@ -105,6 +105,7 @@ def test_consent_record_is_bound_to_authenticated_user_and_immutable_insert(monk
     from fastapi import Request
     from allpha_api.auth import current_user
 
+    monkeypatch.setenv("ALLPHA_POLICY_VERSION_PRIVACY_POLICY", "v1.2")
     calls = []
 
     async def fake_user_db_request(method, path, access_token, **kwargs):
@@ -140,6 +141,68 @@ def test_consent_record_is_bound_to_authenticated_user_and_immutable_insert(monk
         "granted": True,
     }
     assert calls[0][3]["prefer"] == "return=representation"
+
+
+def test_consent_rejects_client_invented_policy_version_without_database_write(monkeypatch):
+    from fastapi import Request
+    from allpha_api.auth import current_user
+
+    monkeypatch.delenv("ALLPHA_POLICY_VERSION_PRIVACY_POLICY", raising=False)
+    calls = []
+
+    async def fake_user_db_request(method, path, access_token, **kwargs):
+        calls.append((method, path, kwargs))
+        raise AssertionError("consent must fail closed before database write")
+
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = "consent-session-token"
+        return {"id": "human-123", "email": "human@example.invalid"}
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = client.post(
+            "/v1/me/consents",
+            headers={"Authorization": "Bearer test"},
+            json={"consent_type": "privacy_policy", "policy_version": "v99-client-invented", "granted": True},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "CONSENT_POLICY_NOT_CONFIGURED"
+    assert calls == []
+
+
+def test_consent_rejects_stale_policy_version_without_database_write(monkeypatch):
+    from fastapi import Request
+    from allpha_api.auth import current_user
+
+    monkeypatch.setenv("ALLPHA_POLICY_VERSION_PRIVACY_POLICY", "v1.3")
+    calls = []
+
+    async def fake_user_db_request(method, path, access_token, **kwargs):
+        calls.append((method, path, kwargs))
+        raise AssertionError("stale consent must fail before database write")
+
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = "consent-session-token"
+        return {"id": "human-123", "email": "human@example.invalid"}
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = client.post(
+            "/v1/me/consents",
+            headers={"Authorization": "Bearer test"},
+            json={"consent_type": "privacy_policy", "policy_version": "v1.2", "granted": True},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "CONSENT_POLICY_VERSION_MISMATCH"
+    assert calls == []
 
 
 
