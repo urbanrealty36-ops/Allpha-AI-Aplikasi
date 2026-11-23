@@ -71,7 +71,7 @@ def test_feed_ranks_followed_creator_and_applies_block_mute_filters(monkeypatch)
 
     async def fake_db(method, table, *, params=None, body=None, prefer=None):
         params = params or {}
-        if table in {"user_interest_graph_signals", "recommendation_scoring_policies", "interest_taxonomy_edges"}:
+        if table in {"user_interest_graph_signals", "recommendation_scoring_policies"}:
             return []
         if table == "interest_taxonomy_edges":
             return [{
