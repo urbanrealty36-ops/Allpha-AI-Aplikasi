@@ -283,3 +283,20 @@ def test_expired_export_cleanup_retries_when_storage_delete_fails():
         assert failed[0]["p_retry_seconds"] == 60
 
     asyncio.run(scenario())
+
+
+def test_expired_export_cleanup_is_disabled_until_schema_migration_is_applied(monkeypatch):
+    async def scenario():
+        worker = _worker()
+        calls = []
+
+        async def rpc(name, payload):
+            calls.append(name)
+            return []
+
+        worker.rpc = rpc
+        monkeypatch.delenv("ACCOUNT_EXPORT_CLEANUP_ENABLED", raising=False)
+        assert await worker.cleanup_batch() == 0
+        assert calls == []
+
+    asyncio.run(scenario())
