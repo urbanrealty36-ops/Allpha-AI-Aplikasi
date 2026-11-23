@@ -117,7 +117,8 @@ def build_workspace(
         "copied_file_count": len(copied_files),
         "copied_files": copied_files,
         "excluded_local_pending_versions": pending_local_versions,
-        "schema_paths": ["./migrations/*.sql"],\n        "production_mutated": False,
+        "schema_paths": ["./migrations/*.sql"],
+        "production_mutated": False,
     }
     (workspace_dir / "migration-workspace-manifest.json").write_text(
         json.dumps(manifest, indent=2) + "\n",
