@@ -69,7 +69,7 @@ def test_deactivation_uses_scoped_rpc_instead_of_direct_profile_update(monkeypat
         request.state.supabase_access_token = "human-session-token"
         return {"id": "human-123", "email": "human@example.invalid"}
 
-    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    monkeypatch.setattr("allpha_api.main.service_db_request", fake_service_db_request)
     app.dependency_overrides[current_user] = fake_current_user
     try:
         response = client.post("/v1/me/deactivation-request", headers={"Authorization": "Bearer test"})
@@ -101,19 +101,23 @@ def test_consent_payload_rejects_client_owned_identity_and_invalid_types():
         })
 
 
-def test_consent_record_is_bound_to_authenticated_user_and_immutable_insert(monkeypatch):
+def test_consent_record_uses_service_only_append_only_rpc_and_verified_actor(monkeypatch):
     from fastapi import Request
     from allpha_api.auth import current_user
 
     monkeypatch.setenv("ALLPHA_POLICY_VERSION_PRIVACY_POLICY", "v1.2")
     calls = []
 
-    async def fake_user_db_request(method, path, access_token, **kwargs):
-        calls.append((method, path, access_token, kwargs))
+    async def fake_service_db_request(function_name, *, body):
+        calls.append((function_name, body))
         return [{
+            "id": "consent-event-1",
+            "user_id": "human-123",
             "consent_type": "privacy_policy",
             "policy_version": "v1.2",
-            "granted": True,
+            "decision": "granted",
+            "source": "account_settings",
+            "idempotency_key": "consent-test-0001",
             "recorded_at": "2026-10-14T00:00:00Z",
         }]
 
@@ -121,26 +125,27 @@ def test_consent_record_is_bound_to_authenticated_user_and_immutable_insert(monk
         request.state.supabase_access_token = "consent-session-token"
         return {"id": "human-123", "email": "human@example.invalid"}
 
-    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    monkeypatch.setattr("allpha_api.main.service_db_request", fake_service_db_request)
     app.dependency_overrides[current_user] = fake_current_user
     try:
         response = client.post(
             "/v1/me/consents",
-            headers={"Authorization": "Bearer test"},
+            headers={"Authorization": "Bearer test", "Idempotency-Key": "consent-test-0001"},
             json={"consent_type": "privacy_policy", "policy_version": "v1.2", "granted": True},
         )
     finally:
         app.dependency_overrides.clear()
 
     assert response.status_code == 201
-    assert calls[0][0:3] == ("POST", "user_consents", "consent-session-token")
-    assert calls[0][3]["body"] == {
-        "user_id": "human-123",
-        "consent_type": "privacy_policy",
-        "policy_version": "v1.2",
-        "granted": True,
+    assert calls[0][0] == "record_account_consent_event_for_actor"
+    assert calls[0][1] == {
+        "p_actor_user_id": "human-123",
+        "p_consent_type": "privacy_policy",
+        "p_policy_version": "v1.2",
+        "p_decision": "granted",
+        "p_source": "account_settings",
+        "p_idempotency_key": "consent-test-0001",
     }
-    assert calls[0][3]["prefer"] == "return=representation"
 
 
 def test_consent_rejects_client_invented_policy_version_without_database_write(monkeypatch):
@@ -150,15 +155,15 @@ def test_consent_rejects_client_invented_policy_version_without_database_write(m
     monkeypatch.delenv("ALLPHA_POLICY_VERSION_PRIVACY_POLICY", raising=False)
     calls = []
 
-    async def fake_user_db_request(method, path, access_token, **kwargs):
-        calls.append((method, path, kwargs))
+    async def fake_service_db_request(function_name, *, body):
+        calls.append((function_name, body))
         raise AssertionError("consent must fail closed before database write")
 
     async def fake_current_user(request: Request):
         request.state.supabase_access_token = "consent-session-token"
         return {"id": "human-123", "email": "human@example.invalid"}
 
-    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    monkeypatch.setattr("allpha_api.main.service_db_request", fake_service_db_request)
     app.dependency_overrides[current_user] = fake_current_user
     try:
         response = client.post(
@@ -172,6 +177,68 @@ def test_consent_rejects_client_invented_policy_version_without_database_write(m
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "CONSENT_POLICY_NOT_CONFIGURED"
     assert calls == []
+
+
+def test_required_policy_consent_cannot_be_revoked_through_optional_controls(monkeypatch):
+    from fastapi import Request
+    from allpha_api.auth import current_user
+
+    monkeypatch.setenv("ALLPHA_POLICY_VERSION_PRIVACY_POLICY", "v1.2")
+    calls = []
+
+    async def fake_service_db_request(function_name, *, body):
+        calls.append((function_name, body))
+        raise AssertionError("required policy withdrawal must fail before persistence")
+
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = "consent-session-token"
+        return {"id": "human-123", "email": "human@example.invalid"}
+
+    monkeypatch.setattr("allpha_api.main.service_db_request", fake_service_db_request)
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = client.post(
+            "/v1/me/consents",
+            headers={"Authorization": "Bearer test"},
+            json={"consent_type": "privacy_policy", "policy_version": "v1.2", "granted": False},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "REQUIRED_POLICY_WITHDRAWAL_NOT_SUPPORTED"
+    assert calls == []
+
+
+def test_product_updates_consent_can_be_revoked_with_append_only_event(monkeypatch):
+    from fastapi import Request
+    from allpha_api.auth import current_user
+
+    monkeypatch.setenv("ALLPHA_POLICY_VERSION_PRODUCT_UPDATES", "v2.0")
+    calls = []
+
+    async def fake_service_db_request(function_name, *, body):
+        calls.append((function_name, body))
+        return [{"decision": "revoked", "consent_type": "product_updates", "policy_version": "v2.0"}]
+
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = "consent-session-token"
+        return {"id": "human-123", "email": "human@example.invalid"}
+
+    monkeypatch.setattr("allpha_api.main.service_db_request", fake_service_db_request)
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = client.post(
+            "/v1/me/consents",
+            headers={"Authorization": "Bearer test", "Idempotency-Key": "consent-revoke-0001"},
+            json={"consent_type": "product_updates", "policy_version": "v2.0", "granted": False},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 201
+    assert calls[0][1]["p_decision"] == "revoked"
+    assert calls[0][1]["p_actor_user_id"] == "human-123"
 
 
 def test_consent_rejects_stale_policy_version_without_database_write(monkeypatch):
@@ -189,7 +256,7 @@ def test_consent_rejects_stale_policy_version_without_database_write(monkeypatch
         request.state.supabase_access_token = "consent-session-token"
         return {"id": "human-123", "email": "human@example.invalid"}
 
-    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    monkeypatch.setattr("allpha_api.main.service_db_request", fake_service_db_request)
     app.dependency_overrides[current_user] = fake_current_user
     try:
         response = client.post(
@@ -263,7 +330,7 @@ def test_social_edge_uses_authenticated_actor_and_validated_target(monkeypatch):
         request.state.supabase_access_token = "social-session-token"
         return {"id": "human-123", "email": "human@example.invalid"}
 
-    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    monkeypatch.setattr("allpha_api.main.service_db_request", fake_service_db_request)
     monkeypatch.setattr("allpha_api.main.service_db_request", fake_service_db_request)
     app.dependency_overrides[current_user] = fake_current_user
     try:
@@ -325,7 +392,7 @@ def test_interest_preference_is_bound_to_authenticated_user(monkeypatch):
         request.state.supabase_access_token = "interest-session-token"
         return {"id": "human-123"}
 
-    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    monkeypatch.setattr("allpha_api.main.service_db_request", fake_service_db_request)
     app.dependency_overrides[current_user] = fake_current_user
     try:
         response = client.put(
@@ -411,7 +478,7 @@ def test_first_authenticated_profile_read_provisions_profile_before_account_guar
             return [profile]
         raise AssertionError(f"unexpected database operation: {method} {path}")
 
-    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    monkeypatch.setattr("allpha_api.main.service_db_request", fake_service_db_request)
     app.dependency_overrides[current_session_user] = fake_session_user
     try:
         response = client.get("/v1/me", headers={"Authorization": "Bearer verified-new-session"})
