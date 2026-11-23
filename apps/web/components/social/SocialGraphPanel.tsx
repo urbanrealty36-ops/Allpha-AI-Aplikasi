@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
 type InterestGraphSignal = { interest_key: string; signal_type: "passion" | "habit"; strength: number; signal_source: string; updated_at: string };
+type CatalogInterest = { interest_key: string; label: string; category: string; sensitivity: "standard" | "sensitive" };
 
 type Interest = {
   interest_key: string;
@@ -60,6 +61,7 @@ function labelForInterest(key: string): string {
 
 export default function SocialGraphPanel({ apiBase, accessToken }: Props) {
   const [interests, setInterests] = useState<Interest[]>([]);
+  const [catalog, setCatalog] = useState<CatalogInterest[]>([]);
   const [interestSignals, setInterestSignals] = useState<InterestGraphSignal[]>([]);
   const [passionKey, setPassionKey] = useState("");
   const [habitKey, setHabitKey] = useState("");
@@ -83,6 +85,12 @@ export default function SocialGraphPanel({ apiBase, accessToken }: Props) {
       ]);
       setInterests(interestData.items || []);
       setRecommendations(recommendationData.items || []);
+      try {
+        const catalogData = await apiRequest<{ items: CatalogInterest[] }>(apiBase, accessToken, "/v1/interests/catalog");
+        setCatalog(Array.isArray(catalogData.items) ? catalogData.items : []);
+      } catch {
+        setCatalog([]);
+      }
       try {
         const signalData = await apiRequest<{ items: InterestGraphSignal[] }>(apiBase, accessToken, "/v1/me/interest-signals");
         setInterestSignals(signalData.items || []);
@@ -110,7 +118,7 @@ export default function SocialGraphPanel({ apiBase, accessToken }: Props) {
     event.preventDefault();
     const key = draft.trim().toLowerCase();
     if (!/^[a-z0-9][a-z0-9._-]{0,79}$/.test(key)) {
-      setError("Gunakan 1–80 karakter: huruf kecil, angka, titik, garis bawah, atau tanda hubung.");
+      setError("Pilih minat dari taksonomi resmi Allpha.");
       return;
     }
     setBusy(true);
@@ -213,7 +221,10 @@ export default function SocialGraphPanel({ apiBase, accessToken }: Props) {
             <p className="mt-1 text-xs text-slate-500">Preferensi minat hanya dikelola pada akun Anda.</p>
             <form onSubmit={saveInterest} className="mt-3 grid gap-2 sm:grid-cols-[1fr_170px_auto]">
               <label className="sr-only" htmlFor="social-interest-key">Kunci minat</label>
-              <input id="social-interest-key" value={draft} onChange={(event) => setDraft(event.target.value)} maxLength={80} placeholder="contoh: ai.film atau design" className="min-w-0 rounded-xl border-2 border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-900" />
+              <select id="social-interest-key" value={draft} onChange={(event) => setDraft(event.target.value)} className="min-w-0 rounded-xl border-2 border-slate-300 px-3 py-2 text-sm">
+                <option value="">Pilih minat dari taksonomi Allpha</option>
+                {catalog.filter(item => item.sensitivity !== "sensitive").map(item => <option key={item.interest_key} value={item.interest_key}>{item.label} · {item.category}</option>)}
+              </select>
               <label className="sr-only" htmlFor="social-interest-preference">Preferensi</label>
               <select id="social-interest-preference" value={preference} onChange={(event) => setPreference(event.target.value as Interest["preference"])} className="rounded-xl border-2 border-slate-300 px-3 py-2 text-sm">
                 <option value="interested">Tertarik</option>
