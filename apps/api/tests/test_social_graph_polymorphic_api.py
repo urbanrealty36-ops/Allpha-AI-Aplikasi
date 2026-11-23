@@ -266,6 +266,7 @@ CANDIDATE_ALREADY_FOLLOWED = "00000000-0000-4000-8000-000000000414"
 CANDIDATE_BLOCKED_BY = "00000000-0000-4000-8000-000000000415"
 CANDIDATE_PRIVATE = "00000000-0000-4000-8000-000000000416"
 CANDIDATE_MUTED_BY = "00000000-0000-4000-8000-000000000417"
+CANDIDATE_REMOVED_FOLLOW = "00000000-0000-4000-8000-000000000418"
 
 
 def test_recommendations_rank_public_mutual_connections_and_respect_privacy_and_blocks(monkeypatch):
@@ -274,12 +275,22 @@ def test_recommendations_rank_public_mutual_connections_and_respect_privacy_and_
         if path != "social_edges" or method != "GET":
             return []
         if params.get("actor_user_id") == f"eq.{OWNER}" and params.get("edge_type") == "eq.follow":
+            if params.get("target_user_id", "").startswith("in.("):
+                # Only the active edge is excluded. The removed edge must not
+                # permanently suppress this candidate from discovery.
+                if params.get("status") == "eq.active":
+                    return [{"target_user_id": CANDIDATE_ALREADY_FOLLOWED, "status": "active"}]
+                return [
+                    {"target_user_id": CANDIDATE_ALREADY_FOLLOWED, "status": "active"},
+                    {"target_user_id": CANDIDATE_REMOVED_FOLLOW, "status": "removed"},
+                ]
             if params.get("status") == "eq.active":
                 return [{"target_user_id": FOLLOWEE_A}, {"target_user_id": FOLLOWEE_B}]
-            return [{"target_user_id": CANDIDATE_ALREADY_FOLLOWED, "status": "active"}]
         if params.get("actor_user_id") == f"eq.{OWNER}" and params.get("edge_type") == "in.(block,mute)":
             return [{"target_user_id": CANDIDATE_BLOCKED, "edge_type": "block"}]
-        if params.get("target_user_id") == f"eq.{OWNER}" and params.get("edge_type") == "in.(block,mute)":
+        if params.get("target_user_id") == f"eq.{OWNER}" and params.get("edge_type") in {"in.(block,mute)", "eq.block"}:
+            if params.get("edge_type") == "eq.block":
+                return [{"actor_user_id": CANDIDATE_BLOCKED_BY}]
             return [{"actor_user_id": CANDIDATE_BLOCKED_BY}, {"actor_user_id": CANDIDATE_MUTED_BY}]
         return []
 
@@ -294,6 +305,7 @@ def test_recommendations_rank_public_mutual_connections_and_respect_privacy_and_
                 FOLLOWEE_A, FOLLOWEE_B, CANDIDATE_A, CANDIDATE_B,
                 CANDIDATE_BLOCKED, CANDIDATE_ALREADY_FOLLOWED,
                 CANDIDATE_BLOCKED_BY, CANDIDATE_PRIVATE, CANDIDATE_MUTED_BY,
+                CANDIDATE_REMOVED_FOLLOW,
             }
             return [{
                 "id": identity,
@@ -314,6 +326,7 @@ def test_recommendations_rank_public_mutual_connections_and_respect_privacy_and_
                 {"actor_user_id": CANDIDATE_BLOCKED_BY, "target_user_id": FOLLOWEE_A},
                 {"actor_user_id": CANDIDATE_PRIVATE, "target_user_id": FOLLOWEE_A},
                 {"actor_user_id": CANDIDATE_MUTED_BY, "target_user_id": FOLLOWEE_A},
+                {"actor_user_id": CANDIDATE_REMOVED_FOLLOW, "target_user_id": FOLLOWEE_A},
             ]
         if table == "user_settings":
             return [
@@ -326,6 +339,7 @@ def test_recommendations_rank_public_mutual_connections_and_respect_privacy_and_
                 {"user_id": CANDIDATE_BLOCKED_BY, "privacy_settings": {"discoverable_by_username": True, "profile_visibility": "public"}},
                 {"user_id": CANDIDATE_PRIVATE, "privacy_settings": {"discoverable_by_username": True, "profile_visibility": "private"}},
                 {"user_id": CANDIDATE_MUTED_BY, "privacy_settings": {"discoverable_by_username": True, "profile_visibility": "public"}},
+                {"user_id": CANDIDATE_REMOVED_FOLLOW, "privacy_settings": {"discoverable_by_username": True, "profile_visibility": "public"}},
             ]
         raise AssertionError((method, table, params, body))
 
@@ -340,10 +354,12 @@ def test_recommendations_rank_public_mutual_connections_and_respect_privacy_and_
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["strategy"] == "mutual_connections"
-    assert body["count"] == 1
-    assert body["items"][0]["id"] == CANDIDATE_A
-    assert body["items"][0]["mutual_followers_count"] == 2
-    assert body["items"][0]["reason"] == "mutual_connections"
+    assert body["count"] == 3
+    returned_ids = {item["id"] for item in body["items"]}
+    assert returned_ids == {CANDIDATE_A, CANDIDATE_MUTED_BY, CANDIDATE_REMOVED_FOLLOW}
+    candidate_a = next(item for item in body["items"] if item["id"] == CANDIDATE_A)
+    assert candidate_a["mutual_followers_count"] == 2
+    assert candidate_a["reason"] == "mutual_connections"
 
 
 def test_interest_only_recommendations_use_only_opted_in_discovery_index_and_rank_shared_interests(monkeypatch):
@@ -428,10 +444,12 @@ def test_agent_recommendations_require_public_active_owned_agents_and_respect_bl
         if params.get("actor_user_id") == f"eq.{OWNER}" and params.get("edge_type") == "eq.follow" and params.get("target_node_type") == "eq.human":
             return [{"target_user_id": FOLLOWEE_A}, {"target_user_id": FOLLOWEE_B}]
         if params.get("actor_user_id") == f"eq.{OWNER}" and params.get("edge_type") == "eq.follow" and params.get("target_node_type") == "eq.agent":
+            assert params.get("status") == "eq.active"
             return [{"target_agent_id": AGENT_RECOMMENDATION_FOLLOWED}]
         if params.get("actor_user_id") == f"eq.{OWNER}" and params.get("edge_type") == "in.(block,mute)" and params.get("target_node_type") == "eq.agent":
             return [{"target_agent_id": AGENT_RECOMMENDATION_BLOCKED}]
-        if params.get("target_user_id") == f"eq.{OWNER}" and params.get("edge_type") == "in.(block,mute)" and params.get("actor_node_type") == "eq.agent":
+        if params.get("target_user_id") == f"eq.{OWNER}" and params.get("actor_node_type") == "eq.agent":
+            assert params.get("edge_type") == "eq.block"
             return [{"actor_agent_id": AGENT_RECOMMENDATION_INBOUND}]
         return []
 
