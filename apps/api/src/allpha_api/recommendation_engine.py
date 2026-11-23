@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 from math import isfinite, log1p
-from typing import Any
+from typing import Any, Awaitable, Callable
+
+from fastapi import HTTPException
 
 DEFAULT_WEIGHTS: dict[str, float] = {
     "followed_creator": 1000.0,
@@ -94,3 +96,19 @@ def matched_signal_affinity(
             if isfinite(strength) and 0 <= strength <= 1:
                 affinity += strength
     return round(min(10.0, affinity), 6)
+
+
+async def optional_scoring_rows(
+    db_request: Callable[..., Awaitable[Any]],
+    table: str,
+    params: dict[str, str],
+) -> list[dict[str, Any]]:
+    """Use legacy ranking until the additive P04 schema is applied; never mask DB outages."""
+    try:
+        rows = await db_request("GET", table, params=params)
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, dict) else {}
+        if exc.status_code == 503 and detail.get("code") == "DATABASE_SCHEMA_NOT_READY":
+            return []
+        raise
+    return rows if isinstance(rows, list) else []
