@@ -402,6 +402,7 @@ def test_membership_lookup_for_authorized_user_uses_session_token_and_org_scope(
         request.state.supabase_access_token = "tenant-a-session-token"
         return {"id": "tenant-a-user", "email": "tenant-a@example.invalid"}
 
+    monkeypatch.setattr("allpha_api.auth.user_db_request", fake_user_db_request)
     monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
     app.dependency_overrides[current_user] = fake_current_user
     try:
@@ -414,7 +415,7 @@ def test_membership_lookup_for_authorized_user_uses_session_token_and_org_scope(
 
     assert response.status_code == 200
     assert response.json() == {"items": [membership]}
-    assert len(calls) == 1
+    assert len(calls) == 2
     method, path, access_token, kwargs = calls[0]
     assert (method, path, access_token) == (
         "GET",
@@ -422,7 +423,10 @@ def test_membership_lookup_for_authorized_user_uses_session_token_and_org_scope(
         "tenant-a-session-token",
     )
     assert kwargs["params"]["organization_id"] == f"eq.{organization_id}"
-    assert kwargs["params"]["select"] == "organization_id,user_id,role,invited_by,created_at"
+    assert kwargs["params"]["user_id"] == "eq.tenant-a-user"
+    assert calls[1][1] == "organization_memberships"
+    assert calls[1][3]["params"]["select"] == "organization_id,user_id,role,invited_by,created_at"
+    assert kwargs["params"]["select"] == "organization_id,user_id,role"
     # This mock regression proves the caller token is forwarded to PostgREST.
     # It does not prove live RLS enforcement; that requires an isolated non-production DB.
 
