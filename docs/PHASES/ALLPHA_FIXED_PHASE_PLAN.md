@@ -833,3 +833,12 @@ This is an evidence refresh inside the existing fixed plan. It does not create a
 - **P04 continuation:** continue Feed/Discovery privacy and eligibility implementation using the canonical API and recommendation engine. Real-account verification stays deferred, but relevant contract, authorization, migration and build checks remain required. P04 remains `in_progress` until its internal implementation scope is complete; no synthetic production records may be inserted.
 - **Security finding:** the current Supabase advisor reports RLS disabled on `private.account_export_sources` and `private.user_interest_discovery_index`. This remains a security remediation item. Do not expose either registry to client roles; add a reviewed least-privilege RLS/grant policy before closing the finding.
 - **Next phase rule:** ENG-P05 remains gated behind ENG-P03 and ENG-P04 implementation DoD. Real-account/EAS deferrals alone must not block coding, but they must remain explicitly unverified in all evidence and reports.
+
+
+## 40.8 ENG-P03/P04 private registry access hardening — 2026-11-23
+
+- **Implementation:** added migration `20261123210000_eng_p03_p04_private_registry_rls.sql`. It enables RLS on `private.account_export_sources` and `private.user_interest_discovery_index`, revokes direct table privileges from `PUBLIC`, `anon` and `authenticated`, and intentionally creates no client policies. Existing trusted database routines remain the access boundary; existing service-role grants on the interest projection are preserved.
+- **Safety:** migration checks both canonical relations exist before changing either table. It does not force RLS on table owners, change service-role grants, alter data, or add a second registry.
+- **Coverage:** API/DB CHANGE; Web NOT AFFECTED (no direct access allowed); Native NOT AFFECTED (no direct access allowed); Super Admin NOT AFFECTED (operator access remains through authorized APIs).
+- **Checks:** a focused migration-contract test was added and included in `.github/workflows/eng-p03-p04-focused-regression.yml`. Production schema and grants must be checked after migration; the CI run must be observed before recording it as passed.
+- **Phase status:** ENG-P03 and ENG-P04 remain `in_progress`. This security hardening does not implement the missing dependency-aware deletion executor, retention policy decisions, or complete Feed/Discovery journey scope. Real-account tests and EAS signed build remain `DEFERRED / NOT VERIFIED`.
