@@ -316,10 +316,16 @@ async def request_account_deletion(
             status_code=409,
             detail={"code": "ACCOUNT_DELETION_NOT_RECORDED", "message": "Permintaan penghapusan akun tidak dapat dicatat."},
         )
+    request_row = rows[0]
+    execution_state = str(request_row.get("status") or "recorded")
     return {
-        "deletion_request": rows[0],
-        "execution_state": "awaiting_policy",
-        "message": "Permintaan tercatat. Penghapusan data belum dijalankan karena kebijakan retensi per kelas data belum disetujui.",
+        "deletion_request": request_row,
+        "execution_state": execution_state,
+        "message": (
+            "Permintaan tercatat. Worker akan mengevaluasi retensi, legal hold, dan "
+            "dependency; belum ada data yang dihapus sampai seluruh prasyarat "
+            "eksekusi terpenuhi."
+        ),
     }
 
 
