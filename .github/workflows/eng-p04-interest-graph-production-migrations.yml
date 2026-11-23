@@ -64,7 +64,7 @@ jobs:
           if isinstance(data,dict): data=[data]
           for item in data:
               connection=str(item.get("connection_string") or item.get("connectionString") or "")
-              match=re.search(r"@\\[?([A-Za-z0-9.-]+)\\]?:([0-9]+)(?:/|$)",connection)
+              match=re.search(r"@\[?([A-Za-z0-9.-]+)\]?:([0-9]+)(?:/|$)",connection)
               host=str(item.get("db_host") or (match.group(1) if match else "")).strip()
               authority=connection.split("://",1)[-1].split("@",1)[0] if connection else ""
               user=str(item.get("db_user") or (authority.split(":",1)[0] if authority else "")).strip()
@@ -72,7 +72,7 @@ jobs:
               database=str(item.get("db_name") or (tail.split("/",1)[1].split("?",1)[0] if "/" in tail else "")).strip()
               if host.endswith(".pooler.supabase.com") and user and database:
                   db_url=f"postgresql://{quote(user,safe='')}:{quote(os.environ['SUPABASE_DB_PASSWORD'],safe='')}@{host}:5432/{quote(database,safe='')}?sslmode=require"
-                  Path(os.environ["GITHUB_ENV"]).open("a").write(f"DB_URL={db_url}\\n")
+                  Path(os.environ["GITHUB_ENV"]).open("a").write(f"DB_URL={db_url}\n")
                   print(f"Resolved Supavisor shared-session endpoint {host}:5432/{database}; password redacted.")
                   break
           else:
