@@ -119,6 +119,22 @@ class AccountLifecycleWorker:
                 raise RuntimeError("ACCOUNT_EXPORT_LEASE_LOST")
             if not isinstance(snapshot, dict) or snapshot.get("schema_version") != "1.0":
                 raise RuntimeError("ACCOUNT_EXPORT_SNAPSHOT_INVALID")
+            manifest = snapshot.get("manifest")
+            data = snapshot.get("data")
+            source_count = snapshot.get("source_count")
+            source_keys = [
+                item.get("source") for item in manifest
+                if isinstance(item, dict) and isinstance(item.get("source"), str)
+            ] if isinstance(manifest, list) else []
+            if (
+                not isinstance(data, dict)
+                or type(source_count) is not int
+                or source_count != len(manifest or [])
+                or len(source_keys) != len(manifest or [])
+                or len(set(source_keys)) != len(source_keys)
+                or set(source_keys) != set(data)
+            ):
+                raise RuntimeError("ACCOUNT_EXPORT_SNAPSHOT_INCOMPLETE")
 
             encoded = json.dumps(
                 snapshot,
