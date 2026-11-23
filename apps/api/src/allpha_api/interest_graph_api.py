@@ -17,7 +17,7 @@ class InterestSignalWrite(BaseModel):
     interest_key: str = Field(min_length=1, max_length=80)
     signal_type: Literal["passion", "habit"]
     strength: float = Field(ge=0, le=1)
-    signal_source: Literal["user_selected", "explicit_feedback", "observed_interaction"]
+    signal_source: Literal["user_selected", "explicit_feedback"]
     consent_version: Literal["interest-graph-v1"] = "interest-graph-v1"
     agent_id: UUID | None = None
 
