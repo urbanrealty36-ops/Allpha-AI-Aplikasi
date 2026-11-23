@@ -327,6 +327,15 @@ values ('default','allpha-recommendation-v2',
   true)
 on conflict (policy_key,version) do nothing;
 
+-- Ontology sensitivity is explicit: observed behavior must never infer a
+-- sensitive interest. User-selected/explicit-feedback preferences remain
+-- under direct user control.
+alter table public.interest_catalog
+  add column if not exists sensitivity text not null default 'standard'
+  check (sensitivity in ('standard','sensitive'));
+update public.interest_catalog set sensitivity='sensitive',updated_at=now()
+ where interest_key='health' and sensitivity<>'sensitive';
+
 create or replace function public.set_user_interest_graph_signal_for_actor(
   p_actor_user_id uuid,
   p_interest_key text,
@@ -500,15 +509,6 @@ grant execute on function public.set_user_interest_graph_signal_for_actor(uuid,t
 grant execute on function public.delete_user_interest_graph_signal_for_actor(uuid,text,text,uuid) to service_role;
 grant execute on function public.clear_user_interest_graph_signals_for_actor(uuid) to service_role;
 
-
--- Ontology sensitivity is explicit: observed behavior must never infer a
--- sensitive interest. User-selected/explicit-feedback preferences remain
--- under direct user control.
-alter table public.interest_catalog
-  add column if not exists sensitivity text not null default 'standard'
-  check (sensitivity in ('standard','sensitive'));
-update public.interest_catalog set sensitivity='sensitive',updated_at=now()
- where interest_key='health' and sensitivity<>'sensitive';
 
 create table if not exists public.interest_taxonomy_edges (
   source_interest_key text not null references public.interest_catalog(interest_key) on delete cascade,
