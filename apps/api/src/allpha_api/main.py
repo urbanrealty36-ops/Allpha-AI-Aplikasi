@@ -21,6 +21,7 @@ import httpx
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from allpha_api.auth import current_session_user, current_user, require_organization_membership, user_db_request, service_db_request
+from allpha_api.organization_service import OrganizationActor, organization_service
 from allpha_api.agent_runtime_api import router as agent_runtime_router
 from allpha_api.agent_task_schedule_api import router as agent_task_schedule_router
 from allpha_api.text_generation_adapters import build_text_generation_router_from_environment
@@ -871,116 +872,93 @@ async def delete_my_interest(interest_key: str, request: Request, user: dict[str
 
 
 @app.get("/v1/organizations", tags=["organizations"])
-async def list_organizations(user: dict[str, Any] = Depends(current_user), request: Request = None) -> dict[str, Any]:
-    # Derive the tenant set from this verified user's own membership rows.
-    # Organization RLS remains defense-in-depth; the API must not return an
-    # organization merely because a historical permissive policy exposes it.
-    memberships = await user_db_request(
-        "GET", "organization_memberships", request.state.supabase_access_token,
-        params={"select": "organization_id,user_id", "user_id": f"eq.{user['id']}", "order": "created_at.desc", "limit": "100"},
-    )
-    organization_ids: set[str] = set()
-    for membership in memberships:
-        if str(membership.get("user_id") or "") != str(user["id"]):
-            continue
-        try:
-            organization_ids.add(str(uuid.UUID(str(membership.get("organization_id") or ""))))
-        except (ValueError, TypeError, AttributeError):
-            continue
-    if not organization_ids:
-        return {"items": []}
-
-    rows = await user_db_request(
-        "GET", "organizations", request.state.supabase_access_token,
-        params={
-            "select": "id,name,slug,owner_id,created_at,updated_at",
-            "id": f"in.({','.join(sorted(organization_ids))})",
-            "order": "created_at.desc",
-            "limit": "100",
-        },
-    )
-    # Re-check the server-derived scope after PostgREST returns. This keeps a
-    # stale/broadened RLS policy from becoming an API-level cross-tenant leak.
-    return {"items": [row for row in rows if str(row.get("id") or "") in organization_ids]}
+async def list_organizations(request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    actor = OrganizationActor.from_request(request, user)
+    return {"items": await organization_service.list_for_actor(actor)}
 
 
 @app.post("/v1/organizations", status_code=201, tags=["organizations"])
-async def create_organization(payload: OrganizationCreate, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    rows = await service_db_request(
-        "create_organization_for_user",
-        body={"p_actor_user_id": user["id"], "p_name": payload.name, "p_slug": payload.slug},
-    )
-    if not rows or str(rows[0].get("owner_id") or "") != str(user["id"]):
-        raise HTTPException(status_code=500, detail={"code": "CREATE_FAILED", "message": "Organisasi tidak dapat dibuat."})
-    return {"organization": rows[0]}
+async def create_organization(
+    payload: OrganizationCreate,
+    request: Request,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    actor = OrganizationActor.from_request(request, user)
+    organization = await organization_service.create(actor, name=payload.name, slug=payload.slug)
+    return {"organization": organization}
 
 
 @app.get("/v1/organizations/{organization_id}/memberships", tags=["organizations"])
-async def list_organization_memberships(organization_id: uuid.UUID, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    actor_membership = await require_organization_membership(request, str(organization_id), str(user["id"]))
-    rows = await user_db_request(
-        "GET", "organization_memberships", request.state.supabase_access_token,
-        params={"select": "organization_id,user_id,role,invited_by,created_at", "organization_id": f"eq.{organization_id}", "order": "created_at.asc", "limit": "500"},
+async def list_organization_memberships(
+    organization_id: uuid.UUID,
+    request: Request,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    actor = OrganizationActor.from_request(request, user)
+    actor_membership = await require_organization_membership(
+        request, str(organization_id), actor.user_id
     )
-    # Members can inspect their own membership; only organization owners/admins
-    # receive the full roster. Enforce the same boundary in FastAPI even if an
-    # old permissive RLS policy or a broad PostgREST response reappears.
-    scoped_rows = [
-        row for row in rows
-        if str(row.get("organization_id") or "") == str(organization_id)
-        and (
-            actor_membership.get("role") in {"owner", "admin"}
-            or str(row.get("user_id") or "") == str(user["id"])
-        )
-    ]
-    return {"items": scoped_rows}
+    items = await organization_service.list_memberships(
+        actor, str(organization_id), actor_membership
+    )
+    return {"items": items}
 
 
 @app.post("/v1/organizations/{organization_id}/memberships", status_code=201, tags=["organizations"])
-async def add_organization_membership(organization_id: uuid.UUID, payload: OrganizationMemberCreate, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    await require_organization_membership(request, str(organization_id), str(user["id"]), allowed_roles={"owner", "admin"})
-    rows = await service_db_request(
-        "add_organization_member_for_actor",
-        body={"p_organization_id": str(organization_id), "p_actor_user_id": user["id"], "p_target_user_id": str(payload.user_id), "p_role": payload.role},
+async def add_organization_membership(
+    organization_id: uuid.UUID,
+    payload: OrganizationMemberCreate,
+    request: Request,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    actor = OrganizationActor.from_request(request, user)
+    await require_organization_membership(
+        request, str(organization_id), actor.user_id, allowed_roles={"owner", "admin"}
     )
-    if (
-        not rows
-        or str(rows[0].get("organization_id") or "") != str(organization_id)
-        or str(rows[0].get("user_id") or "") != str(payload.user_id)
-        or str(rows[0].get("role") or "") != payload.role
-        or str(rows[0].get("invited_by") or "") != str(user["id"])
-    ):
-        raise HTTPException(status_code=500, detail={"code": "MEMBERSHIP_CREATE_FAILED", "message": "Keanggotaan tidak dapat dibuat."})
-    return {"membership": rows[0]}
+    membership = await organization_service.add_member(
+        actor,
+        organization_id=str(organization_id),
+        target_user_id=str(payload.user_id),
+        role=payload.role,
+    )
+    return {"membership": membership}
 
 
 @app.patch("/v1/organizations/{organization_id}/memberships/{member_user_id}", tags=["organizations"])
-async def update_organization_membership_role(organization_id: uuid.UUID, member_user_id: uuid.UUID, payload: OrganizationMemberRoleUpdate, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    await require_organization_membership(request, str(organization_id), str(user["id"]), allowed_roles={"owner"})
-    rows = await service_db_request(
-        "update_organization_member_role_for_actor",
-        body={"p_organization_id": str(organization_id), "p_actor_user_id": user["id"], "p_target_user_id": str(member_user_id), "p_role": payload.role},
+async def update_organization_membership_role(
+    organization_id: uuid.UUID,
+    member_user_id: uuid.UUID,
+    payload: OrganizationMemberRoleUpdate,
+    request: Request,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    actor = OrganizationActor.from_request(request, user)
+    await require_organization_membership(
+        request, str(organization_id), actor.user_id, allowed_roles={"owner"}
     )
-    if not rows:
-        raise HTTPException(status_code=404, detail={"code": "ORGANIZATION_MEMBER_NOT_FOUND", "message": "Anggota organisasi tidak ditemukan."})
-    if (
-        str(rows[0].get("organization_id") or "") != str(organization_id)
-        or str(rows[0].get("user_id") or "") != str(member_user_id)
-        or str(rows[0].get("role") or "") != payload.role
-    ):
-        raise HTTPException(status_code=500, detail={"code": "ORGANIZATION_MEMBER_SCOPE_MISMATCH", "message": "Respons keanggotaan tidak sesuai dengan organisasi yang diminta."})
-    return {"membership": rows[0]}
+    membership = await organization_service.update_member_role(
+        actor,
+        organization_id=str(organization_id),
+        target_user_id=str(member_user_id),
+        role=payload.role,
+    )
+    return {"membership": membership}
 
 
-@app.delete("/v1/organizations/{organization_id}/memberships/{member_user_id}", tags=["organizations"])
-async def remove_organization_membership(organization_id: uuid.UUID, member_user_id: uuid.UUID, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    await require_organization_membership(request, str(organization_id), str(user["id"]), allowed_roles={"owner", "admin"})
-    removed = await service_db_request(
-        "remove_organization_member_for_actor",
-        body={"p_organization_id": str(organization_id), "p_actor_user_id": user["id"], "p_target_user_id": str(member_user_id)},
+@app.delete("/v1/organizations/{organization_id}/memberships/{member_user_id}")
+async def remove_organization_membership(
+    organization_id: uuid.UUID,
+    member_user_id: uuid.UUID,
+    request: Request,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    actor = OrganizationActor.from_request(request, user)
+    await require_organization_membership(
+        request, str(organization_id), actor.user_id, allowed_roles={"owner", "admin"}
     )
-    if removed is not True:
-        raise HTTPException(status_code=404, detail={"code": "ORGANIZATION_MEMBER_NOT_FOUND", "message": "Anggota organisasi tidak ditemukan."})
+    await organization_service.remove_member(
+        actor, organization_id=str(organization_id), target_user_id=str(member_user_id)
+    )
     return {"removed": True}
 
 
