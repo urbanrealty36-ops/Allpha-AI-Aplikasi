@@ -836,11 +836,36 @@ async def delete_my_interest(interest_key: str, request: Request, user: dict[str
 
 @app.get("/v1/organizations", tags=["organizations"])
 async def list_organizations(user: dict[str, Any] = Depends(current_user), request: Request = None) -> dict[str, Any]:
+    # Derive the tenant set from this verified user's own membership rows.
+    # Organization RLS remains defense-in-depth; the API must not return an
+    # organization merely because a historical permissive policy exposes it.
+    memberships = await user_db_request(
+        "GET", "organization_memberships", request.state.supabase_access_token,
+        params={"select": "organization_id,user_id", "user_id": f"eq.{user['id']}", "order": "created_at.desc", "limit": "100"},
+    )
+    organization_ids: set[str] = set()
+    for membership in memberships:
+        if str(membership.get("user_id") or "") != str(user["id"]):
+            continue
+        try:
+            organization_ids.add(str(uuid.UUID(str(membership.get("organization_id") or ""))))
+        except (ValueError, TypeError, AttributeError):
+            continue
+    if not organization_ids:
+        return {"items": []}
+
     rows = await user_db_request(
         "GET", "organizations", request.state.supabase_access_token,
-        params={"select": "id,name,slug,owner_id,created_at,updated_at", "order": "created_at.desc", "limit": "100"},
+        params={
+            "select": "id,name,slug,owner_id,created_at,updated_at",
+            "id": f"in.({','.join(sorted(organization_ids))})",
+            "order": "created_at.desc",
+            "limit": "100",
+        },
     )
-    return {"items": rows}
+    # Re-check the server-derived scope after PostgREST returns. This keeps a
+    # stale/broadened RLS policy from becoming an API-level cross-tenant leak.
+    return {"items": [row for row in rows if str(row.get("id") or "") in organization_ids]}
 
 
 @app.post("/v1/organizations", status_code=201, tags=["organizations"])
@@ -856,19 +881,23 @@ async def create_organization(payload: OrganizationCreate, user: dict[str, Any] 
 
 @app.get("/v1/organizations/{organization_id}/memberships", tags=["organizations"])
 async def list_organization_memberships(organization_id: uuid.UUID, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    await require_organization_membership(request, str(organization_id), str(user["id"]))
+    actor_membership = await require_organization_membership(request, str(organization_id), str(user["id"]))
     rows = await user_db_request(
         "GET", "organization_memberships", request.state.supabase_access_token,
         params={"select": "organization_id,user_id,role,invited_by,created_at", "organization_id": f"eq.{organization_id}", "order": "created_at.asc", "limit": "500"},
     )
-    if not rows:
-        orgs = await user_db_request(
-            "GET", "organizations", request.state.supabase_access_token,
-            params={"select": "id", "id": f"eq.{organization_id}", "limit": "1"},
+    # Members can inspect their own membership; only organization owners/admins
+    # receive the full roster. Enforce the same boundary in FastAPI even if an
+    # old permissive RLS policy or a broad PostgREST response reappears.
+    scoped_rows = [
+        row for row in rows
+        if str(row.get("organization_id") or "") == str(organization_id)
+        and (
+            actor_membership.get("role") in {"owner", "admin"}
+            or str(row.get("user_id") or "") == str(user["id"])
         )
-        if not orgs:
-            raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Organisasi tidak ditemukan."})
-    return {"items": rows}
+    ]
+    return {"items": scoped_rows}
 
 
 @app.post("/v1/organizations/{organization_id}/memberships", status_code=201, tags=["organizations"])
