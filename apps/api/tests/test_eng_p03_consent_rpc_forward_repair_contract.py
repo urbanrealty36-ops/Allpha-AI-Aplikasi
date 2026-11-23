@@ -2,7 +2,7 @@ from pathlib import Path
 
 MIGRATION = (
     Path(__file__).parents[1] / "supabase" / "migrations"
-    / "20261123191750_eng_p03_consent_rpc_ambiguity_repair.sql"
+    / "20261123191800_eng_p03_lease_scoped_export_artifacts.sql"
 )
 
 
