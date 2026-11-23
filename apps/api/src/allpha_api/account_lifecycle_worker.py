@@ -57,6 +57,15 @@ class AccountLifecycleWorker:
         if response.status_code not in (200, 201):
             response.raise_for_status()
 
+    async def delete_upload(self, object_path: str) -> None:
+        """Remove only this lease's uncommitted export artifact."""
+        response = await self.client.request(
+            "DELETE",
+            f"{self.base}/storage/v1/object/account-exports",
+            json={"prefixes": [object_path]},
+        )
+        response.raise_for_status()
+
     async def _maintain_lease(
         self,
         job_id: str,
@@ -95,6 +104,9 @@ class AccountLifecycleWorker:
         stop_heartbeat = asyncio.Event()
         lease_lost = asyncio.Event()
         heartbeat_task: asyncio.Task[None] | None = None
+        uploaded_path: str | None = None
+        completion_attempted = False
+        completion_response_received = False
         try:
             renewed = await self.rpc(
                 "renew_account_export_job_lease",
@@ -145,11 +157,15 @@ class AccountLifecycleWorker:
             ).encode("utf-8")
             compressed = gzip.compress(encoded, compresslevel=6, mtime=0)
             digest = hashlib.sha256(compressed).hexdigest()
-            object_path = f"{user_id}/{job_id}.json.gz"
+            # A unique path per lease prevents a stale worker from deleting or
+            # overwriting the artifact produced by a worker holding a newer lease.
+            object_path = f"{user_id}/{job_id}/{lease_token}.json.gz"
+            uploaded_path = object_path
             await self.upload(object_path, compressed)
             if lease_lost.is_set():
                 raise RuntimeError("ACCOUNT_EXPORT_LEASE_LOST")
 
+            completion_attempted = True
             completed = await self.rpc(
                 "complete_account_export_job",
                 {
@@ -166,6 +182,7 @@ class AccountLifecycleWorker:
                     },
                 },
             )
+            completion_response_received = True
             if completed is not True:
                 raise RuntimeError("ACCOUNT_EXPORT_COMPLETION_UNCONFIRMED")
             log.info(
@@ -176,6 +193,17 @@ class AccountLifecycleWorker:
             )
         except Exception as exc:
             log.exception("account_export_failed job_id=%s", job_id)
+            # Cleanup is safe before the completion RPC, or after an explicit
+            # negative response. A timeout/connection error during completion
+            # is ambiguous: the database may have committed, so retain the
+            # object rather than risk deleting a completed export.
+            if uploaded_path is not None and (
+                not completion_attempted or completion_response_received
+            ):
+                try:
+                    await self.delete_upload(uploaded_path)
+                except Exception:
+                    log.exception("account_export_orphan_cleanup_failed job_id=%s", job_id)
             attempts = max(1, int(job.get("attempts") or 1))
             retry_seconds = min(3600, 15 * (2 ** min(attempts - 1, 8)))
             try:
