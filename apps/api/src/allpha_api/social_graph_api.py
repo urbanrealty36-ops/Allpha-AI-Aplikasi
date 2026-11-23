@@ -313,9 +313,9 @@ async def get_social_recommendations(
         candidate_id = str(row.get("user_id") or "")
         if candidate_id and candidate_id != viewer_id:
             interest_counts[candidate_id] = interest_counts.get(candidate_id, 0) + 1
-    scoring_rows = await _server_db("GET", "recommendation_scoring_policies", params={
+    scoring_rows = await optional_scoring_rows(_server_db, "recommendation_scoring_policies", {
         "select": "version,weights,active", "policy_key": "eq.default", "active": "eq.true", "limit": "1",
-    }) or []
+    })
     policy_version, policy_weights = policy_from_rows(scoring_rows)
 
     if node_type == "agent":
