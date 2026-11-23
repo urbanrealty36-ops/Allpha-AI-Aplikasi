@@ -1,0 +1,45 @@
+from allpha_api.recommendation_engine import (
+    DEFAULT_WEIGHTS,
+    matched_signal_affinity,
+    policy_from_rows,
+    score_content_candidate,
+    score_creator_candidate,
+)
+
+
+def test_scoring_policy_is_loaded_from_active_policy_and_validated():
+    version, weights = policy_from_rows([{
+        "active": True,
+        "version": "policy-test-v3",
+        "weights": {"followed_creator": 4, "passion": 2, "habit": -1, "engagement": float("nan")},
+    }])
+    assert version == "policy-test-v3"
+    assert weights["followed_creator"] == 4
+    assert weights["passion"] == 2
+    assert weights["habit"] == DEFAULT_WEIGHTS["habit"]
+    assert weights["engagement"] == DEFAULT_WEIGHTS["engagement"]
+
+
+def test_creator_scoring_uses_shared_canonical_policy():
+    assert score_creator_candidate(2, 1) == 7.0
+
+
+def test_content_scoring_combines_explicit_passion_habit_and_quality_signals():
+    score = score_content_candidate(
+        followed_creator=True,
+        explicit_interest_matches=2,
+        passion_affinity=0.5,
+        habit_affinity=1.0,
+        engagement_total=3,
+    )
+    assert score > 9.0
+
+
+def test_signal_affinity_only_matches_the_same_declared_interest():
+    signals = [
+        {"signal_type": "passion", "interest_key": "spatial_3d", "strength": 0.8},
+        {"signal_type": "habit", "interest_key": "design_ui_ux", "strength": 0.6},
+    ]
+    assert matched_signal_affinity({"spatial", "3d", "render"}, signals, "passion") == 0.8
+    assert matched_signal_affinity({"design", "ui", "ux"}, signals, "habit") == 0.6
+    assert matched_signal_affinity({"business", "finance"}, signals, "passion") == 0.0
