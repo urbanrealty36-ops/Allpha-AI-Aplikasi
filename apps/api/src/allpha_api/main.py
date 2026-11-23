@@ -340,8 +340,12 @@ async def get_credit_balance(user: dict[str, Any] = Depends(current_user)) -> di
 @app.get("/healthz", tags=["system"])
 async def healthz() -> dict[str, Any]:
     worker = getattr(app.state, "account_lifecycle_worker", None)
-    worker_status = "disabled" if worker is None else (
-        "degraded" if worker.last_error_code else "running"
+    external_worker_service = os.getenv("ALLPHA_ACCOUNT_LIFECYCLE_WORKER_EXTERNAL_SERVICE", "").strip()
+    worker_status = (
+        "degraded" if worker is not None and worker.last_error_code
+        else "running" if worker is not None
+        else "external" if external_worker_service
+        else "disabled"
     )
     return {
         "status": "ok",
@@ -349,6 +353,8 @@ async def healthz() -> dict[str, Any]:
         "workers": {
             "account_lifecycle": {
                 "status": worker_status,
+                "runtime_service": external_worker_service or APP_NAME,
+                "monitoring_source": "railway_service_logs" if external_worker_service else "api_process",
                 "started_at": worker.started_at if worker is not None else None,
                 "last_poll_at": worker.last_poll_at if worker is not None else None,
                 "last_claimed_count": worker.last_claimed_count if worker is not None else 0,
