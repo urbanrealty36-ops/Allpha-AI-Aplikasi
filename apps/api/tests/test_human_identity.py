@@ -460,29 +460,23 @@ def test_interest_preference_uses_authenticated_actor_and_server_only_catalog_rp
 
 
 def test_interest_catalog_is_served_from_canonical_database(monkeypatch):
-    from fastapi import Request
-    from allpha_api.auth import current_user
-
     calls = []
 
     async def fake_user_db_request(method, path, access_token, **kwargs):
         calls.append((method, path, access_token, kwargs))
-        return [{"interest_key": "health", "label": "Kesehatan", "label_key": "auth.interest.health", "category": "wellbeing"}]
+        if path == "interest_catalog":
+            return [{"interest_key": "health", "label": "Kesehatan", "label_key": "auth.interest.health", "category": "wellbeing"}]
+        if path == "interest_taxonomy_edges":
+            return []
+        raise AssertionError(path)
 
-    async def fake_current_user(request: Request):
-        request.state.supabase_access_token = "interest-session-token"
-        return {"id": "human-123"}
-
-    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
-    app.dependency_overrides[current_user] = fake_current_user
-    try:
-        response = client.get("/v1/interests/catalog", headers={"Authorization": "Bearer test"})
-    finally:
-        app.dependency_overrides.clear()
+    monkeypatch.setattr("allpha_api.interest_graph_api.user_db_request", fake_user_db_request)
+    response = client.get("/v1/interests/catalog")
 
     assert response.status_code == 200
-    assert calls[0][0:3] == ("GET", "interest_catalog", "interest-session-token")
+    assert calls[0][0:3] == ("GET", "interest_catalog", None)
     assert response.json()["items"][0]["interest_key"] == "health"
+    assert response.json()["relationships"] == []
 
 
 def test_interest_delete_uses_server_only_actor_rpc(monkeypatch):
