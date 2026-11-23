@@ -14,11 +14,10 @@ create table if not exists public.user_interest_graph_signals (
   consent_granted_at timestamptz not null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  constraint passion_never_inferred check (signal_type <> 'passion' or signal_source <> 'observed_interaction')
+  constraint passion_never_inferred check (signal_type <> 'passion' or signal_source <> 'observed_interaction'),
+  constraint user_interest_graph_signals_subject_unique
+    unique nulls not distinct (user_id,agent_id,interest_key,signal_type)
 );
-create unique index if not exists user_interest_graph_signals_subject_unique
-  on public.user_interest_graph_signals(user_id,agent_id,interest_key,signal_type)
-  nulls not distinct;
 create index if not exists user_interest_graph_signals_owner_type_idx
   on public.user_interest_graph_signals(user_id,signal_type,updated_at desc);
 
@@ -142,7 +141,7 @@ begin
   ) values (
     p_actor_user_id,p_agent_id,v_key,p_signal_type,p_strength,p_signal_source,p_consent_version,pg_catalog.now()
   )
-  on conflict(user_id,agent_id,interest_key,signal_type) do update
+  on conflict on constraint user_interest_graph_signals_subject_unique do update
     set strength=excluded.strength,signal_source=excluded.signal_source,
         consent_version=excluded.consent_version,consent_granted_at=excluded.consent_granted_at,
         updated_at=pg_catalog.now()
