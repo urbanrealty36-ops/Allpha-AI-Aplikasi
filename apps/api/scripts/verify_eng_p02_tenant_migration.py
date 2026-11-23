@@ -134,7 +134,7 @@ select policyname, cmd, qual, roles
   from pg_policies
  where schemaname='public' and tablename='organizations'
  order by policyname;
-do $
+do $$
 begin
  if auth.uid() <> '44444444-4444-4444-8444-444444444444'::uuid then
    raise exception 'test harness JWT context mismatch: %', auth.uid();
