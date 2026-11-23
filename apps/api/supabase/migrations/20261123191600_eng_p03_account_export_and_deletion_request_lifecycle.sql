@@ -410,7 +410,6 @@ begin
     raise exception 'invalid_export_claim_bounds' using errcode = '22023';
   end if;
 
-  return query
   update public.account_export_jobs j
   set status = 'failed', failed_at = pg_catalog.now(),
       error_code = 'EXPORT_LEASE_EXHAUSTED', lease_token = null,
@@ -451,7 +450,7 @@ returns boolean
 language plpgsql
 security definer
 set search_path = ''
-as $
+as $$
 begin
   if auth.role() <> 'service_role' then
     raise exception 'service_role_required' using errcode = '42501';
@@ -466,7 +465,7 @@ begin
     and j.lease_token = p_lease_token and j.lease_expires_at > pg_catalog.now();
   return found;
 end;
-$;
+$$;
 
 create or replace function public.build_my_account_export_snapshot(p_job_id uuid,p_lease_token uuid)
 returns jsonb
@@ -506,9 +505,7 @@ begin
   if auth.role() <> 'service_role' then
     raise exception 'service_role_required' using errcode = '42501';
   end if;
-  if p_storage_path is null or p_file_sha256 !~ '^[a-f0-9]{64}$'
-     or p_file_size_bytes is null or p_file_size_bytes <= 0
-     or jsonb_typeof(p_manifest) <> 'object' then
+  if p_storage_path is null or p_file_sha256 is null or p_file_sha256 !~ '^[a-f0-9]{64}
     raise exception 'invalid_export_receipt' using errcode = '22023';
   end if;
   update public.account_export_jobs j
@@ -579,7 +576,9 @@ language plpgsql
 security definer
 set search_path = ''
 as $$
-declare v_subject_ref text;
+declare
+  v_subject_ref text;
+  v_request_id uuid;
 begin
   if auth.role() <> 'service_role' then
     raise exception 'service_role_required' using errcode = '42501';
@@ -603,31 +602,245 @@ begin
     raise exception 'account_deletion_request_already_open' using errcode = '23505';
   end if;
 
-  return query
-  with request_row as (
-    insert into public.account_deletion_requests(user_id,subject_ref,status)
-    values (p_actor_user_id,v_subject_ref,'awaiting_policy')
-    returning account_deletion_requests.id,account_deletion_requests.status,
-              account_deletion_requests.requested_at,account_deletion_requests.subject_ref
-  ), profile_update as (
-    update public.profiles p
-    set account_status = 'deactivation_requested'
-    where p.id = p_actor_user_id and p.account_status = 'active'
-    returning p.id
-  )
-  select r.id,r.status,r.requested_at,r.subject_ref from request_row r
-  where exists (select 1 from profile_update);
+  insert into public.account_deletion_requests(user_id,subject_ref,status)
+  values (p_actor_user_id,v_subject_ref,'awaiting_policy')
+  returning account_deletion_requests.id into v_request_id;
+
+  update public.profiles p
+  set account_status = 'deactivation_requested'
+  where p.id = p_actor_user_id and p.account_status = 'active';
   if not found then
     raise exception 'account_deletion_request_not_created' using errcode = '40001';
   end if;
+
   insert into public.account_lifecycle_events(request_id,user_id,subject_ref,event_type,metadata)
-  select r.id,p_actor_user_id,r.subject_ref,'deletion_requested',
-         jsonb_build_object('execution_state','awaiting_policy','retention_policy_configured',false)
+  values (v_request_id,p_actor_user_id,v_subject_ref,'deletion_requested',
+          jsonb_build_object('execution_state','awaiting_policy','retention_policy_configured',false));
+
+  return query
+  select r.id,r.status,r.requested_at,r.subject_ref
   from public.account_deletion_requests r
-  where r.user_id = p_actor_user_id and r.status = 'awaiting_policy';
+  where r.id = v_request_id;
+end;
+$$;
+create or replace function public.cancel_my_account_deletion(p_request_id uuid)
+returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare v_request public.account_deletion_requests%rowtype;
+begin
+  if (select auth.uid()) is null then
+    raise exception 'authentication_required' using errcode = '28000';
+  end if;
+  update public.account_deletion_requests r
+  set status = 'cancelled', cancelled_at = pg_catalog.now(), updated_at = pg_catalog.now()
+  where r.id = p_request_id
+    and r.user_id = (select auth.uid())
+    and r.status = 'awaiting_policy'
+  returning r.* into v_request;
+  if not found then return false; end if;
+
+  update public.profiles p
+  set account_status = 'active'
+  where p.id = (select auth.uid())
+    and not exists (
+      select 1 from public.account_deletion_requests r
+      where r.user_id = (select auth.uid())
+        and r.status in ('awaiting_policy','scheduled','processing','blocked_legal_hold')
+    );
+  insert into public.account_lifecycle_events(request_id,user_id,subject_ref,event_type,metadata)
+  values (v_request.id,(select auth.uid()),v_request.subject_ref,'deletion_cancelled','{}'::jsonb);
+  return true;
 end;
 $$;
 
+create or replace function public.set_account_lifecycle_updated_at()
+returns trigger language plpgsql set search_path = ''
+as $$ begin new.updated_at := pg_catalog.now(); return new; end; $$;
+
+drop trigger if exists account_export_jobs_set_updated_at on public.account_export_jobs;
+create trigger account_export_jobs_set_updated_at before update on public.account_export_jobs
+for each row execute function public.set_account_lifecycle_updated_at();
+drop trigger if exists account_deletion_requests_set_updated_at on public.account_deletion_requests;
+create trigger account_deletion_requests_set_updated_at before update on public.account_deletion_requests
+for each row execute function public.set_account_lifecycle_updated_at();
+
+alter table public.account_export_jobs enable row level security;
+alter table public.account_deletion_requests enable row level security;
+alter table public.account_lifecycle_events enable row level security;
+alter table public.account_data_retention_policies enable row level security;
+alter table public.account_legal_holds enable row level security;
+
+drop policy if exists account_export_jobs_select_self on public.account_export_jobs;
+create policy account_export_jobs_select_self on public.account_export_jobs
+for select to authenticated using (user_id = (select auth.uid()));
+drop policy if exists account_deletion_requests_select_self on public.account_deletion_requests;
+create policy account_deletion_requests_select_self on public.account_deletion_requests
+for select to authenticated using (user_id = (select auth.uid()));
+drop policy if exists account_lifecycle_events_select_self on public.account_lifecycle_events;
+create policy account_lifecycle_events_select_self on public.account_lifecycle_events
+for select to authenticated using (user_id = (select auth.uid()));
+
+revoke all on public.account_export_jobs, public.account_deletion_requests,
+  public.account_lifecycle_events, public.account_data_retention_policies,
+  public.account_legal_holds from anon, authenticated;
+grant select on public.account_export_jobs, public.account_deletion_requests,
+  public.account_lifecycle_events to authenticated;
+grant select, insert, update, delete on public.account_export_jobs,
+  public.account_deletion_requests, public.account_lifecycle_events,
+  public.account_data_retention_policies, public.account_legal_holds to service_role;
+
+revoke all on function public.request_my_account_export(text) from public, anon;
+grant execute on function public.request_my_account_export(text) to authenticated;
+revoke all on function public.claim_account_export_jobs(text,integer,integer) from public, anon, authenticated;
+grant execute on function public.claim_account_export_jobs(text,integer,integer) to service_role;
+revoke all on function public.renew_account_export_job_lease(uuid,uuid,integer) from public, anon, authenticated;\ngrant execute on function public.renew_account_export_job_lease(uuid,uuid,integer) to service_role;\nrevoke all on function public.build_my_account_export_snapshot(uuid,uuid) from public, anon, authenticated;
+grant execute on function public.build_my_account_export_snapshot(uuid,uuid) to service_role;
+revoke all on function public.complete_account_export_job(uuid,uuid,text,text,bigint,jsonb) from public, anon, authenticated;
+grant execute on function public.complete_account_export_job(uuid,uuid,text,text,bigint,jsonb) to service_role;
+revoke all on function public.fail_account_export_job(uuid,uuid,text,integer) from public, anon, authenticated;
+grant execute on function public.fail_account_export_job(uuid,uuid,text,integer) to service_role;
+revoke all on function public.create_account_deletion_request_for_actor(uuid) from public, anon, authenticated;
+grant execute on function public.create_account_deletion_request_for_actor(uuid) to service_role;
+revoke all on function public.cancel_my_account_deletion(uuid) from public, anon;
+grant execute on function public.cancel_my_account_deletion(uuid) to authenticated;
+
+insert into storage.buckets(id,name,public)
+values ('account-exports','account-exports',false)
+on conflict (id) do nothing;
+
+do $$
+begin
+  if exists (
+    select 1 from storage.buckets b
+    where b.id = 'account-exports' and b.public is distinct from false
+  ) then
+    raise exception 'account_exports_bucket_must_remain_private';
+  end if;
+end;
+$$;
+
+     or p_file_size_bytes is null or p_file_size_bytes <= 0
+     or p_manifest is null or jsonb_typeof(p_manifest) <> 'object' then
+    raise exception 'invalid_export_receipt' using errcode = '22023';
+  end if;
+  update public.account_export_jobs j
+  set status = 'succeeded',
+      storage_bucket = 'account-exports',
+      storage_path = p_storage_path,
+      file_sha256 = p_file_sha256,
+      file_size_bytes = p_file_size_bytes,
+      manifest = p_manifest,
+      completed_at = pg_catalog.now(),
+      lease_token = null,
+      lease_owner = null,
+      lease_expires_at = null,
+      error_code = null,
+      updated_at = pg_catalog.now()
+  where j.id = p_job_id
+    and j.status = 'running'
+    and j.lease_token = p_lease_token
+    and j.lease_expires_at > pg_catalog.now()
+    and p_storage_path = j.user_id::text || '/' || j.id::text || '.json.gz';
+  if not found then return false; end if;
+  select j.user_id into v_user_id from public.account_export_jobs j where j.id = p_job_id;
+  insert into public.account_lifecycle_events(export_job_id,user_id,subject_ref,event_type,metadata)
+  values (p_job_id,v_user_id,encode(digest(v_user_id::text,'sha256'),'hex'),'export_completed',
+          jsonb_build_object('file_size_bytes',p_file_size_bytes,'file_sha256',p_file_sha256));
+  return true;
+end;
+$$;
+
+create or replace function public.fail_account_export_job(
+  p_job_id uuid,p_lease_token uuid,p_error_code text,p_retry_seconds integer default 30
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare v_job public.account_export_jobs%rowtype;
+begin
+  if auth.role() <> 'service_role' then
+    raise exception 'service_role_required' using errcode = '42501';
+  end if;
+  if p_retry_seconds not between 5 and 3600 then
+    raise exception 'invalid_export_retry_delay' using errcode = '22023';
+  end if;
+  update public.account_export_jobs j
+  set status = case when j.attempts >= j.max_attempts then 'failed' else 'queued' end,
+      next_attempt_at = pg_catalog.now() + pg_catalog.make_interval(secs => p_retry_seconds),
+      failed_at = case when j.attempts >= j.max_attempts then pg_catalog.now() else null end,
+      error_code = left(coalesce(p_error_code,'EXPORT_FAILED'),80),
+      lease_token = null,
+      lease_owner = null,
+      lease_expires_at = null,
+      updated_at = pg_catalog.now()
+  where j.id = p_job_id and j.status = 'running' and j.lease_token = p_lease_token
+  returning j.* into v_job;
+  if not found then return false; end if;
+  insert into public.account_lifecycle_events(export_job_id,user_id,subject_ref,event_type,metadata)
+  values (v_job.id,v_job.user_id,encode(digest(v_job.user_id::text,'sha256'),'hex'),'export_failed',
+          jsonb_build_object('error_code',v_job.error_code,'attempts',v_job.attempts,'status',v_job.status));
+  return true;
+end;
+$$;
+
+create or replace function public.create_account_deletion_request_for_actor(p_actor_user_id uuid)
+returns table (id uuid,status text,requested_at timestamptz,subject_ref text)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_subject_ref text;
+  v_request_id uuid;
+begin
+  if auth.role() <> 'service_role' then
+    raise exception 'service_role_required' using errcode = '42501';
+  end if;
+  if p_actor_user_id is null or not exists (
+    select 1 from auth.users u where u.id = p_actor_user_id
+  ) then
+    raise exception 'account_not_found' using errcode = 'P0002';
+  end if;
+  if not exists (
+    select 1 from public.profiles p where p.id = p_actor_user_id and p.account_status = 'active'
+  ) then
+    raise exception 'account_not_active' using errcode = '42501';
+  end if;
+  v_subject_ref := encode(digest(p_actor_user_id::text,'sha256'),'hex');
+  if exists (
+    select 1 from public.account_deletion_requests r
+    where r.user_id = p_actor_user_id
+      and r.status in ('awaiting_policy','scheduled','processing','blocked_legal_hold')
+  ) then
+    raise exception 'account_deletion_request_already_open' using errcode = '23505';
+  end if;
+
+  insert into public.account_deletion_requests(user_id,subject_ref,status)
+  values (p_actor_user_id,v_subject_ref,'awaiting_policy')
+  returning account_deletion_requests.id into v_request_id;
+
+  update public.profiles p
+  set account_status = 'deactivation_requested'
+  where p.id = p_actor_user_id and p.account_status = 'active';
+  if not found then
+    raise exception 'account_deletion_request_not_created' using errcode = '40001';
+  end if;
+
+  insert into public.account_lifecycle_events(request_id,user_id,subject_ref,event_type,metadata)
+  values (v_request_id,p_actor_user_id,v_subject_ref,'deletion_requested',
+          jsonb_build_object('execution_state','awaiting_policy','retention_policy_configured',false));
+
+  return query
+  select r.id,r.status,r.requested_at,r.subject_ref
+  from public.account_deletion_requests r
+  where r.id = v_request_id;
+end;
+$$;
 create or replace function public.cancel_my_account_deletion(p_request_id uuid)
 returns boolean
 language plpgsql
