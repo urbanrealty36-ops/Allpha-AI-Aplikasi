@@ -5,15 +5,14 @@ import json
 import re
 import shutil
 from pathlib import Path
-from typing import Iterable
 
 
-VERSION_RE = re.compile(r"^(\\d{14})_")
+VERSION_RE = re.compile(r"^(\d{14})_")
 
 
 def _read_remote_versions(path: Path) -> list[str]:
     versions = [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
-    invalid = [version for version in versions if not re.fullmatch(r"\\d{14}", version)]
+    invalid = [version for version in versions if not re.fullmatch(r"\d{14}", version)]
     if invalid:
         raise ValueError(f"Remote migration ledger contains invalid versions: {invalid}")
     if len(versions) != len(set(versions)):
@@ -111,7 +110,7 @@ def build_workspace(
         "production_mutated": False,
     }
     (workspace_dir / "migration-workspace-manifest.json").write_text(
-        json.dumps(manifest, indent=2) + "\\n",
+        json.dumps(manifest, indent=2) + "\n",
         encoding="utf-8",
     )
     return manifest
