@@ -25,9 +25,10 @@ jobs:
       SUPABASE_PROJECT_ID: dvdziauyvuhcnqhrrvww
       RESTORE_RUN_ID: ${{ github.event.workflow_run.id }}
       EXPECTED_MIGRATION_BLOB: 69c390630ae31439785f292f9df1a15e3d253a70
+      EXPECTED_EXPORT_LEASE_MIGRATION_BLOB: 82a388cb71da5c35e1674726b0cdb9b84caed2ab
       EXPECTED_ACCOUNT_LIFECYCLE_MIGRATION_BLOB: e5263fc112d11012b1bdabe1e676fac7479a63f0
-      TARGET_MIGRATION_VERSION: "20261123191700"
-      TARGET_MIGRATION_NAME: eng_p03_consent_event_history
+      TARGET_MIGRATION_VERSION: "20261123191800"
+      TARGET_MIGRATION_NAME: eng_p03_lease_scoped_export_artifacts
     steps:
       - uses: actions/checkout@v4
         with:
@@ -60,6 +61,10 @@ jobs:
           assert evidence["p03_migration_blob"] == os.environ["EXPECTED_ACCOUNT_LIFECYCLE_MIGRATION_BLOB"]
           assert evidence["p03_consent_migration_applied"] is True
           assert evidence["p03_consent_migration_blob"] == os.environ["EXPECTED_MIGRATION_BLOB"]
+          assert evidence["p03_export_lease_migration_applied"] is True
+          assert evidence["p03_export_lease_migration_blob"] == os.environ["EXPECTED_EXPORT_LEASE_MIGRATION_BLOB"]
+          assert "lease_scoped_completion_rpc=PASS" in evidence["p03_export_lease_verification"]
+          assert "lease_scoped_completion_behavior=PASS" in evidence["p03_export_lease_verification"]
           assert "eng_p02_migration=PASS" in evidence["verification"]
           assert "consent_events_table=PASS" in evidence["p03_consent_migration_verification"]
           assert "consent_rpc_service_only=PASS" in evidence["p03_consent_migration_verification"]
@@ -85,6 +90,8 @@ jobs:
           set -euo pipefail
           account_lifecycle_blob="$(git rev-parse HEAD:apps/api/supabase/migrations/20261123191600_eng_p03_account_export_and_deletion_request_lifecycle.sql)"
           test "$account_lifecycle_blob" = "$EXPECTED_ACCOUNT_LIFECYCLE_MIGRATION_BLOB"
+          export_lease_blob="$(git rev-parse HEAD:apps/api/supabase/migrations/20261123191800_eng_p03_lease_scoped_export_artifacts.sql)"
+          test "$export_lease_blob" = "$EXPECTED_EXPORT_LEASE_MIGRATION_BLOB"
           # P03 may create/check private bucket metadata only; stored objects are never changed.
           migration_file="apps/api/supabase/migrations/${TARGET_MIGRATION_VERSION}_${TARGET_MIGRATION_NAME}.sql"
           test -s "$migration_file"
@@ -172,7 +179,7 @@ jobs:
           echo "Captured $(wc -l < recovery-evidence/remote-migration-versions.txt) applied remote migration versions."
           echo "Target migration already applied: $state"
 
-      - name: Build isolated workspace from applied remote history plus ENG-P03 consent target
+      - name: Build isolated workspace from applied remote history plus ENG-P03 export lease target
         shell: bash
         run: |
           set -euo pipefail
@@ -210,7 +217,7 @@ jobs:
             echo "Dry-run contains exactly one pending migration: $TARGET_MIGRATION_VERSION."
           fi
 
-      - name: Apply only the isolated ENG-P03 consent migration when pending
+      - name: Apply only the isolated ENG-P03 export lease migration when pending
         if: env.TARGET_ALREADY_APPLIED != 'true'
         working-directory: migration-workspace
         shell: bash
@@ -229,13 +236,20 @@ jobs:
             <<'SQL' | tee recovery-evidence/production-post-migration-verification.txt
           select case when exists (
             select 1 from supabase_migrations.schema_migrations
+             where version='20261123191800' and name='eng_p03_lease_scoped_export_artifacts'
+          ) then 'lease_scoped_migration_ledger=PASS' else 'lease_scoped_migration_ledger=FAIL' end;
+          select case when exists (
+            select 1 from supabase_migrations.schema_migrations
              where version='20261123191700' and name='eng_p03_consent_event_history'
-          ) then 'migration_ledger=PASS' else 'migration_ledger=FAIL' end;
+          ) then 'consent_migration_ledger=PASS' else 'consent_migration_ledger=FAIL' end;
           select case when exists (
             select 1 from supabase_migrations.schema_migrations
              where version='20261123191600' and name='eng_p03_account_export_and_deletion_request_lifecycle'
           ) then 'account_lifecycle_migration_ledger=PASS' else 'account_lifecycle_migration_ledger=FAIL' end;
           select case when to_regclass('public.account_export_jobs') is not null then 'account_export_jobs=PASS' else 'account_export_jobs=FAIL' end;
+          select case when position('p_lease_token::text' in pg_get_functiondef(
+            'public.complete_account_export_job(uuid,uuid,text,text,bigint,jsonb)'::regprocedure
+          )) > 0 then 'lease_scoped_completion_rpc=PASS' else 'lease_scoped_completion_rpc=FAIL' end;
           select case when to_regclass('public.account_deletion_requests') is not null then 'account_deletion_requests=PASS' else 'account_deletion_requests=FAIL' end;
           select case when to_regclass('public.account_lifecycle_events') is not null then 'account_lifecycle_events=PASS' else 'account_lifecycle_events=FAIL' end;
           select case when to_regclass('public.account_data_retention_policies') is not null then 'retention_policies=PASS' else 'retention_policies=FAIL' end;
@@ -291,7 +305,7 @@ jobs:
                    then 'deletion_rpc_grants=PASS' else 'deletion_rpc_grants=FAIL' end;
           SQL
 
-          for assertion in migration_ledger account_lifecycle_migration_ledger account_export_jobs account_deletion_requests account_lifecycle_events retention_policies legal_holds export_source_registry consent_events_table consent_export_source consent_events_rls consent_events_client_read_only legacy_consent_write_closed consent_rpc_service_only private_export_bucket deletion_policy_fail_closed account_lifecycle_rls recursive_secret_redaction redaction_rpc_grants owner_export_rpc worker_rpc_grants deletion_rpc_grants; do
+          for assertion in lease_scoped_migration_ledger consent_migration_ledger account_lifecycle_migration_ledger account_export_jobs lease_scoped_completion_rpc account_deletion_requests account_lifecycle_events retention_policies legal_holds export_source_registry consent_events_table consent_export_source consent_events_rls consent_events_client_read_only legacy_consent_write_closed consent_rpc_service_only private_export_bucket deletion_policy_fail_closed account_lifecycle_rls recursive_secret_redaction redaction_rpc_grants owner_export_rpc worker_rpc_grants deletion_rpc_grants; do
             grep -q "^$assertion=PASS$" recovery-evidence/production-post-migration-verification.txt
           done
 
