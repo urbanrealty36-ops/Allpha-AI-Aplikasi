@@ -235,7 +235,7 @@ jobs:
           begin;
           set local role service_role;
           select set_config('request.jwt.claim.role','service_role',true);
-          do $
+          do $$
           declare
             v_actor uuid;
             v_first uuid;
@@ -261,7 +261,7 @@ jobs:
               null;
             end;
           end;
-          $;
+          $$;
           rollback;
           SQL
           echo "consent_rpc_behavior=PASS" | tee -a recovery-evidence/p03-consent-event-verification.txt
