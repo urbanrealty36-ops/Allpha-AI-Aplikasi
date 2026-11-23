@@ -19,7 +19,8 @@ def test_observed_habit_signals_require_personalization_enabled():
     source = MIGRATION.read_text(encoding="utf-8").lower()
     assert "signal_source='observed_interaction'" in source
     assert "personalization_enabled" in source
-    assert "personalization_consent_required" in source
+    assert "interest_observation_consent_required" in source
+    assert "v_interest_matching_enabled" in source
 
 
 def test_recommendation_policy_is_canonical_and_service_managed():
