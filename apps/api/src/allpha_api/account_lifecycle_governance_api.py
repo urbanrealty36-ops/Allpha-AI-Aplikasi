@@ -36,7 +36,7 @@ class RetentionPolicyCreate(BaseModel):
 
 class LegalHoldCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    subject_ref: UUID
+    subject_ref: str = Field(min_length=64, max_length=64, pattern=r"^[a-f0-9]{64}$")
     reference_code: str = Field(min_length=3, max_length=120, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:/-]{2,119}$")
     reason_code: str = Field(min_length=3, max_length=80, pattern=r"^[a-z][a-z0-9._-]{2,79}$")
 
