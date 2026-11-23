@@ -85,6 +85,7 @@ type Profile = { id: string; username: string | null; display_name: string; avat
 type Settings = { theme: "light" | "dark" | "system"; notification_preferences: { product_updates: boolean; security_alerts: boolean; social_activity: boolean }; privacy_settings: { discoverable_by_username: boolean; allow_interest_matching: boolean }; updated_at?: string };
 type SocialEdge = { id: string; target_user_id?: string; actor_user_id?: string; actor_node_type?: "human" | "agent"; target_node_type?: "human" | "agent"; actor_agent_id?: string | null; target_agent_id?: string | null; edge_type: "follow" | "block" | "mute"; status?: string };
 type SocialInterest = { interest_key: string; preference: "interested" | "not_interested" };
+type InterestCatalogItem = { interest_key: string; label: string; category: string; sensitivity: "standard" | "sensitive" };
 type InterestGraphSignal = { interest_key: string; agent_id?: string | null; signal_type: "passion" | "habit"; strength: number; signal_source: string; updated_at: string };
 type SocialActivityItem = { id: string; event_type: string; actor_node_type: "human" | "agent"; target_node_type?: "human" | "agent"; actor_agent_id?: string | null; target_agent_id?: string | null; created_at: string };
 type SocialActorAgent = { id: string; handle: string; display_name: string; status: "active"; ownership_role: "owner" | "operator" };
@@ -651,6 +652,7 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
   const [socialDiscoveryError, setSocialDiscoveryError] = useState("");
   const socialDiscoveryRequestSequence = useRef(0);
   const [interestKey, setInterestKey] = useState("");
+  const [interestCatalog, setInterestCatalog] = useState<InterestCatalogItem[]>([]);
   const [interestPreference, setInterestPreference] = useState<"interested" | "not_interested">("interested");
   const [interestGraphSignals, setInterestGraphSignals] = useState<InterestGraphSignal[]>([]);
   const [passionInterestKey, setPassionInterestKey] = useState("");
@@ -1447,6 +1449,12 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
       ]);
       setSocialGraph(graph);
       setSocialActivity(activity.items || []);
+      try {
+        const catalog = await apiRequest("/v1/interests/catalog") as { items?: InterestCatalogItem[] };
+        setInterestCatalog(Array.isArray(catalog.items) ? catalog.items.filter(item => item.sensitivity !== "sensitive") : []);
+      } catch {
+        setInterestCatalog([]);
+      }
       try {
         const signals = await apiRequest("/v1/me/interest-signals") as { items?: InterestGraphSignal[] };
         setInterestGraphSignals(Array.isArray(signals.items) ? signals.items : []);
@@ -2306,7 +2314,8 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
           <Text style={s.muted}>{new Date(item.created_at).toLocaleDateString("id-ID")}</Text>
         </View>) : <Text style={s.muted}>Belum ada aktivitas relasi.</Text>}
         <Text style={s.kicker}>MINAT</Text>
-        <TextInput accessibilityLabel="Tambah minat" value={interestKey} onChangeText={value => setInterestKey(value.toLowerCase())} autoCapitalize="none" maxLength={80} style={field} placeholder="contoh: desain.3d" placeholderTextColor="#8B94AC"/>
+        <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>{interestCatalog.map(item => <Button key={item.interest_key} title={interestKey === item.interest_key ? "✓ " + item.label : item.label} secondary={interestKey !== item.interest_key} onPress={() => { setInterestKey(item.interest_key); setPassionInterestKey(item.interest_key); setHabitInterestKey(item.interest_key); }}/>)}</View>
+        <Text style={s.muted}>{interestCatalog.length ? "Pilih minat dari taksonomi resmi Allpha." : "Taksonomi minat belum tersedia dari API."}</Text>
         <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}><Button title={interestPreference === "interested" ? "✓ Diminati" : "Diminati"} secondary={interestPreference !== "interested"} onPress={() => setInterestPreference("interested")}/><Button title={interestPreference === "not_interested" ? "✓ Tidak diminati" : "Tidak diminati"} secondary={interestPreference !== "not_interested"} onPress={() => setInterestPreference("not_interested")}/></View>
         <Button title="Simpan minat" disabled={busy || !interestKey.trim()} onPress={() => void saveInterest()}/>
         <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>{socialGraph.interests.map(item => <View key={item.interest_key} style={[s.socialRow,{flexGrow:1}]}><Text style={s.body}>{item.interest_key} · {item.preference === "interested" ? "Diminati" : "Tidak diminati"}</Text><View style={{flexDirection:"row",gap:8,flexWrap:"wrap"}}><Button title={item.preference === "interested" ? "Tandai tidak diminati" : "Aktifkan minat"} secondary disabled={busy} onPress={() => void updateInterestPreference(item.interest_key,item.preference === "interested" ? "not_interested" : "interested")}/><Button title="Hapus" secondary disabled={busy} onPress={() => void removeInterest(item.interest_key)}/></View></View>)}</View>
