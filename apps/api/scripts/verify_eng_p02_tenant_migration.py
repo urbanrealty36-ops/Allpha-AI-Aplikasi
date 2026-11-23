@@ -53,6 +53,16 @@ grant execute on function auth.uid() to public;
 grant usage on schema public to service_role;
 """)
         psql(migration_sql)
+        # Simulate a permissive legacy policy and stale table/column grants.
+        # The forward repair must remove them before installing the canonical
+        # tenant policy set; otherwise PostgreSQL's permissive policies OR
+        # together and an old policy can reopen cross-tenant reads.
+        psql("""
+create policy organizations_legacy_permissive_read
+  on public.organizations for select to authenticated using (true);
+grant all privileges on table public.organizations,public.organization_memberships,public.audit_events to authenticated;
+grant insert (owner_id), update (owner_id) on table public.organizations to authenticated;
+""")
         psql(migration_sql)
         psql("""
 insert into auth.users(id) values
@@ -180,7 +190,19 @@ begin
  if has_function_privilege('anon','public.list_my_auth_sessions(uuid)','EXECUTE') then raise exception 'anon can list auth sessions'; end if;
 
  if not has_function_privilege('service_role','public.create_organization_for_user(uuid,text,text)','EXECUTE') then raise exception 'service_role cannot execute organization creation RPC'; end if;
- if has_table_privilege('authenticated','public.organizations','INSERT') then raise exception 'authenticated can directly insert organizations'; end if;
+ if has_table_privilege('authenticated','public.organizations','INSERT')
+    or has_table_privilege('authenticated','public.organizations','UPDATE')
+    or has_table_privilege('authenticated','public.organizations','DELETE')
+    or has_table_privilege('authenticated','public.organizations','TRUNCATE') then
+   raise exception 'authenticated retains direct organization write privileges';
+ end if;
+ if has_column_privilege('authenticated','public.organizations','owner_id','INSERT')
+    or has_column_privilege('authenticated','public.organizations','owner_id','UPDATE') then
+   raise exception 'authenticated retains organization owner_id column privileges';
+ end if;
+ if exists(select 1 from pg_policies where schemaname='public' and tablename in ('organizations','organization_memberships','audit_events') and policyname like '%legacy%') then
+   raise exception 'legacy tenant policy survived forward repair';
+ end if;
  if not (select relrowsecurity from pg_class where oid='public.organizations'::regclass) or not (select relrowsecurity from pg_class where oid='public.organization_memberships'::regclass) or not (select relrowsecurity from pg_class where oid='public.audit_events'::regclass) then raise exception 'RLS missing'; end if;
 end $$;
 select set_config('request.jwt.claim.sub','22222222-2222-4222-8222-222222222222',false);
