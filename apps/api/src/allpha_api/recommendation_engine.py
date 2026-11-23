@@ -14,6 +14,7 @@ DEFAULT_WEIGHTS: dict[str, float] = {
     "shared_interest": 3.0,
 }
 DEFAULT_POLICY_VERSION = "allpha-recommendation-v2"
+FEED_RANKING_VERSION = DEFAULT_POLICY_VERSION
 
 
 def normalize_weights(value: Any) -> dict[str, float]:
