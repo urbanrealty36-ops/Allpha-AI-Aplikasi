@@ -276,8 +276,11 @@ export default function AccountLifecycleGovernancePanel({ apiBase, getAccessToke
         <div className="tableWrap"><table><thead><tr><th>Child table / constraint</th><th>FK</th><th>Database rule</th><th>Resolution</th><th>Reason</th><th>Active</th><th>Aksi</th></tr></thead><tbody>
           {dependencyRules.map(item => {
             const draft = dependencyDrafts[item.id];
-            const choices = item.delete_rule === "CASCADE" ? ["database_cascade", "block"]
-              : item.delete_rule === "SET NULL" ? ["database_set_null", "block"]
+            const choices = item.child_table === "agent_ownerships" && item.fk_column === "owner_user_id"
+              || item.child_table === "organizations" && item.fk_column === "owner_id"
+              ? ["transfer_owner", "block"]
+              : item.delete_rule === "CASCADE" ? ["database_cascade", "block"]
+              : item.delete_rule === "SET NULL" ? ["database_set_null", "set_null", "block"]
               : item.fk_column && ["RESTRICT", "NO ACTION"].includes(item.delete_rule) ? ["delete_rows", "block"] : ["block"];
             return <tr key={item.id}>
               <td><strong>{item.child_schema}.{item.child_table}</strong><br/><small>{item.constraint_name}</small></td>
