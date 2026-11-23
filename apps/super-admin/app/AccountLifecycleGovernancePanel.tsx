@@ -244,7 +244,14 @@ export default function AccountLifecycleGovernancePanel({ apiBase, getAccessToke
         <div className="tableWrap"><table><thead><tr><th>Source</th><th>Data class</th><th>Disposition</th><th>Order</th><th>Policy version / reason</th><th>Active</th><th>Aksi</th></tr></thead><tbody>
           {sourcePolicies.map(item => {
             const draft = sourceDrafts[item.source_key];
-            const ownerDeleteSupported = item.filter_kind === "owner_columns" && item.owner_columns.length > 0;
+            const specializedDeleteSources = new Set([
+              "agent_skills_owned", "agent_runtime_checkpoints", "agent_runtime_effect_receipts",
+              "content_comments_on_owned", "content_reactions_on_owned", "messages_in_conversations",
+              "community_posts_in_memberships", "workspace_documents_in_memberships",
+              "workspace_annotations_in_memberships",
+            ]);
+            const ownerDeleteSupported = (item.filter_kind === "owner_columns" && item.owner_columns.length > 0)
+              || specializedDeleteSources.has(item.source_key);
             return <tr key={item.source_key}>
               <td><strong>{item.source_key}</strong><br/><small>{item.table_name} · {item.filter_kind}</small></td>
               <td><select aria-label={"Data class " + item.source_key} value={draft?.data_class || "owner_private"} onChange={event => setSourceDrafts(current => ({...current, [item.source_key]: {...current[item.source_key], data_class: event.target.value}}))}>
