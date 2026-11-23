@@ -184,6 +184,40 @@ class ConsentCreate(BaseModel):
     granted: bool
 
 
+CONSENT_POLICY_VERSION_ENV = {
+    "terms_of_service": "ALLPHA_POLICY_VERSION_TERMS_OF_SERVICE",
+    "privacy_policy": "ALLPHA_POLICY_VERSION_PRIVACY_POLICY",
+    "product_updates": "ALLPHA_POLICY_VERSION_PRODUCT_UPDATES",
+}
+
+
+def require_current_consent_policy_version(consent_type: str, requested_version: str) -> str:
+    """Accept consent only for an explicitly configured, owner-approved policy version.
+
+    Legal text and policy versions are release inputs. Never let a client invent
+    a version string and create an authoritative consent record for it.
+    """
+    env_name = CONSENT_POLICY_VERSION_ENV.get(consent_type)
+    current_version = os.getenv(env_name, "").strip() if env_name else ""
+    if not current_version:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "CONSENT_POLICY_NOT_CONFIGURED",
+                "message": "Versi kebijakan resmi belum dikonfigurasi.",
+            },
+        )
+    if not hmac.compare_digest(current_version, requested_version):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "CONSENT_POLICY_VERSION_MISMATCH",
+                "message": "Versi kebijakan sudah tidak berlaku. Muat ulang kebijakan resmi.",
+            },
+        )
+    return current_version
+
+
 class SocialEdgeCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     target_user_id: uuid.UUID
@@ -546,13 +580,15 @@ async def get_my_consents(request: Request, user: dict[str, Any] = Depends(curre
 
 @app.post("/v1/me/consents", status_code=201, tags=["identity"])
 async def record_my_consent(payload: ConsentCreate, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    # Consent history is append-only: user_id is always derived from the authenticated identity.
+    # Consent history is append-only and bound to the server-configured, approved
+    # policy version. A client-provided version is a claim, never authority.
+    policy_version = require_current_consent_policy_version(payload.consent_type, payload.policy_version)
     rows = await user_db_request(
         "POST", "user_consents", request.state.supabase_access_token,
         body={
             "user_id": user["id"],
             "consent_type": payload.consent_type,
-            "policy_version": payload.policy_version,
+            "policy_version": policy_version,
             "granted": payload.granted,
         },
         params={"select": "consent_type,policy_version,granted,recorded_at"},
