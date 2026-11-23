@@ -24,9 +24,10 @@ jobs:
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
       SUPABASE_PROJECT_ID: dvdziauyvuhcnqhrrvww
       RESTORE_RUN_ID: ${{ github.event.workflow_run.id }}
-      EXPECTED_MIGRATION_BLOB: e5263fc112d11012b1bdabe1e676fac7479a63f0
-      TARGET_MIGRATION_VERSION: "20261123191600"
-      TARGET_MIGRATION_NAME: eng_p03_account_export_and_deletion_request_lifecycle
+      EXPECTED_MIGRATION_BLOB: 8cf3da904e5f71462ef358322501237f0bb01443
+      EXPECTED_ACCOUNT_LIFECYCLE_MIGRATION_BLOB: e5263fc112d11012b1bdabe1e676fac7479a63f0
+      TARGET_MIGRATION_VERSION: "20261123191700"
+      TARGET_MIGRATION_NAME: eng_p03_consent_event_history
     steps:
       - uses: actions/checkout@v4
         with:
@@ -56,8 +57,12 @@ jobs:
           assert evidence["production_migration_applied"] is False
           assert len(evidence["backup_sha256"]) == 64
           assert evidence["p03_disposable_migration_applied"] is True
-          assert evidence["p03_migration_blob"] == os.environ["EXPECTED_MIGRATION_BLOB"]
+          assert evidence["p03_migration_blob"] == os.environ["EXPECTED_ACCOUNT_LIFECYCLE_MIGRATION_BLOB"]
+          assert evidence["p03_consent_migration_applied"] is True
+          assert evidence["p03_consent_migration_blob"] == os.environ["EXPECTED_MIGRATION_BLOB"]
           assert "eng_p02_migration=PASS" in evidence["verification"]
+          assert "consent_events_table=PASS" in evidence["p03_consent_migration_verification"]
+          assert "consent_rpc_service_only=PASS" in evidence["p03_consent_migration_verification"]
           assert "tenant_schema=PASS" in evidence["verification"]
           assert int(evidence["source_backup_run_id"]) > 45134887289, (
               "Refusing the previous backup artifact; wait for the latest pre-migration backup and restore run."
@@ -220,14 +225,33 @@ jobs:
             <<'SQL' | tee recovery-evidence/production-post-migration-verification.txt
           select case when exists (
             select 1 from supabase_migrations.schema_migrations
-             where version='20261123191600' and name='eng_p03_account_export_and_deletion_request_lifecycle'
+             where version='20261123191700' and name='eng_p03_consent_event_history'
           ) then 'migration_ledger=PASS' else 'migration_ledger=FAIL' end;
+          select case when exists (
+            select 1 from supabase_migrations.schema_migrations
+             where version='20261123191600' and name='eng_p03_account_export_and_deletion_request_lifecycle'
+          ) then 'account_lifecycle_migration_ledger=PASS' else 'account_lifecycle_migration_ledger=FAIL' end;
           select case when to_regclass('public.account_export_jobs') is not null then 'account_export_jobs=PASS' else 'account_export_jobs=FAIL' end;
           select case when to_regclass('public.account_deletion_requests') is not null then 'account_deletion_requests=PASS' else 'account_deletion_requests=FAIL' end;
           select case when to_regclass('public.account_lifecycle_events') is not null then 'account_lifecycle_events=PASS' else 'account_lifecycle_events=FAIL' end;
           select case when to_regclass('public.account_data_retention_policies') is not null then 'retention_policies=PASS' else 'retention_policies=FAIL' end;
           select case when to_regclass('public.account_legal_holds') is not null then 'legal_holds=PASS' else 'legal_holds=FAIL' end;
           select case when to_regclass('private.account_export_sources') is not null and (select count(*) from private.account_export_sources where enabled) > 0 then 'export_source_registry=PASS' else 'export_source_registry=FAIL' end;
+          select case when to_regclass('public.user_consent_events') is not null then 'consent_events_table=PASS' else 'consent_events_table=FAIL' end;
+          select case when exists(select 1 from private.account_export_sources where source_key='consent_events' and table_name='user_consent_events' and enabled) then 'consent_export_source=PASS' else 'consent_export_source=FAIL' end;
+          select case when (select relrowsecurity from pg_class where oid='public.user_consent_events'::regclass) then 'consent_events_rls=PASS' else 'consent_events_rls=FAIL' end;
+          select case when has_table_privilege('authenticated','public.user_consent_events','SELECT')
+                        and not has_table_privilege('authenticated','public.user_consent_events','INSERT')
+                        and not has_table_privilege('authenticated','public.user_consent_events','UPDATE')
+                        and not has_table_privilege('authenticated','public.user_consent_events','DELETE')
+                      then 'consent_events_client_read_only=PASS' else 'consent_events_client_read_only=FAIL' end;
+          select case when has_table_privilege('authenticated','public.user_consents','SELECT')
+                        and not has_table_privilege('authenticated','public.user_consents','INSERT')
+                      then 'legacy_consent_write_closed=PASS' else 'legacy_consent_write_closed=FAIL' end;
+          select case when has_function_privilege('service_role','public.record_account_consent_event_for_actor(uuid,text,text,text,text,text)','EXECUTE')
+                        and not has_function_privilege('authenticated','public.record_account_consent_event_for_actor(uuid,text,text,text,text,text)','EXECUTE')
+                        and not has_function_privilege('anon','public.record_account_consent_event_for_actor(uuid,text,text,text,text,text)','EXECUTE')
+                      then 'consent_rpc_service_only=PASS' else 'consent_rpc_service_only=FAIL' end;
           select case when exists(select 1 from storage.buckets where id='account-exports' and public=false) then 'private_export_bucket=PASS' else 'private_export_bucket=FAIL' end;
           select case when (select count(*) from public.account_data_retention_policies where active) = 0 then 'deletion_policy_fail_closed=PASS' else 'deletion_policy_fail_closed=FAIL' end;
           select case when bool_and(relrowsecurity) then 'account_lifecycle_rls=PASS' else 'account_lifecycle_rls=FAIL' end
@@ -263,7 +287,7 @@ jobs:
                    then 'deletion_rpc_grants=PASS' else 'deletion_rpc_grants=FAIL' end;
           SQL
 
-          for assertion in migration_ledger account_export_jobs account_deletion_requests account_lifecycle_events retention_policies legal_holds export_source_registry private_export_bucket deletion_policy_fail_closed account_lifecycle_rls recursive_secret_redaction redaction_rpc_grants owner_export_rpc worker_rpc_grants deletion_rpc_grants; do
+          for assertion in migration_ledger account_lifecycle_migration_ledger account_export_jobs account_deletion_requests account_lifecycle_events retention_policies legal_holds export_source_registry consent_events_table consent_export_source consent_events_rls consent_events_client_read_only legacy_consent_write_closed consent_rpc_service_only private_export_bucket deletion_policy_fail_closed account_lifecycle_rls recursive_secret_redaction redaction_rpc_grants owner_export_rpc worker_rpc_grants deletion_rpc_grants; do
             grep -q "^$assertion=PASS$" recovery-evidence/production-post-migration-verification.txt
           done
 
