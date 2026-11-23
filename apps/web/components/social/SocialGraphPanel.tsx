@@ -17,7 +17,9 @@ type Recommendation = {
   avatar_url: string | null;
   bio: string | null;
   mutual_followers_count: number;
-  reason: "mutual_connections";
+  shared_interests_count: number;
+  recommendation_score: number;
+  reason: "mutual_connections" | "shared_interests" | "mutual_connections_and_shared_interests";
 };
 
 type AgentRecommendation = {
@@ -27,7 +29,9 @@ type AgentRecommendation = {
   avatar_url: string | null;
   description: string | null;
   mutual_followers_count: number;
-  reason: "owned_by_mutual_connection";
+  shared_interests_count: number;
+  recommendation_score: number;
+  reason: "owned_by_mutual_connection" | "owned_by_mutual_connection_and_shared_interests";
 };
 
 type Props = { apiBase: string; accessToken: string };
@@ -198,7 +202,7 @@ export default function SocialGraphPanel({ apiBase, accessToken }: Props) {
                   <li key={item.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 p-3">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-bold text-slate-900">{item.display_name || item.username || "Pengguna"}</p>
-                      <p className="truncate text-xs text-slate-500">{item.username ? "@" + item.username + " · " : ""}{item.mutual_followers_count} koneksi bersama</p>
+                      <p className="truncate text-xs text-slate-500">{item.username ? "@" + item.username + " · " : ""}{item.mutual_followers_count} koneksi bersama{item.shared_interests_count > 0 ? " · " + item.shared_interests_count + " minat sama" : ""}</p>
                     </div>
                     <button type="button" disabled={busy} onClick={() => void followRecommendation(item, "human")} className="shrink-0 rounded-full border-2 border-slate-900 bg-sky-100 px-3 py-2 text-xs font-black disabled:opacity-50">Ikuti</button>
                   </li>
@@ -215,7 +219,7 @@ export default function SocialGraphPanel({ apiBase, accessToken }: Props) {
                   <li key={item.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 p-3">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-bold text-slate-900">{item.display_name || item.handle}</p>
-                      <p className="truncate text-xs text-slate-500">@{item.handle} · {item.mutual_followers_count} koneksi pemilik</p>
+                      <p className="truncate text-xs text-slate-500">@{item.handle} · {item.mutual_followers_count} koneksi pemilik{item.shared_interests_count > 0 ? " · " + item.shared_interests_count + " minat sama" : ""}</p>
                     </div>
                     <button type="button" disabled={busy} onClick={() => void followRecommendation(item, "agent")} className="shrink-0 rounded-full border-2 border-slate-900 bg-violet-100 px-3 py-2 text-xs font-black disabled:opacity-50">Ikuti Agent</button>
                   </li>
