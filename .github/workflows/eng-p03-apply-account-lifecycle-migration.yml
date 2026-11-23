@@ -1,0 +1,267 @@
+name: ENG-P03 Apply Isolated Account Lifecycle Migration
+
+on:
+  workflow_run:
+    workflows: ["ENG-P02 Verify Pre-Migration Backup Restore"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: eng-p02-isolated-forward-migration
+  cancel-in-progress: false
+
+jobs:
+  apply-reviewed-tenant-migration:
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_ID: dvdziauyvuhcnqhrrvww
+      RESTORE_RUN_ID: ${{ github.event.workflow_run.id }}
+      EXPECTED_MIGRATION_BLOB: a944490e10ce65d831a5480852f828fe222a5a4e
+      TARGET_MIGRATION_VERSION: "20261123191600"
+      TARGET_MIGRATION_NAME: eng_p03_account_export_and_deletion_request_lifecycle
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Require canonical production credentials and successful restore evidence
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test -n "$SUPABASE_ACCESS_TOKEN"
+          test -n "$SUPABASE_DB_PASSWORD"
+          test "$SUPABASE_PROJECT_ID" = "dvdziauyvuhcnqhrrvww"
+          test "$RESTORE_RUN_ID" = "${{ github.event.workflow_run.id }}"
+          mkdir -p recovery-evidence
+          gh run download "$RESTORE_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name eng-p02-disposable-restore-verification --dir recovery-evidence
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          evidence = json.loads(Path("recovery-evidence/restore-verification.json").read_text())
+          assert evidence["project_ref"] == "dvdziauyvuhcnqhrrvww"
+          assert evidence["restore_completed"] is True
+          assert evidence["production_database_touched"] is False
+          assert evidence["production_migration_applied"] is False
+          assert len(evidence["backup_sha256"]) == 64
+          assert evidence["p03_disposable_migration_applied"] is True
+          assert evidence["p03_migration_blob"] == os.environ["EXPECTED_MIGRATION_BLOB"]
+          assert "eng_p02_migration=PASS" in evidence["verification"]
+          assert "tenant_schema=PASS" in evidence["verification"]
+          assert int(evidence["source_backup_run_id"]) > 45134887289, (
+              "Refusing the previous backup artifact; wait for the latest pre-migration backup and restore run."
+          )
+          Path("recovery-evidence/source-backup-run-id.txt").write_text(str(evidence["source_backup_run_id"]))
+          Path("recovery-evidence/source-backup-sha256.txt").write_text(evidence["backup_sha256"])
+          print("Verified a successful disposable PostgreSQL 17 restore of a fresh pre-migration backup.")
+          PY
+          source_backup_run_id="$(cat recovery-evidence/source-backup-run-id.txt)"
+          source_backup_sha256="$(cat recovery-evidence/source-backup-sha256.txt)"
+          gh run download "$source_backup_run_id" --repo "$GITHUB_REPOSITORY" \
+            --name eng-p02-pre-migration-db-backup --dir source-backup
+          actual_backup_sha256="$(sha256sum source-backup/allpha-p02-pre-migration.dump | awk '{print $1}')"
+          test "$actual_backup_sha256" = "$source_backup_sha256"
+
+      - name: Verify the exact canonical migration source
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual_blob="$(git rev-parse HEAD:apps/api/supabase/migrations/20261123191500_eng_p02_forward_repair_tenant_and_session_schema.sql)"
+          test "$actual_blob" = "$EXPECTED_MIGRATION_BLOB"
+          # P03 may create/check private bucket metadata only; stored objects are never changed.
+          migration_file="apps/api/supabase/migrations/${TARGET_MIGRATION_VERSION}_${TARGET_MIGRATION_NAME}.sql"
+          if grep -Eiq '(delete[[:space:]]+from|update|drop[[:space:]]+table)[[:space:]]+storage\.' "$migration_file"; then
+            echo "::error::The account lifecycle migration attempts to mutate Storage objects or metadata."
+            exit 1
+          fi
+          migration_file="apps/api/supabase/migrations/${TARGET_MIGRATION_VERSION}_${TARGET_MIGRATION_NAME}.sql"
+          if grep -Eiq '(^|[^a-z_])(drop[[:space:]]+(table|schema|column)|truncate([[:space:]]|;))([^a-z_]|$)' "$migration_file"; then
+            echo "::error::The reviewed migration contains destructive table/schema operations or truncation; refuse automatic application."
+            exit 1
+          fi
+          echo "Forward-only and no-destructive-operation guard: PASS."
+
+      - name: Resolve canonical Supavisor shared-session connection
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_ID/config/database/pooler" \
+            -o /tmp/pooler-config.json
+          python - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          from urllib.parse import quote
+
+          data = json.loads(Path("/tmp/pooler-config.json").read_text())
+          if isinstance(data, dict):
+              data = [data]
+          candidates = []
+          for item in data:
+              connection = str(item.get("connection_string") or item.get("connectionString") or "")
+              match = re.search(r"@\[?([A-Za-z0-9.-]+)\]?:([0-9]+)(?:/|$)", connection)
+              host = str(item.get("db_host") or (match.group(1) if match else "")).strip()
+              authority = connection.split("://", 1)[-1].split("@", 1)[0] if connection else ""
+              parsed_user = authority.split(":", 1)[0] if authority else ""
+              parsed_db = connection.split("@", 1)[-1].split("/", 1)[1].split("?", 1)[0] if "@" in connection and "/" in connection.split("@", 1)[-1] else ""
+              user = str(item.get("db_user") or parsed_user).strip()
+              database = str(item.get("db_name") or parsed_db).strip()
+              if host.endswith(".pooler.supabase.com") and user and database:
+                  candidates.append((host, user, database))
+          if not candidates:
+              raise SystemExit("No canonical Supavisor shared-session endpoint was returned.")
+          host, user, database = candidates[0]
+          db_url = (
+              f"postgresql://{quote(user, safe='')}:{quote(os.environ['SUPABASE_DB_PASSWORD'], safe='')}"
+              f"@{host}:5432/{quote(database, safe='')}?sslmode=require"
+          )
+          with open(os.environ["GITHUB_ENV"], "a") as output:
+              output.write(f"DB_URL={db_url}\n")
+              output.write(f"DB_HOST={host}\n")
+              output.write(f"DB_USER={user}\n")
+              output.write(f"DB_NAME={database}\n")
+          print(json.dumps({
+              "project_ref": os.environ["SUPABASE_PROJECT_ID"],
+              "connection_mode": "Supavisor shared-session",
+              "host": host,
+              "port": 5432,
+              "database": database,
+              "user": user,
+              "password": "<redacted>",
+          }, indent=2))
+          PY
+
+      - name: Capture remote migration ledger and target state
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p recovery-evidence
+          docker run --rm --network host \
+            -e DATABASE_URL="$DB_URL" \
+            postgres:17-alpine \
+            sh -lc 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atc "select version from supabase_migrations.schema_migrations order by version"' \
+            > recovery-evidence/remote-migration-versions.txt
+          test -s recovery-evidence/remote-migration-versions.txt
+          if grep -Fxq "$TARGET_MIGRATION_VERSION" recovery-evidence/remote-migration-versions.txt; then
+            state="true"
+          else
+            state="false"
+          fi
+          echo "TARGET_ALREADY_APPLIED=$state" >> "$GITHUB_ENV"
+          echo "Captured $(wc -l < recovery-evidence/remote-migration-versions.txt) applied remote migration versions."
+          echo "Target migration already applied: $state"
+
+      - name: Build isolated workspace from applied remote history plus ENG-P02 target
+        shell: bash
+        run: |
+          set -euo pipefail
+          python apps/api/scripts/build_migration_workspace.py \
+            --source-dir apps/api/supabase/migrations \
+            --remote-versions-file recovery-evidence/remote-migration-versions.txt \
+            --target-migration "apps/api/supabase/migrations/${TARGET_MIGRATION_VERSION}_${TARGET_MIGRATION_NAME}.sql" \
+            --workspace-dir migration-workspace
+          test -f migration-workspace/supabase/config.toml
+          test -f "migration-workspace/supabase/migrations/${TARGET_MIGRATION_VERSION}_${TARGET_MIGRATION_NAME}.sql"
+          cat migration-workspace/migration-workspace-manifest.json
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 3.2.0
+
+      - name: Capture migration history and exact dry-run plan
+        working-directory: migration-workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase migration list --db-url "$DB_URL" | tee ../recovery-evidence/migration-list-before.txt
+          if [[ "$TARGET_ALREADY_APPLIED" == "true" ]]; then
+            echo "Target migration 20261123191500 is already recorded; no second apply is required." \
+              | tee ../recovery-evidence/migration-dry-run.txt
+          else
+            supabase db push --dry-run --db-url "$DB_URL" 2>&1 | tee ../recovery-evidence/migration-dry-run.txt
+            dry_run_file="../recovery-evidence/migration-dry-run.txt"
+            test -s "$dry_run_file"
+            grep -Fq "Would push these migrations:" "$dry_run_file"
+            grep -Fq "20261123191500_eng_p02_forward_repair_tenant_and_session_schema.sql" "$dry_run_file"
+            mapfile -t dry_run_versions < <(grep -Eo '20[0-9]{12}' "$dry_run_file" | sort -u)
+            test "${#dry_run_versions[@]}" -eq 1
+            test "${dry_run_versions[0]}" = "20261123191500"
+            echo "Dry-run contains exactly one pending migration: 20261123191500."
+          fi
+
+      - name: Apply only the isolated ENG-P02 forward migration when pending
+        if: env.TARGET_ALREADY_APPLIED != 'true'
+        working-directory: migration-workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase db push --yes --db-url "$DB_URL"
+
+      - name: Verify production account lifecycle migration and privacy boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm -i --network host \
+            -e DATABASE_URL="$DB_URL" \
+            postgres:17-alpine \
+            sh -lc 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -At' \
+            <<'SQL' | tee recovery-evidence/production-post-migration-verification.txt
+          select case when exists (
+            select 1 from supabase_migrations.schema_migrations
+             where version='20261123191600' and name='eng_p03_account_export_and_deletion_request_lifecycle'
+          ) then 'migration_ledger=PASS' else 'migration_ledger=FAIL' end;
+          select case when to_regclass('public.account_export_jobs') is not null then 'account_export_jobs=PASS' else 'account_export_jobs=FAIL' end;
+          select case when to_regclass('public.account_deletion_requests') is not null then 'account_deletion_requests=PASS' else 'account_deletion_requests=FAIL' end;
+          select case when to_regclass('public.account_lifecycle_events') is not null then 'account_lifecycle_events=PASS' else 'account_lifecycle_events=FAIL' end;
+          select case when to_regclass('public.account_data_retention_policies') is not null then 'retention_policies=PASS' else 'retention_policies=FAIL' end;
+          select case when to_regclass('public.account_legal_holds') is not null then 'legal_holds=PASS' else 'legal_holds=FAIL' end;
+          select case when to_regclass('private.account_export_sources') is not null and (select count(*) from private.account_export_sources where enabled) > 0 then 'export_source_registry=PASS' else 'export_source_registry=FAIL' end;
+          select case when exists(select 1 from storage.buckets where id='account-exports' and public=false) then 'private_export_bucket=PASS' else 'private_export_bucket=FAIL' end;
+          select case when (select count(*) from public.account_data_retention_policies where active) = 0 then 'deletion_policy_fail_closed=PASS' else 'deletion_policy_fail_closed=FAIL' end;
+          select case when bool_and(relrowsecurity) then 'account_lifecycle_rls=PASS' else 'account_lifecycle_rls=FAIL' end
+            from pg_class c join pg_namespace n on n.oid=c.relnamespace
+           where n.nspname='public' and c.relname in ('account_export_jobs','account_deletion_requests','account_lifecycle_events','account_data_retention_policies','account_legal_holds');
+          select case when has_function_privilege('authenticated','public.request_my_account_export(text)','EXECUTE')
+                   then 'owner_export_rpc=PASS' else 'owner_export_rpc=FAIL' end;
+          select case when has_function_privilege('service_role','public.claim_account_export_jobs(text,integer,integer)','EXECUTE')
+                        and not has_function_privilege('authenticated','public.claim_account_export_jobs(text,integer,integer)','EXECUTE')
+                   then 'worker_rpc_grants=PASS' else 'worker_rpc_grants=FAIL' end;
+          select case when has_function_privilege('service_role','public.create_account_deletion_request_for_actor(uuid)','EXECUTE')
+                        and not has_function_privilege('authenticated','public.create_account_deletion_request_for_actor(uuid)','EXECUTE')
+                        and has_function_privilege('authenticated','public.cancel_my_account_deletion(uuid)','EXECUTE')
+                   then 'deletion_rpc_grants=PASS' else 'deletion_rpc_grants=FAIL' end;
+          SQL
+
+          for assertion in migration_ledger account_export_jobs account_deletion_requests account_lifecycle_events retention_policies legal_holds export_source_registry private_export_bucket deletion_policy_fail_closed account_lifecycle_rls owner_export_rpc worker_rpc_grants deletion_rpc_grants; do
+            grep -q "^$assertion=PASS$" recovery-evidence/production-post-migration-verification.txt
+          done
+
+          (cd migration-workspace && supabase migration list --db-url "$DB_URL") \
+            | tee recovery-evidence/migration-list-after.txt
+
+      - name: Upload sanitized production migration evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: eng-p03-account-lifecycle-production-evidence
+          path: |
+            recovery-evidence/remote-migration-versions.txt
+            recovery-evidence/migration-list-before.txt
+            recovery-evidence/migration-dry-run.txt
+            recovery-evidence/production-post-migration-verification.txt
+            recovery-evidence/migration-list-after.txt
+            migration-workspace/migration-workspace-manifest.json
+          if-no-files-found: error
+          retention-days: 90
+          overwrite: true
