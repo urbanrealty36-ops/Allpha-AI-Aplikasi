@@ -152,8 +152,12 @@ $old$;
              and exists(select 1 from public.profiles p
                where p.id=t.successor_user_id and p.account_status='active');
           get diagnostics v_rows=row_count;
-          if exists(select 1 from public.agent_ownerships ao
-            where ao.owner_user_id=v_job.user_id and ao.ownership_role='owner' and ao.status='active') then
+          if exists(select 1 from public.account_deletion_ownership_transfers t
+            where t.request_id=v_job.request_id and t.user_id=v_job.user_id
+              and t.resource_type='agent' and t.status='requested'
+              and not exists(select 1 from public.agent_ownerships ao
+                where ao.agent_id=t.resource_id and ao.owner_user_id=t.successor_user_id
+                  and ao.ownership_role='owner' and ao.status='active')) then
             raise exception 'account_deletion_agent_transfer_incomplete' using errcode='55000';
           end if;
         elsif v_rule.child_table='organizations' and v_rule.fk_column='owner_id' then
@@ -168,7 +172,12 @@ $old$;
              and exists(select 1 from public.organization_memberships m
                where m.organization_id=o.id and m.user_id=t.successor_user_id);
           get diagnostics v_rows=row_count;
-          if exists(select 1 from public.organizations o where o.owner_id=v_job.user_id) then
+          if exists(select 1 from public.account_deletion_ownership_transfers t
+            where t.request_id=v_job.request_id and t.user_id=v_job.user_id
+              and t.resource_type='organization' and t.status='requested'
+              and not exists(select 1 from public.organizations o
+                where o.id=t.resource_id and o.owner_id=t.successor_user_id)
+              ) then
             raise exception 'account_deletion_organization_transfer_incomplete' using errcode='55000';
           end if;
         else
