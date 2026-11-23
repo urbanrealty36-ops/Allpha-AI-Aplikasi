@@ -509,7 +509,7 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent", "followi
     policy_version = FEED_RANKING_VERSION
     if owner and effective_mode == "for_you" and enabled:
         interest_rows = await _server_db("GET", "user_interests", params={
-            "select": "interest_key,preference", "user_id": f"eq.{owner}", "agent_id": "is.null", "limit": "500",
+            "select": "interest_key,preference", "user_id": f"eq.{owner}", "limit": "500",
         })
         interest_keys = [str(row["interest_key"]).casefold() for row in (interest_rows or [])
                          if row.get("interest_key") and row.get("preference") == "interested"]
