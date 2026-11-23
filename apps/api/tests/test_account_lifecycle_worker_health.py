@@ -36,3 +36,19 @@ def test_healthz_reports_worker_disabled_without_claiming_runtime():
     response = TestClient(app).get("/healthz")
     assert response.status_code == 200
     assert response.json()["workers"]["account_lifecycle"]["status"] == "disabled"
+
+
+def test_account_lifecycle_health_reports_external_canonical_worker(monkeypatch):
+    from allpha_api.main import app
+
+    monkeypatch.setenv("ALLPHA_ACCOUNT_LIFECYCLE_WORKER_EXTERNAL_SERVICE", "allpha-social-graph-outbox-worker")
+    previous = getattr(app.state, "account_lifecycle_worker", None)
+    app.state.account_lifecycle_worker = None
+    try:
+        response = client.get("/healthz")
+    finally:
+        app.state.account_lifecycle_worker = previous
+    assert response.status_code == 200
+    assert response.json()["workers"]["account_lifecycle"]["status"] == "external"
+    assert response.json()["workers"]["account_lifecycle"]["runtime_service"] == "allpha-social-graph-outbox-worker"
+    assert response.json()["workers"]["account_lifecycle"]["monitoring_source"] == "railway_service_logs"
