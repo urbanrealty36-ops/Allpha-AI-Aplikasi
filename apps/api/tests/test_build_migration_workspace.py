@@ -14,7 +14,14 @@ def _source_tree(tmp_path: Path) -> tuple[Path, Path]:
     supabase_dir = tmp_path / "supabase"
     source_dir = supabase_dir / "migrations"
     source_dir.mkdir(parents=True)
-    (supabase_dir / "config.toml").write_text('project_id = "allpha-test"\n', encoding="utf-8")
+    (supabase_dir / "config.toml").write_text(
+        """project_id = "allpha-test"
+
+[db.migrations]
+schema_paths = []
+""",
+        encoding="utf-8",
+    )
     return source_dir, supabase_dir / "config.toml"
 
 
@@ -43,7 +50,8 @@ def test_workspace_contains_remote_history_and_only_the_requested_pending_target
 
     copied = sorted(path.name for path in (workspace / "supabase" / "migrations").glob("*.sql"))
     assert copied == sorted([applied.name, target.name])
-    assert (workspace / "supabase" / "config.toml").is_file()
+    config_text = (workspace / "supabase" / "config.toml").read_text(encoding="utf-8")
+    assert 'schema_paths = ["./migrations/*.sql"]' in config_text
     assert manifest["remote_applied_version_count"] == 1
     assert manifest["pending_versions"] == ["20261102000000"]
     assert manifest["excluded_local_pending_versions"] == ["20261103000000"]
