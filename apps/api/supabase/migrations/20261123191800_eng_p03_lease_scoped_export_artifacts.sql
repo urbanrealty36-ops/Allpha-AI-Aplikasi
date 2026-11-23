@@ -46,7 +46,7 @@ begin
   if not found then return false; end if;
   select j.user_id into v_user_id from public.account_export_jobs j where j.id = p_job_id;
   insert into public.account_lifecycle_events(export_job_id,user_id,subject_ref,event_type,metadata)
-  values (p_job_id,v_user_id,encode(digest(v_user_id::text,'sha256'),'hex'),'export_completed',
+  values (p_job_id,v_user_id,encode(extensions.digest(v_user_id::text,'sha256'),'hex'),'export_completed',
           jsonb_build_object('file_size_bytes',p_file_size_bytes,'file_sha256',p_file_sha256));
   return true;
 end;
