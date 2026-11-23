@@ -87,3 +87,17 @@ def test_policy_weights_preserve_large_creator_priority_without_falling_back():
         engagement_total=0,
         weights=weights,
     ) == 2750
+
+
+def test_interest_taxonomy_expansion_uses_weighted_one_hop_relationships():
+    from allpha_api.recommendation_engine import expand_interest_weights
+
+    weights = expand_interest_weights(
+        ["technology"],
+        [
+            {"source_interest_key": "technology", "target_interest_key": "spatial_3d", "relation_type": "parent_of", "weight": 0.8, "active": True},
+            {"source_interest_key": "content_creator", "target_interest_key": "design_ui_ux", "relation_type": "related_to", "weight": 0.6, "active": True},
+            {"source_interest_key": "technology", "target_interest_key": "gaming_metaverse", "relation_type": "parent_of", "weight": 0.9, "active": False},
+        ],
+    )
+    assert weights == {"technology": 1.0, "spatial_3d": 0.8}
