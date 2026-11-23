@@ -448,10 +448,17 @@ jobs:
             if not exists(select 1 from public.account_lifecycle_events where request_id=v_request and event_type='deletion_unblocked') then
               raise exception 'deletion unblocked audit event missing';
             end if;
+            update public.account_deletion_requests set status='cancelled' where id=v_request;
+            insert into public.account_deletion_requests(user_id,subject_ref,status,request_metadata)
+            values(v_actor,encode(gen_random_bytes(32),'hex'),'awaiting_policy','{}'::jsonb)
+            returning id into v_request;
+            select * into v_result from public.evaluate_account_deletion_governance(100);
+            if v_result.policy_pending_count<>1 then raise exception 'missing deletion policy was not held pending'; end if;
             if not exists(select 1 from public.account_lifecycle_events where request_id=v_request and event_type='deletion_policy_pending') then
               raise exception 'deletion policy pending audit event missing';
             end if;
-            if v_status in ('processing','completed') then raise exception 'governance gate executed deletion'; end if;
+            select status into v_status from public.account_deletion_requests where id=v_request;
+            if v_status in ('processing','completed','scheduled') then raise exception 'governance gate advanced without policy mapping'; end if;
           end;
           $deletion_governance_verifier$;
           rollback;
