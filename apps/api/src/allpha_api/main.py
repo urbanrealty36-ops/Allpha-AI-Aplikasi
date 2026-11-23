@@ -352,6 +352,7 @@ async def healthz() -> dict[str, Any]:
                 "started_at": worker.started_at if worker is not None else None,
                 "last_poll_at": worker.last_poll_at if worker is not None else None,
                 "last_claimed_count": worker.last_claimed_count if worker is not None else 0,
+                "last_cleanup_count": worker.last_cleanup_count if worker is not None else 0,
                 "poll_count": worker.poll_count if worker is not None else 0,
                 "last_error_code": worker.last_error_code if worker is not None else None,
             }
