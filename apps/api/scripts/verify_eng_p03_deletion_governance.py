@@ -26,6 +26,7 @@ def psql(sql):
     return run(["docker","exec","-i",CONTAINER,"psql","-X","-v","ON_ERROR_STOP=1","-U","postgres","-d","postgres"],sql)
 
 def main():
+    dollar_quote = chr(36) * 2
     run(["docker","run","-d","--rm","--name",CONTAINER,"-e","POSTGRES_PASSWORD=ci-only","postgres:17-alpine"])
     try:
         time.sleep(1)
@@ -194,7 +195,7 @@ insert into private.account_export_sources(source_key,table_name,filter_kind) va
         psql(CANONICAL_REGISTRY_MIGRATION.read_text(encoding="utf-8"))
         psql(f"""
 create function public.execute_account_deletion_execution_job(uuid,uuid)
-returns boolean language plpgsql as {{dollar_quote}}
+returns boolean language plpgsql as {dollar_quote}
 declare v_rule record; v_step record; v_sql text; v_job record; v_rows bigint;
 begin
     if true then
@@ -210,11 +211,11 @@ begin
     end if;
     return false;
 end;
-{{dollar_quote}};
+{dollar_quote};
 """)
         psql(FK_GUARD_MIGRATION.read_text(encoding="utf-8"))
         psql(f"""
-do {{dollar_quote}}
+do {dollar_quote}
 begin
  if position('account_deletion_fk_parent_not_auth_user' in pg_get_functiondef('public.execute_account_deletion_execution_job(uuid,uuid)'::regprocedure))=0 then
    raise exception 'dependency FK parent guard was not installed';
@@ -222,7 +223,7 @@ begin
  if position('auth.users' in pg_get_functiondef('public.execute_account_deletion_execution_job(uuid,uuid)'::regprocedure))=0 then
    raise exception 'dependency FK parent check is missing';
  end if;
-end {{dollar_quote}};
+end {dollar_quote};
 """)
         psql(f"""
 insert into public.agent_ownerships values
