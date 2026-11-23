@@ -252,3 +252,37 @@ create trigger feed_preferences_purge_observed_interest_signals
 after update of personalization_enabled on public.feed_preferences
 for each row execute function private.purge_observed_interest_signals_on_opt_out();
 revoke all on function private.purge_observed_interest_signals_on_opt_out() from public,anon,authenticated;
+
+
+-- Discovery consent is independent from feed personalization. Turning off
+-- interest matching immediately removes all behavior-derived signals for the
+-- Human and every owned Agent while preserving explicit user-selected signals.
+create or replace function private.purge_observed_interest_signals_on_matching_opt_out()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $purge_matching_opt_out$
+begin
+  if old.privacy_settings is distinct from new.privacy_settings
+     and not coalesce(new.privacy_settings,'{}'::jsonb) @> '{"allow_interest_matching":true}'::jsonb then
+    with deleted as (
+      delete from public.user_interest_graph_signals s
+       where s.user_id=new.user_id and s.signal_source='observed_interaction'
+      returning s.user_id,s.agent_id,s.interest_key,s.signal_type,s.signal_source,s.consent_version
+    )
+    insert into public.user_interest_graph_signal_events(
+      user_id,agent_id,interest_key,signal_type,action,signal_source,consent_version
+    )
+    select user_id,agent_id,interest_key,signal_type,'delete',signal_source,consent_version from deleted;
+  end if;
+  perform private.refresh_user_interest_discovery_index(new.user_id);
+  return new;
+end;
+$purge_matching_opt_out$;
+
+drop trigger if exists user_settings_purge_observed_interest_signals on public.user_settings;
+create trigger user_settings_purge_observed_interest_signals
+after update of privacy_settings on public.user_settings
+for each row execute function private.purge_observed_interest_signals_on_matching_opt_out();
+revoke all on function private.purge_observed_interest_signals_on_matching_opt_out() from public,anon,authenticated;
