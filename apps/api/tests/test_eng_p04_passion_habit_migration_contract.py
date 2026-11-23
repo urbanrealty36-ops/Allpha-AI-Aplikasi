@@ -68,3 +68,20 @@ def test_signal_source_is_required_and_server_version_is_fixed():
     source = MIGRATION.read_text(encoding="utf-8").lower()
     assert "p_signal_source is null" in source
     assert "p_consent_version is distinct from 'interest-graph-v1'" in source
+
+
+def test_observed_habit_requires_both_feed_personalization_and_discovery_consent():
+    source = MIGRATION.read_text(encoding="utf-8").lower()
+    assert "v_interest_matching_enabled boolean" in source
+    assert "us.privacy_settings @> '{\"allow_interest_matching\":true}'::jsonb" in source
+    assert "v_personalization_enabled is not true or v_interest_matching_enabled is not true" in source
+    assert "interest_observation_consent_required" in source
+
+
+def test_discovery_consent_revocation_purges_observed_signals_for_human_and_agent():
+    source = MIGRATION.read_text(encoding="utf-8").lower()
+    assert "user_settings_purge_observed_interest_signals" in source
+    assert "purge_observed_interest_signals_on_matching_opt_out" in source
+    assert "old.privacy_settings is distinct from new.privacy_settings" in source
+    assert "s.user_id=new.user_id and s.signal_source='observed_interaction'" in source
+    assert "perform private.refresh_user_interest_discovery_index(new.user_id)" in source
