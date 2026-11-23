@@ -391,3 +391,38 @@ def test_retention_policy_rejects_noncanonical_data_class():
             data_class="social_content", retention_days=365,
             policy_version="v1", legal_basis="Approved legal basis reference",
         )
+
+
+def test_dependency_rule_transfer_owner_is_limited_to_canonical_owner_foreign_keys(monkeypatch):
+    calls = []
+    audits = []
+
+    async def privileged(method, table, *, params=None, body=None, prefer=None):
+        calls.append((method, table, params, body))
+        if method == "GET":
+            return [{
+                "id": str(POLICY_ID),
+                "child_schema": "public",
+                "child_table": "agent_ownerships",
+                "constraint_name": "agent_ownerships_owner_user_id_fkey",
+                "fk_column": "owner_user_id",
+                "delete_rule": "RESTRICT",
+                "resolution_action": "transfer_owner",
+            }]
+        return [{**body, "id": str(POLICY_ID)}]
+
+    async def audit(request, **kwargs):
+        audits.append(kwargs)
+
+    monkeypatch.setattr(governance, "privileged_rest_request", privileged)
+    monkeypatch.setattr(governance, "write_operator_audit", audit)
+    payload = governance.DependencyRuleUpdate(
+        resolution_action="transfer_owner",
+        reason="Transfer canonical Agent owner to validated active successor",
+        active=True,
+    )
+    result = asyncio.run(governance.update_deletion_dependency_rule(POLICY_ID, payload, _request(), OPERATOR))
+
+    assert result["item"]["resolution_action"] == "transfer_owner"
+    assert calls[-1][3]["resolution_action"] == "transfer_owner"
+    assert [item["outcome"] for item in audits] == ["attempted", "allowed"]
