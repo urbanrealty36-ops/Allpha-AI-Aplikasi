@@ -3,7 +3,8 @@ from fastapi.testclient import TestClient
 from allpha_api.main import app
 
 
-def test_healthz_exposes_account_lifecycle_worker_runtime_state():
+def test_healthz_exposes_account_lifecycle_worker_runtime_state(monkeypatch):
+    monkeypatch.delenv("ALLPHA_ACCOUNT_LIFECYCLE_WORKER_EXTERNAL_SERVICE", raising=False)
     class WorkerState:
         started_at = "2026-11-23T00:00:00+00:00"
         last_poll_at = "2026-11-23T00:00:10+00:00"
@@ -22,6 +23,8 @@ def test_healthz_exposes_account_lifecycle_worker_runtime_state():
     assert response.status_code == 200
     assert response.json()["workers"]["account_lifecycle"] == {
         "status": "running",
+        "runtime_service": "allpha-api",
+        "monitoring_source": "api_process",
         "started_at": "2026-11-23T00:00:00+00:00",
         "last_poll_at": "2026-11-23T00:00:10+00:00",
         "last_claimed_count": 2,
@@ -45,7 +48,7 @@ def test_account_lifecycle_health_reports_external_canonical_worker(monkeypatch)
     previous = getattr(app.state, "account_lifecycle_worker", None)
     app.state.account_lifecycle_worker = None
     try:
-        response = client.get("/healthz")
+        response = TestClient(app).get("/healthz")
     finally:
         app.state.account_lifecycle_worker = previous
     assert response.status_code == 200
