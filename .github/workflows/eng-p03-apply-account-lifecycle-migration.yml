@@ -24,7 +24,7 @@ jobs:
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
       SUPABASE_PROJECT_ID: dvdziauyvuhcnqhrrvww
       RESTORE_RUN_ID: ${{ github.event.workflow_run.id }}
-      EXPECTED_MIGRATION_BLOB: a944490e10ce65d831a5480852f828fe222a5a4e
+      EXPECTED_MIGRATION_BLOB: 03e2c5cb5b0b6523af4939a019ab24ad341be202
       TARGET_MIGRATION_VERSION: "20261123191600"
       TARGET_MIGRATION_NAME: eng_p03_account_export_and_deletion_request_lifecycle
     steps:
