@@ -6,6 +6,8 @@ type ExportJob = {
   id: string;
   status: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "expired";
   requested_at: string;
+  progress_percent?: number;
+  progress_stage?: string;
   expires_at?: string | null;
   completed_at?: string | null;
   error_code?: string | null;
@@ -31,6 +33,19 @@ async function apiError(response: Response): Promise<string> {
   } catch {
     return "Permintaan gagal (" + response.status + ").";
   }
+}
+
+function progressLabel(stage?: string): string {
+  const labels: Record<string, string> = {
+    claimed: "Worker mengambil job",
+    snapshot: "Mengumpulkan data akun",
+    compress: "Menyusun arsip",
+    upload: "Mengunggah arsip privat",
+    publishing: "Menyimpan hasil ekspor",
+    completed: "Selesai",
+    failed: "Gagal",
+  };
+  return labels[stage ?? ""] ?? "Menunggu antrean";
 }
 
 function statusLabel(status: string): string {
@@ -172,6 +187,7 @@ export default function AccountDataLifecyclePanel({ apiBase, accessToken }: Prop
                 <div>
                   <strong>{statusLabel(item.status)}</strong>
                   <p className="muted">Diminta: {new Date(item.requested_at).toLocaleString("id-ID")}{item.expires_at ? " · Kedaluwarsa " + new Date(item.expires_at).toLocaleString("id-ID") : ""}</p>
+                  {item.status === "running" && <div className="export-progress" aria-live="polite"><small className="muted">{progressLabel(item.progress_stage)} · {item.progress_percent ?? 5}%</small><progress aria-label="Progres ekspor akun" value={item.progress_percent ?? 5} max={100} /></div>}
                   {item.file_size_bytes ? <small className="muted">Ukuran: {Math.ceil(item.file_size_bytes / 1024)} KB</small> : null}
                   {item.error_code ? <small className="notice error">{item.error_code}</small> : null}
                 </div>
