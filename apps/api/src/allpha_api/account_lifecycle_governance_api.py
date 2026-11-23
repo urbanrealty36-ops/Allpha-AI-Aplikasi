@@ -21,6 +21,17 @@ from allpha_api.operator_security import (
 
 router = APIRouter(prefix="/v1/admin/account-lifecycle", tags=["account-lifecycle-governance"])
 MANAGE_SCOPE = "platform:account_lifecycle.manage"
+_SPECIALIZED_DELETE_HANDLERS = {
+    "agent_skills_owned": ("agent_skills", "owned_agents"),
+    "agent_runtime_checkpoints": ("agent_runtime_checkpoints", "owned_runtime_tasks"),
+    "agent_runtime_effect_receipts": ("agent_runtime_effect_receipts", "owned_runtime_tasks"),
+    "content_comments_on_owned": ("content_comments", "owned_content"),
+    "content_reactions_on_owned": ("content_reactions", "content_activity"),
+    "messages_in_conversations": ("messages", "conversation_messages"),
+    "community_posts_in_memberships": ("community_posts", "member_communities"),
+    "workspace_documents_in_memberships": ("workspace_documents", "member_workspaces"),
+    "workspace_annotations_in_memberships": ("workspace_annotations", "member_workspaces"),
+}
 
 
 def fail(status: int, code: str, message: str) -> HTTPException:
@@ -355,11 +366,14 @@ async def update_deletion_source_policy(
     source = next((item for item in registry or [] if item.get("source_key") == source_key), None)
     if not source or source.get("enabled") is not True:
         raise fail(404, "ACCOUNT_DELETION_SOURCE_NOT_FOUND", "Sumber ekspor/penghapusan aktif tidak ditemukan.")
-    if payload.deletion_action == "delete_rows" and (
-        source.get("filter_kind") != "owner_columns" or not source.get("owner_columns")
-    ):
-        raise fail(409, "ACCOUNT_DELETION_SOURCE_HANDLER_UNAVAILABLE",
-                   "Sumber ini belum memiliki handler owner-scoped yang aman; gunakan preserve atau block.")
+    if payload.deletion_action == "delete_rows":
+        owner_scoped = source.get("filter_kind") == "owner_columns" and bool(source.get("owner_columns"))
+        specialized = _SPECIALIZED_DELETE_HANDLERS.get(source_key) == (
+            source.get("table_name"), source.get("filter_kind")
+        )
+        if not owner_scoped and not specialized:
+            raise fail(409, "ACCOUNT_DELETION_SOURCE_HANDLER_UNAVAILABLE",
+                       "Sumber ini belum memiliki handler owner-scoped yang aman; gunakan preserve atau block.")
     body = {
         "source_key": source_key,
         "table_name": source["table_name"],
