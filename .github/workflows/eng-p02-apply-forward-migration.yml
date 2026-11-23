@@ -80,6 +80,11 @@ jobs:
             echo "::error::The reviewed migration now references Storage; refuse automatic application."
             exit 1
           fi
+          if grep -Eiq '(^|[^a-z_])(drop[[:space:]]+(table|schema|column)|truncate([[:space:]]|;)|delete[[:space:]]+from)([^a-z_]|$)' apps/api/supabase/migrations/20261123191500_eng_p02_forward_repair_tenant_and_session_schema.sql; then
+            echo "::error::The reviewed migration contains destructive data/schema operations; refuse automatic application."
+            exit 1
+          fi
+          echo "Forward-only and no-destructive-operation guard: PASS."
 
       - name: Resolve canonical Supavisor shared-session connection
         shell: bash
