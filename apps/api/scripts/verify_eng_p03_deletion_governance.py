@@ -192,9 +192,9 @@ insert into private.account_export_sources(source_key,table_name,filter_kind) va
         source_sql=SOURCE_MIGRATION.read_text(encoding="utf-8").split("\ndo " + chr(36) + chr(36),1)[0]
         psql(source_sql)
         psql(CANONICAL_REGISTRY_MIGRATION.read_text(encoding="utf-8"))
-        psql("""
+        psql(f"""
 create function public.execute_account_deletion_execution_job(uuid,uuid)
-returns boolean language plpgsql as $
+returns boolean language plpgsql as {{dollar_quote}}
 declare v_rule record; v_step record; v_sql text; v_job record; v_rows bigint;
 begin
     if true then
@@ -210,11 +210,11 @@ begin
     end if;
     return false;
 end;
-$;
+{{dollar_quote}};
 """)
         psql(FK_GUARD_MIGRATION.read_text(encoding="utf-8"))
-        psql("""
-do $
+        psql(f"""
+do {{dollar_quote}}
 begin
  if position('account_deletion_fk_parent_not_auth_user' in pg_get_functiondef('public.execute_account_deletion_execution_job(uuid,uuid)'::regprocedure))=0 then
    raise exception 'dependency FK parent guard was not installed';
@@ -222,7 +222,7 @@ begin
  if position('auth.users' in pg_get_functiondef('public.execute_account_deletion_execution_job(uuid,uuid)'::regprocedure))=0 then
    raise exception 'dependency FK parent check is missing';
  end if;
-end $;
+end {{dollar_quote}};
 """)
         psql(f"""
 insert into public.agent_ownerships values
@@ -251,7 +251,7 @@ select private.delete_account_source_rows('messages_in_conversations','{A}');
 select private.delete_account_source_rows('community_posts_in_memberships','{A}');
 select private.delete_account_source_rows('workspace_documents_in_memberships','{A}');
 select private.delete_account_source_rows('workspace_annotations_in_memberships','{A}');
-do $
+do {dollar_quote}
 begin
  if (select count(*) from public.list_account_deletion_source_registry() where enabled and deletion_handler_available)<>9 then
    raise exception 'canonical deletion handler registry did not expose all nine specialized handlers';
@@ -259,9 +259,9 @@ begin
  if (select count(*) from public.list_account_deletion_source_registry() where enabled and not deletion_handler_available)<>1 then
    raise exception 'canonical deletion handler registry failed closed for unknown source';
  end if;
-end $;
+end {dollar_quote};
 reset role;
-do $
+do {dollar_quote}
 begin
  if (select count(*) from public.agent_skills)<>2 then raise exception 'agent skill deletion escaped active owner scope'; end if;
  if (select count(*) from public.agent_runtime_checkpoints)<>1 or (select count(*) from public.agent_runtime_effect_receipts)<>1 then raise exception 'runtime task child deletion scope incorrect'; end if;
