@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import re
 import uuid
+from datetime import datetime, timezone
 from urllib.parse import quote
 from typing import Any
 
@@ -60,6 +61,22 @@ def _valid_export_storage_path(user_id: str, job_id: uuid.UUID, storage_path: An
         return str(uuid.UUID(lease_token)) == lease_token
     except (ValueError, TypeError, AttributeError):
         return False
+
+
+
+
+def _export_artifact_expired(expires_at: Any) -> bool:
+    if expires_at is None:
+        return False
+    if not isinstance(expires_at, str):
+        return True
+    try:
+        value = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+        if value.tzinfo is None:
+            return True
+        return value <= datetime.now(timezone.utc)
+    except (ValueError, TypeError, OverflowError):
+        return True
 
 
 def _service_key() -> str:
@@ -176,7 +193,7 @@ async def list_account_exports(
         "account_export_jobs",
         request.state.supabase_access_token,
         params={
-            "select": "id,status,requested_at,started_at,completed_at,failed_at,error_code,file_size_bytes,manifest",
+            "select": "id,status,requested_at,started_at,completed_at,failed_at,expires_at,error_code,file_size_bytes,manifest",
             "user_id": f"eq.{user['id']}",
             "order": "requested_at.desc",
             "limit": "50",
@@ -196,7 +213,7 @@ async def get_account_export_download(
         "account_export_jobs",
         request.state.supabase_access_token,
         params={
-            "select": "id,user_id,status,storage_bucket,storage_path,file_size_bytes,file_sha256",
+            "select": "id,user_id,status,storage_bucket,storage_path,file_size_bytes,file_sha256,expires_at",
             "id": f"eq.{job_id}",
             "user_id": f"eq.{user['id']}",
             "limit": "1",
@@ -208,6 +225,11 @@ async def get_account_export_download(
             detail={"code": "ACCOUNT_EXPORT_NOT_FOUND", "message": "Ekspor akun tidak ditemukan."},
         )
     job = rows[0]
+    if job.get("status") == "expired" or _export_artifact_expired(job.get("expires_at")):
+        raise HTTPException(
+            status_code=410,
+            detail={"code": "ACCOUNT_EXPORT_EXPIRED", "message": "Masa akses arsip ekspor telah berakhir."},
+        )
     if job.get("status") != "succeeded":
         raise HTTPException(
             status_code=409,
