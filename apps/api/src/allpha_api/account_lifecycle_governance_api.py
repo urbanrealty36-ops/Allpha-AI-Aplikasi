@@ -160,6 +160,8 @@ async def activate_retention_policy(
     if not isinstance(rows, dict) and not (isinstance(rows, list) and rows):
         raise fail(503, "ACCOUNT_RETENTION_POLICY_ACTIVATION_FAILED", "Kebijakan tidak berhasil diaktifkan.")
     row = rows[0] if isinstance(rows, list) else rows
+    if str(row.get("id")) != str(policy_id) or row.get("active") is not True:
+        raise fail(503, "ACCOUNT_RETENTION_POLICY_ACTIVATION_FAILED", "Database tidak mengonfirmasi aktivasi kebijakan.")
     await _audit(
         request, operator, action="account.retention_policy.activate", outcome="allowed",
         resource_type="account_data_retention_policy", resource_id=str(policy_id),
@@ -190,7 +192,11 @@ async def deactivate_retention_policy(
         "POST", "rpc/set_account_retention_policy_active",
         body={"p_policy_id": str(policy_id), "p_actor_user_id": str(operator["id"]), "p_active": False},
     )
-    row = rows[0] if isinstance(rows, list) and rows else rows
+    if not isinstance(rows, dict) and not (isinstance(rows, list) and rows):
+        raise fail(503, "ACCOUNT_RETENTION_POLICY_DEACTIVATION_FAILED", "Kebijakan tidak berhasil dinonaktifkan.")
+    row = rows[0] if isinstance(rows, list) else rows
+    if str(row.get("id")) != str(policy_id) or row.get("active") is not False:
+        raise fail(503, "ACCOUNT_RETENTION_POLICY_DEACTIVATION_FAILED", "Database tidak mengonfirmasi penonaktifan kebijakan.")
     await _audit(
         request, operator, action="account.retention_policy.deactivate", outcome="allowed",
         resource_type="account_data_retention_policy", resource_id=str(policy_id),
