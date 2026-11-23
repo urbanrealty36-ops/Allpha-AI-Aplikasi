@@ -499,3 +499,66 @@ def test_source_anonymize_action_rejects_unregistered_source(monkeypatch):
         ))
     assert error.value.status_code == 409
     assert error.value.detail["code"] == "ACCOUNT_DELETION_SOURCE_ANONYMIZE_HANDLER_UNAVAILABLE"
+
+
+def test_dependency_rule_preserve_tombstone_is_limited_to_financial_and_retention_foreign_keys(monkeypatch):
+    calls = []
+    audits = []
+
+    async def privileged(method, table, *, params=None, body=None, prefer=None):
+        calls.append((method, table, params, body))
+        if method == "GET":
+            return [{
+                "id": str(POLICY_ID),
+                "child_schema": "public",
+                "child_table": "billing_orders",
+                "constraint_name": "billing_orders_owner_user_id_fkey",
+                "fk_column": "owner_user_id",
+                "delete_rule": "RESTRICT",
+                "resolution_action": "preserve_tombstone",
+            }]
+        return [{**body, "id": str(POLICY_ID)}]
+
+    async def audit(request, **kwargs):
+        audits.append(kwargs)
+
+    monkeypatch.setattr(governance, "privileged_rest_request", privileged)
+    monkeypatch.setattr(governance, "write_operator_audit", audit)
+    payload = governance.DependencyRuleUpdate(
+        resolution_action="preserve_tombstone",
+        reason="Preserve billing record under pseudonymous account subject",
+        active=True,
+    )
+    result = asyncio.run(governance.update_deletion_dependency_rule(POLICY_ID, payload, _request(), OPERATOR))
+
+    assert result["item"]["resolution_action"] == "preserve_tombstone"
+    assert calls[-1][3]["resolution_action"] == "preserve_tombstone"
+    assert [item["outcome"] for item in audits] == ["attempted", "allowed"]
+
+
+def test_dependency_rule_rejects_tombstone_for_unregistered_foreign_key(monkeypatch):
+    async def privileged(method, table, *, params=None, body=None, prefer=None):
+        return [{
+            "id": str(POLICY_ID),
+            "child_schema": "public",
+            "child_table": "profiles",
+            "constraint_name": "profiles_id_fkey",
+            "fk_column": "id",
+            "delete_rule": "RESTRICT",
+            "resolution_action": "block",
+        }]
+
+    async def audit(request, **kwargs):
+        return None
+
+    monkeypatch.setattr(governance, "privileged_rest_request", privileged)
+    monkeypatch.setattr(governance, "write_operator_audit", audit)
+    payload = governance.DependencyRuleUpdate(
+        resolution_action="preserve_tombstone",
+        reason="Attempt to apply tombstone to a non-retained identity reference",
+        active=True,
+    )
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(governance.update_deletion_dependency_rule(POLICY_ID, payload, _request(), OPERATOR))
+    assert error.value.status_code == 409
+    assert error.value.detail["code"] == "ACCOUNT_DELETION_DEPENDENCY_ACTION_INCOMPATIBLE"
