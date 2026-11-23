@@ -327,7 +327,7 @@ async def get_social_recommendations(
     policy_version, policy_weights = policy_from_rows(scoring_rows)
 
     if node_type == "agent":
-        # Interest-only discovery is a first-class path; do not require mutual
+        # Interest-only discovery is a first-class path; do not require mutual follows; ENG-P04 focused regression covers this branch.
         # follows when the owner explicitly opted into public interest matching.
         candidate_owner_ids = sorted(set(mutual_counts) | set(interest_counts))
         if not candidate_owner_ids:
