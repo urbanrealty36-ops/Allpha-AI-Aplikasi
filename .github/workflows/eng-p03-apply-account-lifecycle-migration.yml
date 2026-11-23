@@ -249,14 +249,14 @@ jobs:
           select case when has_function_privilege('service_role','public.set_account_retention_policy_active(uuid,uuid,boolean)','EXECUTE')
                         and not has_function_privilege('authenticated','public.set_account_retention_policy_active(uuid,uuid,boolean)','EXECUTE')
                    then 'retention_activation_rpc_grants=PASS' else 'retention_activation_rpc_grants=FAIL' end;
-          do \$\$
+          do $
           begin
             perform public.set_account_retention_policy_active(gen_random_uuid(),gen_random_uuid(),true);
             raise exception 'retention policy activation must reject an actor without the operator scope';
           exception when insufficient_privilege then
             null;
           end;
-          \$\$;
+          $;
           select case when has_function_privilege('service_role','public.create_account_deletion_request_for_actor(uuid)','EXECUTE')
                         and not has_function_privilege('authenticated','public.create_account_deletion_request_for_actor(uuid)','EXECUTE')
                         and has_function_privilege('authenticated','public.cancel_my_account_deletion(uuid)','EXECUTE')
