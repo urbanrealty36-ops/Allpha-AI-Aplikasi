@@ -253,6 +253,7 @@ async def get_social_recommendations(
         str(row["user_id"]) for row in (followee_settings or [])
         if isinstance(row.get("privacy_settings"), dict)
         and row["privacy_settings"].get("discoverable_by_username") is True
+        and row["privacy_settings"].get("profile_visibility", "public") == "public"
     }
     visible_followees = {
         str(row["id"]) for row in (followee_profiles or [])
@@ -287,6 +288,7 @@ async def get_social_recommendations(
         str(row["user_id"]) for row in (source_settings or [])
         if isinstance(row.get("privacy_settings"), dict)
         and row["privacy_settings"].get("discoverable_by_username") is True
+        and row["privacy_settings"].get("profile_visibility", "public") == "public"
     }
     visible_sources = {
         str(row["id"]) for row in (source_profiles or [])
@@ -436,6 +438,7 @@ async def get_social_recommendations(
         str(row["user_id"]) for row in (candidate_settings or [])
         if isinstance(row.get("privacy_settings"), dict)
         and row["privacy_settings"].get("discoverable_by_username") is True
+        and row["privacy_settings"].get("profile_visibility", "public") == "public"
     }
     profiles_by_id = {
         str(row["id"]): row for row in (candidate_profiles or [])
