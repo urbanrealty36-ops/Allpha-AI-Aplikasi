@@ -26,7 +26,7 @@ def _client(monkeypatch, rpc, *, membership_role="owner"):
         assert params["user_id"] == f"eq.{OWNER['id']}"
         return [] if membership_role is None else [{"organization_id": ORG, "user_id": OWNER["id"], "role": membership_role}]
 
-    monkeypatch.setattr("allpha_api.main.user_db_request", membership_lookup)
+    monkeypatch.setattr("allpha_api.auth.user_db_request", membership_lookup)
     app.dependency_overrides[current_user] = _owner
     return TestClient(app)
 
