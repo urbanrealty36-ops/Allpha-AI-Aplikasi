@@ -89,7 +89,7 @@ def score_creator_candidate(
 def score_content_candidate(
     *,
     followed_creator: bool,
-    explicit_interest_matches: int,
+    explicit_interest_matches: float,
     passion_affinity: float,
     habit_affinity: float,
     engagement_total: int,
@@ -98,7 +98,7 @@ def score_content_candidate(
     policy = normalize_weights(weights)
     return round(
         int(followed_creator) * policy["followed_creator"]
-        + max(0, explicit_interest_matches) * policy["explicit_interest"]
+        + max(0.0, explicit_interest_matches) * policy["explicit_interest"]
         + max(0.0, min(10.0, passion_affinity)) * policy["passion"]
         + max(0.0, min(10.0, habit_affinity)) * policy["habit"]
         + log1p(max(0, engagement_total)) * policy["engagement"],
