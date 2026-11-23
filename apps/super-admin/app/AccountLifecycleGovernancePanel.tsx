@@ -105,7 +105,7 @@ export default function AccountLifecycleGovernancePanel({ apiBase, getAccessToke
     try {
       await request("/v1/admin/account-lifecycle/legal-holds", {
         method: "POST",
-        body: JSON.stringify({ subject_ref: subjectRef.trim(), reference_code: referenceCode.trim(), reason_code: reasonCode.trim() }),
+        body: JSON.stringify({ subject_ref: subjectRef.trim().toLowerCase(), reference_code: referenceCode.trim(), reason_code: reasonCode.trim() }),
       });
       setSubjectRef(""); setReferenceCode(""); setReasonCode("");
       setNotice("Legal hold tercatat dan aktif.");
