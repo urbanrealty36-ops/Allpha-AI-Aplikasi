@@ -31,13 +31,14 @@ OperatorScope = Literal[
     "platform:operators.manage",
     "platform:content.moderate",
     "platform:billing.manage",
+    "platform:account_lifecycle.manage",
 ]
 
 
 class OperatorGrantCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     user_id: UUID
-    scopes: list[OperatorScope] = Field(min_length=1, max_length=7)
+    scopes: list[OperatorScope] = Field(min_length=1, max_length=8)
     reason: str = Field(min_length=8, max_length=500)
     expires_at: datetime | None = None
 
