@@ -25,7 +25,7 @@ jobs:
       SUPABASE_PROJECT_ID: dvdziauyvuhcnqhrrvww
       RESTORE_RUN_ID: ${{ github.event.workflow_run.id }}
       EXPECTED_MIGRATION_BLOB: 69c390630ae31439785f292f9df1a15e3d253a70
-      EXPECTED_EXPORT_LEASE_MIGRATION_BLOB: 82a388cb71da5c35e1674726b0cdb9b84caed2ab
+      EXPECTED_EXPORT_LEASE_MIGRATION_BLOB: dc1d3d7e6cc2ca715450e7955893371488998047
       EXPECTED_ACCOUNT_LIFECYCLE_MIGRATION_BLOB: e5263fc112d11012b1bdabe1e676fac7479a63f0
       TARGET_MIGRATION_VERSION: "20261123191800"
       TARGET_MIGRATION_NAME: eng_p03_lease_scoped_export_artifacts
@@ -69,6 +69,7 @@ jobs:
           assert "consent_events_table=PASS" in evidence["p03_consent_migration_verification"]
           assert "consent_rpc_service_only=PASS" in evidence["p03_consent_migration_verification"]
           assert "consent_rpc_behavior=PASS" in evidence["p03_consent_migration_verification"]
+          assert "consent_idempotency_conflict_target=PASS" in evidence["p03_consent_migration_verification"]
           assert "tenant_schema=PASS" in evidence["verification"]
           assert int(evidence["source_backup_run_id"]) > 45134887289, (
               "Refusing the previous backup artifact; wait for the latest pre-migration backup and restore run."
@@ -250,6 +251,9 @@ jobs:
           select case when position('p_lease_token::text' in pg_get_functiondef(
             'public.complete_account_export_job(uuid,uuid,text,text,bigint,jsonb)'::regprocedure
           )) > 0 then 'lease_scoped_completion_rpc=PASS' else 'lease_scoped_completion_rpc=FAIL' end;
+          select case when position('on conflict on constraint user_consent_events_user_id_idempotency_key_key do nothing' in lower(pg_get_functiondef(
+            'public.record_account_consent_event_for_actor(uuid,text,text,text,text,text)'::regprocedure
+          ))) > 0 then 'consent_idempotency_conflict_target=PASS' else 'consent_idempotency_conflict_target=FAIL' end;
           select case when to_regclass('public.account_deletion_requests') is not null then 'account_deletion_requests=PASS' else 'account_deletion_requests=FAIL' end;
           select case when to_regclass('public.account_lifecycle_events') is not null then 'account_lifecycle_events=PASS' else 'account_lifecycle_events=FAIL' end;
           select case when to_regclass('public.account_data_retention_policies') is not null then 'retention_policies=PASS' else 'retention_policies=FAIL' end;
@@ -305,7 +309,7 @@ jobs:
                    then 'deletion_rpc_grants=PASS' else 'deletion_rpc_grants=FAIL' end;
           SQL
 
-          for assertion in lease_scoped_migration_ledger consent_migration_ledger account_lifecycle_migration_ledger account_export_jobs lease_scoped_completion_rpc account_deletion_requests account_lifecycle_events retention_policies legal_holds export_source_registry consent_events_table consent_export_source consent_events_rls consent_events_client_read_only legacy_consent_write_closed consent_rpc_service_only private_export_bucket deletion_policy_fail_closed account_lifecycle_rls recursive_secret_redaction redaction_rpc_grants owner_export_rpc worker_rpc_grants deletion_rpc_grants; do
+          for assertion in lease_scoped_migration_ledger consent_migration_ledger account_lifecycle_migration_ledger account_export_jobs lease_scoped_completion_rpc consent_idempotency_conflict_target account_deletion_requests account_lifecycle_events retention_policies legal_holds export_source_registry consent_events_table consent_export_source consent_events_rls consent_events_client_read_only legacy_consent_write_closed consent_rpc_service_only private_export_bucket deletion_policy_fail_closed account_lifecycle_rls recursive_secret_redaction redaction_rpc_grants owner_export_rpc worker_rpc_grants deletion_rpc_grants; do
             grep -q "^$assertion=PASS$" recovery-evidence/production-post-migration-verification.txt
           done
 
