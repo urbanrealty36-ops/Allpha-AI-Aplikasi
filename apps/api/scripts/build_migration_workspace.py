@@ -87,7 +87,7 @@ def build_workspace(
         raise ValueError(f"Canonical Supabase config is missing: {config_source}")
     config_text = config_source.read_text(encoding="utf-8")
     config_text, replaced = re.subn(
-        r"(?m)^schema_paths\\s*=\\s*\\[\\s*\\]\\s*$",
+        r"(?m)^schema_paths\s*=\s*\[\s*\]\s*$",
         'schema_paths = ["./migrations/*.sql"]',
         config_text,
     )
