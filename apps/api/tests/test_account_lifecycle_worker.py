@@ -300,3 +300,41 @@ def test_expired_export_cleanup_is_disabled_until_schema_migration_is_applied(mo
         assert calls == []
 
     asyncio.run(scenario())
+
+
+def test_deletion_governance_worker_is_disabled_until_forward_migration_is_applied(monkeypatch):
+    async def scenario():
+        worker = _worker()
+        calls = []
+
+        async def rpc(name, payload):
+            calls.append((name, payload))
+            return []
+
+        worker.rpc = rpc
+        monkeypatch.delenv("ACCOUNT_DELETION_GOVERNANCE_ENABLED", raising=False)
+        assert await worker.deletion_governance_batch() == 0
+        assert calls == []
+
+    asyncio.run(scenario())
+
+
+def test_deletion_governance_worker_calls_service_only_evaluator():
+    async def scenario():
+        worker = _worker()
+        calls = []
+
+        async def rpc(name, payload):
+            calls.append((name, payload))
+            return [{"processed_count": 3, "blocked_count": 1, "unblocked_count": 1, "policy_pending_count": 1}]
+
+        worker.rpc = rpc
+        import os
+        os.environ["ACCOUNT_DELETION_GOVERNANCE_ENABLED"] = "true"
+        try:
+            assert await worker.deletion_governance_batch() == 3
+        finally:
+            os.environ.pop("ACCOUNT_DELETION_GOVERNANCE_ENABLED", None)
+        assert calls == [("evaluate_account_deletion_governance", {"p_limit": 100})]
+
+    asyncio.run(scenario())
