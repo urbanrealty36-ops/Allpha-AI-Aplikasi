@@ -248,7 +248,7 @@ export default function SocialGraphPanel({ apiBase, accessToken }: Props) {
                 <h3 className="text-sm font-black text-slate-950">Passion Graph</h3>
                 <p className="text-xs text-slate-500">Minat mendalam yang Anda pilih secara eksplisit; tidak disimpulkan dari atribut sensitif.</p>
                 <div className="mt-2 flex gap-2">
-                  <input aria-label="Tambah Passion Graph" value={passionKey} onChange={event => setPassionKey(event.target.value)} maxLength={80} placeholder="kunci minat kanonis" className="min-w-0 flex-1 rounded-xl border-2 border-slate-300 px-3 py-2 text-sm"/>
+                  <select aria-label="Pilih Passion Graph" value={passionKey} onChange={event => setPassionKey(event.target.value)} className="min-w-0 flex-1 rounded-xl border-2 border-slate-300 px-3 py-2 text-sm"><option value="">Pilih topik dari taksonomi</option>{catalog.filter(item => item.sensitivity !== "sensitive").map(item => <option key={item.interest_key} value={item.interest_key}>{item.label}</option>)}</select>
                   <button type="button" disabled={busy || !passionKey.trim()} onClick={() => void saveInterestSignal("passion", passionKey)} className="rounded-xl border-2 border-slate-900 px-3 py-2 text-xs font-black disabled:opacity-50">Simpan</button>
                 </div>
               </div>
@@ -256,7 +256,7 @@ export default function SocialGraphPanel({ apiBase, accessToken }: Props) {
                 <h3 className="text-sm font-black text-slate-950">Habit Graph</h3>
                 <p className="text-xs text-slate-500">Pola yang Anda pilih sendiri. Sinyal observasi hanya diizinkan saat personalisasi aktif.</p>
                 <div className="mt-2 flex gap-2">
-                  <input aria-label="Tambah Habit Graph" value={habitKey} onChange={event => setHabitKey(event.target.value)} maxLength={80} placeholder="kunci minat kanonis" className="min-w-0 flex-1 rounded-xl border-2 border-slate-300 px-3 py-2 text-sm"/>
+                  <select aria-label="Pilih Habit Graph" value={habitKey} onChange={event => setHabitKey(event.target.value)} className="min-w-0 flex-1 rounded-xl border-2 border-slate-300 px-3 py-2 text-sm"><option value="">Pilih topik dari taksonomi</option>{catalog.filter(item => item.sensitivity !== "sensitive").map(item => <option key={item.interest_key} value={item.interest_key}>{item.label}</option>)}</select>
                   <button type="button" disabled={busy || !habitKey.trim()} onClick={() => void saveInterestSignal("habit", habitKey)} className="rounded-xl border-2 border-slate-900 px-3 py-2 text-xs font-black disabled:opacity-50">Simpan</button>
                 </div>
               </div>
