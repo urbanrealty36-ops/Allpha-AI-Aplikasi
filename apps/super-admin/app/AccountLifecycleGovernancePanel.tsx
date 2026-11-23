@@ -158,7 +158,7 @@ export default function AccountLifecycleGovernancePanel({ apiBase, getAccessToke
       <section className="panel">
         <header className="panelHead"><div><h3>Legal holds</h3><p>Setiap hold membutuhkan reference code dan reason code dari proses legal yang berwenang.</p></div></header>
         <form className="grantForm" onSubmit={createHold}>
-          <label>Subject reference (UUID)<input value={subjectRef} onChange={event => setSubjectRef(event.target.value)} required pattern="[0-9a-fA-F-]{36}" placeholder="UUID subjek akun" /></label>
+          <label>Subject reference (SHA-256)<input value={subjectRef} onChange={event => setSubjectRef(event.target.value.toLowerCase())} required minLength={64} maxLength={64} pattern="[a-f0-9]{64}" placeholder="64 karakter SHA-256 dari subject_ref permintaan" /></label>
           <label>Reference code<input value={referenceCode} onChange={event => setReferenceCode(event.target.value)} required maxLength={120} /></label>
           <label>Reason code<input value={reasonCode} onChange={event => setReasonCode(event.target.value)} required maxLength={80} pattern="[a-z][a-z0-9._-]{2,79}" /></label>
           <button type="submit" disabled={busy || !subjectRef.trim() || !referenceCode.trim() || !reasonCode.trim()}>Catat legal hold</button>
