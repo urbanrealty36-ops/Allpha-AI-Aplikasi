@@ -1,5 +1,6 @@
 -- ENG-P04 forward migration: normalized interest ontology and opt-in discovery index.
 -- Production contract: standard-sensitivity-only discovery projection with opt-in backfill.
+-- Apply this historical version with Supabase CLI --include-all; later ENG-P03 versions are already recorded.
 -- Interest preferences remain owner-readable. The discovery index contains only
 -- interests whose owner explicitly opted into interest matching and public discovery.
 

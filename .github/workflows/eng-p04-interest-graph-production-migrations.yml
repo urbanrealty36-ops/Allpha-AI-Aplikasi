@@ -23,7 +23,7 @@ jobs:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
       SUPABASE_PROJECT_ID: dvdziauyvuhcnqhrrvww
-      EXPECTED_ONTOLOGY_BLOB: "977b2f6f058c0ebfc4de5c0ea93d602366bfbb19"
+      EXPECTED_ONTOLOGY_BLOB: "fa6cb2b801ca4353621e07f60007e9ec6a3c4fb1"
       EXPECTED_SIGNAL_BLOB: "0b4a4d0a1e86a07f6962837804d525eb3488de99"
     steps:
       - uses: actions/checkout@v4
@@ -95,12 +95,12 @@ jobs:
             --workspace-dir migration-workspace-ontology
           cd migration-workspace-ontology
           supabase migration list --db-url "$DB_URL" | tee ../recovery-evidence/ontology-migration-list-before.txt
-          supabase db push --dry-run --db-url "$DB_URL" 2>&1 | tee ../recovery-evidence/ontology-dry-run.txt
+          supabase db push --include-all --dry-run --db-url "$DB_URL" 2>&1 | tee ../recovery-evidence/ontology-dry-run.txt
           grep -Fq "20261123191900_eng_p04_interest_ontology_and_discovery_index.sql" ../recovery-evidence/ontology-dry-run.txt
           mapfile -t pending < <(grep -Eo '20[0-9]{12}' ../recovery-evidence/ontology-dry-run.txt | sort -u)
           test "${#pending[@]}" -eq 1
           test "${pending[0]}" = "20261123191900"
-          supabase db push --yes --db-url "$DB_URL"
+          supabase db push --include-all --yes --db-url "$DB_URL"
 
       - name: Apply Passion and Habit migration as the next isolated versioned target
         shell: bash
@@ -117,12 +117,12 @@ jobs:
             --workspace-dir migration-workspace-signals
           cd migration-workspace-signals
           supabase migration list --db-url "$DB_URL" | tee ../recovery-evidence/signals-migration-list-before.txt
-          supabase db push --dry-run --db-url "$DB_URL" 2>&1 | tee ../recovery-evidence/signals-dry-run.txt
+          supabase db push --include-all --dry-run --db-url "$DB_URL" 2>&1 | tee ../recovery-evidence/signals-dry-run.txt
           grep -Fq "20261123200000_eng_p04_passion_habit_recommendation_engine.sql" ../recovery-evidence/signals-dry-run.txt
           mapfile -t pending < <(grep -Eo '20[0-9]{12}' ../recovery-evidence/signals-dry-run.txt | sort -u)
           test "${#pending[@]}" -eq 1
           test "${pending[0]}" = "20261123200000"
-          supabase db push --yes --db-url "$DB_URL"
+          supabase db push --include-all --yes --db-url "$DB_URL"
 
       - name: Verify production ontology, privacy, signals and recommendation policy
         shell: bash
