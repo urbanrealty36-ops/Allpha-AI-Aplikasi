@@ -505,7 +505,11 @@ begin
   if auth.role() <> 'service_role' then
     raise exception 'service_role_required' using errcode = '42501';
   end if;
-  if p_storage_path is null or p_file_sha256 is null or p_file_sha256 !~ '^[a-f0-9]{64}
+  if p_storage_path is null
+     or p_file_sha256 is null
+     or p_file_sha256 !~ '^[a-f0-9]{64}$'
+     or p_file_size_bytes is null or p_file_size_bytes <= 0
+     or p_manifest is null or jsonb_typeof(p_manifest) <> 'object' then
     raise exception 'invalid_export_receipt' using errcode = '22023';
   end if;
   update public.account_export_jobs j
