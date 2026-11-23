@@ -52,6 +52,7 @@ def test_remaining_source_dispositions_preserve_shared_conversations_and_spatial
 IDENTITY_TOMBSTONES = MIGRATIONS / "20261123180112_eng_p03_identity_tombstones_and_provider_cancellation.sql"
 EXECUTOR_HARDENING = MIGRATIONS / "20261123180725_eng_p03_executor_referential_integrity_hardening.sql"
 STRIPE_ENVIRONMENT = MIGRATIONS / "20261123181359_eng_p03_billing_stripe_environment_binding.sql"
+LEGACY_BILLING_GUARD = MIGRATIONS / "20261124202000_eng_p03_legacy_billing_order_rpc_guard.sql"
 API_SOURCE = Path(__file__).parents[1] / "src" / "allpha_api" / "stripe_billing_api.py"
 WORKER_SOURCE = Path(__file__).parents[1] / "src" / "allpha_api" / "account_lifecycle_worker.py"
 
@@ -111,3 +112,9 @@ def test_subscription_cancellation_uses_the_persisted_stripe_environment_not_che
     assert '"p_stripe_environment": stripe_environment' in api
     assert 'job.get("stripe_environment")' in worker
     assert "stripe_environment != mode" in worker
+
+
+
+def test_legacy_checkout_rpc_is_explicitly_fail_closed_for_old_clients():
+    source = " ".join(LEGACY_BILLING_GUARD.read_text(encoding="utf-8").lower().split())
+    assert "grant execute on function public.billing_create_order(uuid,text,text) to service_role" in source
