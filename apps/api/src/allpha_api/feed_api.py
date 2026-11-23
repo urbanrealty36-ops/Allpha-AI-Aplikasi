@@ -531,7 +531,7 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent", "followi
         candidates = [row for row in candidates if not any(matches_interest(str(row.get("body") or ""), key) for key in not_interested_keys)]
     ids = [str(r["id"]) for r in candidates]
     if not ids:
-        return {"items": [], "next_cursor": None, "mode": effective_mode, "personalization_enabled": enabled, "ranking_version": "feed-rank-v2", "as_of": as_of.isoformat()}
+        return {"items": [], "next_cursor": None, "mode": effective_mode, "personalization_enabled": enabled, "ranking_version": policy_version, "as_of": as_of.isoformat()}
     in_ids = f"in.({','.join(ids)})"
     reactions = await _server_db("GET", "content_reactions", params={"select": "content_id,actor_user_id,reaction", "content_id": in_ids, "limit": "5000"})
     comments = await _server_db("GET", "content_comments", params={"select": "content_id", "content_id": in_ids, "status": "eq.visible", "limit": "5000"})
@@ -611,7 +611,7 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent", "followi
         snapshot_expires = _now() + __import__("datetime").timedelta(minutes=15)
         created_snapshot = await _server_db("POST", "feed_snapshots", body={
             "viewer_user_id": owner, "feed_mode": mode, "author_type": author_type,
-            "ranking_version": "feed-rank-v2", "expires_at": snapshot_expires.isoformat(),
+            "ranking_version": policy_version, "expires_at": snapshot_expires.isoformat(),
             "item_count": len(ranked),
         }, prefer="return=representation")
         if not created_snapshot:
@@ -655,13 +655,13 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent", "followi
             "agent": item["agent"],
             "disclosure": (provenance.get("disclosure") if provenance.get("coauthored") is True else (agent.get("disclosure") if agent else None)),
         }
-        item["ranking_version"] = "feed-rank-v2"
+        item["ranking_version"] = policy_version
         items.append(item)
     next_offset = offset + page_advance
     has_more = next_offset < snapshot_count
     next_cursor = _cursor_encode(snapshot_id, next_offset, owner, mode, author_type, snapshot_expires) if has_more else None
     return {"items": items, "next_cursor": next_cursor, "mode": effective_mode,
-            "personalization_enabled": enabled, "ranking_version": "feed-rank-v2",
+            "personalization_enabled": enabled, "ranking_version": policy_version,
             "snapshot_id": snapshot_id, "snapshot_expires_at": snapshot_expires.isoformat(), "as_of": as_of.isoformat()}
 
 
