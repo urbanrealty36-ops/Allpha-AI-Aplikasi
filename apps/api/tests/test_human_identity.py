@@ -69,7 +69,7 @@ def test_deactivation_uses_scoped_rpc_instead_of_direct_profile_update(monkeypat
         request.state.supabase_access_token = "human-session-token"
         return {"id": "human-123", "email": "human@example.invalid"}
 
-    monkeypatch.setattr("allpha_api.main.service_db_request", fake_service_db_request)
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
     app.dependency_overrides[current_user] = fake_current_user
     try:
         response = client.post("/v1/me/deactivation-request", headers={"Authorization": "Bearer test"})
@@ -373,7 +373,7 @@ def test_social_edge_uses_authenticated_actor_and_validated_target(monkeypatch):
         request.state.supabase_access_token = "social-session-token"
         return {"id": "human-123", "email": "human@example.invalid"}
 
-    monkeypatch.setattr("allpha_api.main.service_db_request", fake_service_db_request)
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
     monkeypatch.setattr("allpha_api.main.service_db_request", fake_service_db_request)
     app.dependency_overrides[current_user] = fake_current_user
     try:
@@ -435,7 +435,7 @@ def test_interest_preference_is_bound_to_authenticated_user(monkeypatch):
         request.state.supabase_access_token = "interest-session-token"
         return {"id": "human-123"}
 
-    monkeypatch.setattr("allpha_api.main.service_db_request", fake_service_db_request)
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
     app.dependency_overrides[current_user] = fake_current_user
     try:
         response = client.put(
@@ -521,7 +521,7 @@ def test_first_authenticated_profile_read_provisions_profile_before_account_guar
             return [profile]
         raise AssertionError(f"unexpected database operation: {method} {path}")
 
-    monkeypatch.setattr("allpha_api.main.service_db_request", fake_service_db_request)
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
     app.dependency_overrides[current_session_user] = fake_session_user
     try:
         response = client.get("/v1/me", headers={"Authorization": "Bearer verified-new-session"})
