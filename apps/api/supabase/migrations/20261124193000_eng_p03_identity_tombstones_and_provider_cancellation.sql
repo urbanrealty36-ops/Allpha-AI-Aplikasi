@@ -458,7 +458,7 @@ $old$;
     raise exception 'account_deletion_identity_tombstone_missing' using errcode='23514';
   end if;
   delete from auth.users where id=v_job.user_id;
-$old$;
+$new$;
 begin
   v_definition:=pg_get_functiondef('public.execute_account_deletion_execution_job(uuid,uuid)'::regprocedure);
   if position(v_fk_new in v_definition)=0 then
