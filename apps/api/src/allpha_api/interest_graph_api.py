@@ -12,6 +12,12 @@ from allpha_api.auth import current_user, user_db_request, service_db_request
 router = APIRouter(prefix="/v1/me", tags=["interest-graph"])
 
 
+class InterestPreferenceWrite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    interest_key: str = Field(min_length=1, max_length=80)
+    preference: Literal["interested", "not_interested"]
+
+
 class InterestSignalWrite(BaseModel):
     model_config = ConfigDict(extra="forbid")
     interest_key: str = Field(min_length=1, max_length=80)
@@ -20,6 +26,52 @@ class InterestSignalWrite(BaseModel):
     signal_source: Literal["user_selected", "explicit_feedback"]
     consent_version: Literal["interest-graph-v1"] = "interest-graph-v1"
     agent_id: UUID | None = None
+
+
+@router.get("/interests")
+async def list_my_interest_preferences(
+    request: Request,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    rows = await user_db_request(
+        "GET", "user_interests", request.state.supabase_access_token,
+        params={
+            "select": "interest_key,preference,created_at,updated_at",
+            "user_id": f"eq.{user['id']}",
+            "order": "interest_key.asc",
+            "limit": "500",
+        },
+    )
+    return {"items": rows if isinstance(rows, list) else []}
+
+
+@router.put("/interests")
+async def set_my_interest_preference(
+    payload: InterestPreferenceWrite,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    rows = await service_db_request("set_my_interest_preference_for_actor", body={
+        "p_actor_user_id": str(user["id"]),
+        "p_interest_key": payload.interest_key,
+        "p_preference": payload.preference,
+    })
+    if not isinstance(rows, list) or len(rows) != 1:
+        raise HTTPException(409, detail={"code": "INTEREST_PREFERENCE_NOT_RECORDED", "message": "Preferensi minat tidak dapat disimpan."})
+    return {"item": rows[0]}
+
+
+@router.delete("/interests/{interest_key}")
+async def delete_my_interest_preference(
+    interest_key: str,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    rows = await service_db_request("delete_my_interest_for_actor", body={
+        "p_actor_user_id": str(user["id"]),
+        "p_interest_key": interest_key,
+    })
+    if not isinstance(rows, list) or len(rows) != 1:
+        raise HTTPException(404, detail={"code": "INTEREST_PREFERENCE_NOT_FOUND", "message": "Preferensi minat tidak ditemukan."})
+    return {"removed": rows[0]}
 
 
 @router.get("/interest-signals")
