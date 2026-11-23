@@ -40,6 +40,7 @@ class AccountLifecycleWorker:
         self.last_claimed_count = 0
         self.last_cleanup_count = 0
         self.last_deletion_governance_count = 0
+        self.last_deletion_execution_count = 0
         self.poll_count = 0
         self.last_error_code: str | None = None
         self.lease_heartbeat_seconds = max(5, min(600, int(os.getenv("ACCOUNT_EXPORT_LEASE_HEARTBEAT_SECONDS", str(_EXPORT_LEASE_HEARTBEAT_SECONDS)))))
@@ -316,6 +317,149 @@ class AccountLifecycleWorker:
                     log.exception("account_export_artifact_cleanup_failure_persist_failed cleanup_job_id=%s", job_id)
         return len(jobs)
 
+    async def delete_storage_object(self, bucket: str, object_path: str) -> None:
+        """Delete one explicitly queued object from its canonical Supabase bucket."""
+        import re
+
+        if not isinstance(bucket, str) or not re.fullmatch(r"[a-z0-9][a-z0-9._-]{1,62}", bucket):
+            raise RuntimeError("ACCOUNT_DELETION_STORAGE_BUCKET_INVALID")
+        if (
+            not isinstance(object_path, str)
+            or not object_path
+            or len(object_path) > 1024
+            or object_path.startswith("/")
+            or "\\" in object_path
+            or any(part in {"", ".", ".."} for part in object_path.split("/"))
+        ):
+            raise RuntimeError("ACCOUNT_DELETION_STORAGE_PATH_INVALID")
+        response = await self.client.request(
+            "DELETE",
+            f"{self.base}/storage/v1/object/{quote(bucket, safe='')}",
+            json={"prefixes": [object_path]},
+        )
+        if response.status_code in (200, 204, 404):
+            return
+        response.raise_for_status()
+
+    async def deletion_execution_batch(self) -> int:
+        """Prepare and execute only policy-complete, lease-fenced account deletions."""
+        if os.getenv("ACCOUNT_DELETION_EXECUTION_ENABLED", "false").strip().lower() not in _TRUE:
+            return 0
+
+        prepared = await self.rpc(
+            "prepare_account_deletion_execution_batch",
+            {"p_limit": int(os.getenv("ACCOUNT_DELETION_PREPARE_BATCH_SIZE", "20"))},
+        )
+        if not isinstance(prepared, list):
+            raise RuntimeError("ACCOUNT_DELETION_PREPARE_RESPONSE_INVALID")
+
+        jobs = await self.rpc(
+            "claim_account_deletion_execution_jobs",
+            {
+                "p_worker_id": self.worker_id,
+                "p_limit": int(os.getenv("ACCOUNT_DELETION_EXECUTION_BATCH_SIZE", "2")),
+                "p_lease_seconds": 3600,
+            },
+        )
+        if not isinstance(jobs, list) or not jobs:
+            return 0
+
+        processed = 0
+        for job in jobs:
+            if not isinstance(job, dict):
+                continue
+            job_id = str(job.get("id") or "")
+            lease_token = str(job.get("lease_token") or "")
+            if not job_id or not lease_token:
+                raise RuntimeError("ACCOUNT_DELETION_EXECUTION_LEASE_INVALID")
+            processed += 1
+            try:
+                # Drain storage jobs in bounded batches. The DB claim RPC rechecks
+                # the execution lease and legal holds before issuing each batch.
+                while True:
+                    storage_jobs = await self.rpc(
+                        "claim_account_deletion_storage_jobs",
+                        {
+                            "p_execution_job_id": job_id,
+                            "p_job_lease_token": lease_token,
+                            "p_limit": int(os.getenv("ACCOUNT_DELETION_STORAGE_BATCH_SIZE", "50")),
+                            "p_lease_seconds": 3600,
+                        },
+                    )
+                    if not isinstance(storage_jobs, list):
+                        raise RuntimeError("ACCOUNT_DELETION_STORAGE_CLAIM_INVALID")
+                    if not storage_jobs:
+                        break
+                    for storage_job in storage_jobs:
+                        if not isinstance(storage_job, dict):
+                            raise RuntimeError("ACCOUNT_DELETION_STORAGE_JOB_INVALID")
+                        storage_job_id = str(storage_job.get("id") or "")
+                        storage_lease = str(storage_job.get("lease_token") or "")
+                        bucket = storage_job.get("storage_bucket")
+                        object_path = storage_job.get("storage_path")
+                        if not storage_job_id or not storage_lease:
+                            raise RuntimeError("ACCOUNT_DELETION_STORAGE_LEASE_INVALID")
+                        try:
+                            await self.delete_storage_object(str(bucket or ""), object_path)
+                            completed = await self.rpc(
+                                "complete_account_deletion_storage_job",
+                                {"p_job_id": storage_job_id, "p_lease_token": storage_lease},
+                            )
+                            if completed is not True:
+                                raise RuntimeError("ACCOUNT_DELETION_STORAGE_COMPLETION_UNCONFIRMED")
+                        except Exception as storage_error:
+                            try:
+                                await self.rpc(
+                                    "fail_account_deletion_storage_job",
+                                    {
+                                        "p_job_id": storage_job_id,
+                                        "p_lease_token": storage_lease,
+                                        "p_error_code": type(storage_error).__name__[:80],
+                                        "p_retry_seconds": min(
+                                            86400,
+                                            30 * (2 ** min(int(storage_job.get("attempts") or 1) - 1, 10)),
+                                        ),
+                                    },
+                                )
+                            except Exception:
+                                log.exception(
+                                    "account_deletion_storage_failure_persist_failed storage_job_id=%s",
+                                    storage_job_id,
+                                )
+                            raise
+
+                completed = await self.rpc(
+                    "execute_account_deletion_execution_job",
+                    {"p_job_id": job_id, "p_lease_token": lease_token},
+                )
+                if completed is True:
+                    log.info("account_deletion_execution_completed execution_job_id=%s", job_id)
+                else:
+                    # False is an explicit DB outcome (for example, a legal hold
+                    # raced with execution); it is not a successful deletion.
+                    log.warning("account_deletion_execution_not_completed execution_job_id=%s", job_id)
+            except Exception as exc:
+                log.exception("account_deletion_execution_failed execution_job_id=%s", job_id)
+                try:
+                    await self.rpc(
+                        "fail_account_deletion_execution_job",
+                        {
+                            "p_job_id": job_id,
+                            "p_lease_token": lease_token,
+                            "p_error_code": type(exc).__name__[:80],
+                            "p_retry_seconds": min(
+                                86400,
+                                60 * (2 ** min(int(job.get("attempts") or 1) - 1, 10)),
+                            ),
+                        },
+                    )
+                except Exception:
+                    log.exception(
+                        "account_deletion_execution_failure_persist_failed execution_job_id=%s",
+                        job_id,
+                    )
+        return processed
+
     async def deletion_governance_batch(self) -> int:
         """Reconcile legal holds; never execute deletion without complete policy mapping."""
         if os.getenv("ACCOUNT_DELETION_GOVERNANCE_ENABLED", "false").strip().lower() not in {"1", "true", "yes"}:
@@ -336,6 +480,7 @@ class AccountLifecycleWorker:
                     count = await self.batch()
                     cleanup_count = await self.cleanup_batch()
                     deletion_governance_count = await self.deletion_governance_batch()
+                    deletion_execution_count = await self.deletion_execution_batch()
                     self.last_error_code = None
                 except asyncio.CancelledError:
                     raise
@@ -345,12 +490,14 @@ class AccountLifecycleWorker:
                     count = 0
                     cleanup_count = 0
                     deletion_governance_count = 0
+                    deletion_execution_count = 0
                 self.last_poll_at = datetime.now(timezone.utc).isoformat()
                 self.last_claimed_count = count
                 self.last_cleanup_count = cleanup_count
                 self.last_deletion_governance_count = deletion_governance_count
+                self.last_deletion_execution_count = deletion_execution_count
                 self.poll_count += 1
-                if count == 0 and cleanup_count == 0 and deletion_governance_count == 0:
+                if count == 0 and cleanup_count == 0 and deletion_governance_count == 0 and deletion_execution_count == 0:
                     await asyncio.sleep(poll_seconds)
         finally:
             log.warning(
