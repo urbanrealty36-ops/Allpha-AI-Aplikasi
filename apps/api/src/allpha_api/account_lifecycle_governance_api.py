@@ -319,7 +319,7 @@ async def list_deletion_requests(
 class SourcePolicyUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     data_class: Literal["owner_private", "agent_operational", "tenant_shared", "published_knowledge", "session_scoped", "public_catalog"]
-    deletion_action: Literal["delete_rows", "preserve", "block"]
+    deletion_action: Literal["delete_rows", "preserve", "block", "anonymize"]
     dependency_order: int = Field(ge=0, le=10000)
     policy_version: str = Field(min_length=1, max_length=40, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,39}$")
     reason: str = Field(min_length=8, max_length=500)
@@ -360,6 +360,9 @@ async def update_deletion_source_policy(
         if source.get("deletion_handler_available") is not True:
             raise fail(409, "ACCOUNT_DELETION_SOURCE_HANDLER_UNAVAILABLE",
                        "Sumber ini belum memiliki handler owner-scoped yang aman; gunakan preserve atau block.")
+    if payload.deletion_action == "anonymize" and source_key not in {"spatial_theme_versions", "spatial_themes_created"}:
+        raise fail(409, "ACCOUNT_DELETION_SOURCE_ANONYMIZE_HANDLER_UNAVAILABLE",
+                   "Aksi anonymize hanya tersedia untuk handler katalog tema spasial yang terdaftar.")
     body = {
         "source_key": source_key,
         "table_name": source["table_name"],
