@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
+type InterestGraphSignal = { interest_key: string; signal_type: "passion" | "habit"; strength: number; signal_source: string; updated_at: string };
+
 type Interest = {
   interest_key: string;
   preference: "interested" | "not_interested";
@@ -58,6 +60,9 @@ function labelForInterest(key: string): string {
 
 export default function SocialGraphPanel({ apiBase, accessToken }: Props) {
   const [interests, setInterests] = useState<Interest[]>([]);
+  const [interestSignals, setInterestSignals] = useState<InterestGraphSignal[]>([]);
+  const [passionKey, setPassionKey] = useState("");
+  const [habitKey, setHabitKey] = useState("");
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [agentRecommendations, setAgentRecommendations] = useState<AgentRecommendation[]>([]);
   const [agentRecommendationError, setAgentRecommendationError] = useState("");
@@ -78,6 +83,12 @@ export default function SocialGraphPanel({ apiBase, accessToken }: Props) {
       ]);
       setInterests(interestData.items || []);
       setRecommendations(recommendationData.items || []);
+      try {
+        const signalData = await apiRequest<{ items: InterestGraphSignal[] }>(apiBase, accessToken, "/v1/me/interest-signals");
+        setInterestSignals(signalData.items || []);
+      } catch {
+        setInterestSignals([]);
+      }
       try {
         const agentData = await apiRequest<{ items: AgentRecommendation[] }>(apiBase, accessToken, "/v1/social/recommendations?node_type=agent&limit=12");
         setAgentRecommendations(agentData.items || []);
@@ -132,6 +143,35 @@ export default function SocialGraphPanel({ apiBase, accessToken }: Props) {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function saveInterestSignal(signalType: "passion" | "habit", key: string) {
+    const interest = key.trim().toLowerCase();
+    if (!interest) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      await apiRequest(apiBase, accessToken, "/v1/me/interest-signals", {
+        method: "PUT",
+        body: JSON.stringify({
+          interest_key: interest, signal_type: signalType, strength: 1,
+          signal_source: "user_selected", consent_version: "interest-graph-v1",
+        }),
+      });
+      if (signalType === "passion") setPassionKey(""); else setHabitKey("");
+      setNotice(signalType === "passion" ? "Passion Graph diperbarui." : "Habit Graph diperbarui.");
+      await load();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Sinyal Graph gagal disimpan."); }
+    finally { setBusy(false); }
+  }
+
+  async function removeInterestSignal(signal: InterestGraphSignal) {
+    setBusy(true); setError(""); setNotice("");
+    try {
+      await apiRequest(apiBase, accessToken, "/v1/me/interest-signals/" + signal.signal_type + "/" + encodeURIComponent(signal.interest_key), { method: "DELETE" });
+      setNotice("Sinyal " + signal.signal_type + " dihapus.");
+      await load();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Sinyal Graph gagal dihapus."); }
+    finally { setBusy(false); }
   }
 
   async function followRecommendation(item: Recommendation | AgentRecommendation, targetType: "human" | "agent") {
@@ -192,6 +232,28 @@ export default function SocialGraphPanel({ apiBase, accessToken }: Props) {
                 ))}
               </ul>
             )}
+            <div className="mt-5 grid gap-3 border-t border-slate-200 pt-4">
+              <div>
+                <h3 className="text-sm font-black text-slate-950">Passion Graph</h3>
+                <p className="text-xs text-slate-500">Minat mendalam yang Anda pilih secara eksplisit; tidak disimpulkan dari atribut sensitif.</p>
+                <div className="mt-2 flex gap-2">
+                  <input aria-label="Tambah Passion Graph" value={passionKey} onChange={event => setPassionKey(event.target.value)} maxLength={80} placeholder="kunci minat kanonis" className="min-w-0 flex-1 rounded-xl border-2 border-slate-300 px-3 py-2 text-sm"/>
+                  <button type="button" disabled={busy || !passionKey.trim()} onClick={() => void saveInterestSignal("passion", passionKey)} className="rounded-xl border-2 border-slate-900 px-3 py-2 text-xs font-black disabled:opacity-50">Simpan</button>
+                </div>
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-slate-950">Habit Graph</h3>
+                <p className="text-xs text-slate-500">Pola yang Anda pilih sendiri. Sinyal observasi hanya diizinkan saat personalisasi aktif.</p>
+                <div className="mt-2 flex gap-2">
+                  <input aria-label="Tambah Habit Graph" value={habitKey} onChange={event => setHabitKey(event.target.value)} maxLength={80} placeholder="kunci minat kanonis" className="min-w-0 flex-1 rounded-xl border-2 border-slate-300 px-3 py-2 text-sm"/>
+                  <button type="button" disabled={busy || !habitKey.trim()} onClick={() => void saveInterestSignal("habit", habitKey)} className="rounded-xl border-2 border-slate-900 px-3 py-2 text-xs font-black disabled:opacity-50">Simpan</button>
+                </div>
+              </div>
+              {interestSignals.map(signal => <div key={signal.signal_type + ":" + signal.interest_key} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 p-3">
+                <div><p className="text-sm font-bold text-slate-900">{signal.signal_type === "passion" ? "Passion" : "Habit"} · {labelForInterest(signal.interest_key)}</p><p className="text-xs text-slate-500">Sumber: {signal.signal_source} · Strength {signal.strength}</p></div>
+                <button type="button" disabled={busy} onClick={() => void removeInterestSignal(signal)} className="rounded-full border border-rose-300 px-3 py-1 text-xs font-bold text-rose-700 disabled:opacity-50">Hapus</button>
+              </div>)}
+            </div>
           </div>
           <div>
             <h3 className="text-base font-black text-slate-950">Rekomendasi Human</h3>
