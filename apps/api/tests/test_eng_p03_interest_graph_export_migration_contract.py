@@ -8,6 +8,13 @@ MIGRATION = (
     / "20261123124933_eng_p03_export_interest_graph_sources.sql"
 )
 
+DISCOVERY_MIGRATION = (
+    Path(__file__).parents[1]
+    / "supabase"
+    / "migrations"
+    / "20261123191900_eng_p04_interest_ontology_and_discovery_index.sql"
+)
+
 
 def test_account_export_includes_owner_scoped_passion_and_habit_sources():
     source = " ".join(MIGRATION.read_text(encoding="utf-8").lower().split())
@@ -33,7 +40,12 @@ def test_account_export_interest_sources_fail_closed_if_owner_schema_is_missing(
 
 
 def test_derived_private_interest_discovery_projection_is_not_exported():
-    source = MIGRATION.read_text(encoding="utf-8").lower()
+    export_source = MIGRATION.read_text(encoding="utf-8").lower()
+    discovery_source = DISCOVERY_MIGRATION.read_text(encoding="utf-8").lower()
 
-    assert "private.user_interest_discovery_index" not in source
-    assert "rebuildable from source preferences" in source
+    # The P03 export manifest must contain only owner-owned source records;
+    # P04's private index is a derived projection and is rebuilt from them.
+    assert "private.user_interest_discovery_index" not in export_source
+    assert "user_interest_discovery_index" not in export_source
+    assert "private.refresh_user_interest_discovery_index" in discovery_source
+    assert "create trigger user_interests_refresh_discovery_index" in discovery_source
