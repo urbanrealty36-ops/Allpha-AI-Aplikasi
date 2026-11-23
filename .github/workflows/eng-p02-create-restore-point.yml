@@ -1,5 +1,4 @@
-name: ENG-P02 Create Pre-Migration Restore Point
-# Re-run after tenant verifier correction; creates/verifies a managed restore point and applies no DDL.
+name: ENG-P02 Create Pre-Migration Database Backup
 
 on:
   workflow_dispatch:
@@ -18,149 +17,120 @@ concurrency:
 jobs:
   create-and-verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     env:
-      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
       SUPABASE_PROJECT_ID: dvdziauyvuhcnqhrrvww
-      RESTORE_POINT_NAME: allpha-p02-20261123
+      DB_HOST: db.dvdziauyvuhcnqhrrvww.supabase.co
+      DB_PORT: "5432"
+      DB_NAME: postgres
+      DB_USER: postgres
     steps:
-      - name: Require the existing Management API credential
+      - name: Require the canonical production database credential
         shell: bash
         run: |
-          if [[ -z "${SUPABASE_ACCESS_TOKEN:-}" ]]; then
-            echo "::error::SUPABASE_ACCESS_TOKEN is unavailable; no restore point was created."
+          set -euo pipefail
+          if [[ -z "${SUPABASE_DB_PASSWORD:-}" ]]; then
+            echo "::error::GitHub Actions secret SUPABASE_DB_PASSWORD is unavailable; no database backup was created and no migration may be applied."
             exit 1
           fi
           test "$SUPABASE_PROJECT_ID" = "dvdziauyvuhcnqhrrvww"
-
-      - name: Check for an existing named restore point
-        shell: bash
-        run: |
-          set -euo pipefail
           mkdir -p recovery-evidence
-          status="$(curl --silent --show-error -o recovery-evidence/before.json -w '%{http_code}' \
-            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
-            "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_ID/database/backups")"
-          test "$status" = "200" || { echo "::error::Cannot inspect existing backups (HTTP $status)."; exit 1; }
-          python - <<'PY'
-          import json, os
-          from pathlib import Path
-          data=json.loads(Path("recovery-evidence/before.json").read_text())
-          wanted=os.environ["RESTORE_POINT_NAME"]
-          found=False
-          def walk(value):
-              global found
-              if isinstance(value, dict):
-                  if value.get("name") == wanted:
-                      found=True
-                  for child in value.values(): walk(child)
-              elif isinstance(value, list):
-                  for child in value: walk(child)
-          walk(data)
-          Path("recovery-evidence/existing.txt").write_text("true" if found else "false")
-          print(json.dumps({"existing_restore_point":found,"name":wanted}))
-          PY
 
-      - name: Create the database restore point when absent
+      - name: Create a full PostgreSQL 17 logical backup
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "$(cat recovery-evidence/existing.txt)" == "true" ]]; then
-            echo "Named restore point already exists; avoiding a duplicate."
-            printf '%s\n' "existing" > recovery-evidence/create.status
-            exit 0
-          fi
-          status="$(curl --silent --show-error -o recovery-evidence/create.raw.json -w '%{http_code}' \
-            --request POST \
-            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
-            -H "Content-Type: application/json" \
-            --data "{\"name\":\"$RESTORE_POINT_NAME\"}" \
-            "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_ID/database/backups/restore-point")"
-          printf '%s\n' "$status" > recovery-evidence/create.status
-          if [[ "$status" != "200" && "$status" != "201" ]]; then
-            python - <<'PY'
-          import json
-          from pathlib import Path
-          try:
-              payload=json.loads(Path("recovery-evidence/create.raw.json").read_text())
-          except Exception:
-              payload={}
-          print(json.dumps({
-              "provider_error_code": payload.get("code") if isinstance(payload,dict) else None,
-              "provider_error_message": payload.get("message") if isinstance(payload,dict) else None,
-              "raw_response": "withheld",
-          }, indent=2))
-          PY
-            echo "::error::Supabase did not create the requested restore point (HTTP $status). No database migration was applied."
-            exit 1
-          fi
+          docker run --rm \
+            -e PGPASSWORD="$SUPABASE_DB_PASSWORD" \
+            -e PGSSLMODE=require \
+            -v "$PWD/recovery-evidence:/backup" \
+            postgres:17-alpine \
+            pg_dump \
+              --host="$DB_HOST" \
+              --port="$DB_PORT" \
+              --username="$DB_USER" \
+              --dbname="$DB_NAME" \
+              --no-owner \
+              --no-privileges \
+              --format=custom \
+              --compress=6 \
+              --file=/backup/allpha-p02-pre-migration.dump
+          test -s recovery-evidence/allpha-p02-pre-migration.dump
 
-      - name: Verify the named restore point and save sanitized evidence
+      - name: Verify dump archive and generate sanitized backup manifest
         shell: bash
         run: |
           set -euo pipefail
-          status="$(curl --silent --show-error -o recovery-evidence/after.json -w '%{http_code}' \
-            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
-            "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_ID/database/backups")"
-          test "$status" = "200" || { echo "::error::Cannot verify backup inventory after restore-point creation (HTTP $status)."; exit 1; }
+          docker run --rm \
+            -v "$PWD/recovery-evidence:/backup" \
+            postgres:17-alpine \
+            sh -lc 'pg_restore --list /backup/allpha-p02-pre-migration.dump > /backup/dump.toc'
+          pg_dump_version="$(docker run --rm postgres:17-alpine pg_dump --version)"
+          archive_entries="$(grep -c '^[0-9]' recovery-evidence/dump.toc || true)"
+          dump_sha256="$(sha256sum recovery-evidence/allpha-p02-pre-migration.dump | awk '{print $1}')"
+          dump_bytes="$(stat -c '%s' recovery-evidence/allpha-p02-pre-migration.dump)"
+          server_version="$(docker run --rm \
+            -e PGPASSWORD="$SUPABASE_DB_PASSWORD" \
+            -e PGSSLMODE=require \
+            postgres:17-alpine \
+            psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -Atc 'select version()')"
+          export PG_DUMP_VERSION="$pg_dump_version"
+          export ARCHIVE_ENTRIES="$archive_entries"
+          export DUMP_SHA256="$dump_sha256"
+          export DUMP_BYTES="$dump_bytes"
+          export SERVER_VERSION="$server_version"
           python - <<'PY'
           import json, os
           from datetime import datetime, timezone
           from pathlib import Path
 
-          root=Path("recovery-evidence")
-          wanted=os.environ["RESTORE_POINT_NAME"]
-          sensitive=("url","uri","token","secret","password","credential","connection","key","path")
-          def redact(value):
-              if isinstance(value,dict):
-                  return {str(k):("<redacted>" if any(x in str(k).lower() for x in sensitive) else redact(v)) for k,v in value.items()}
-              if isinstance(value,list): return [redact(x) for x in value]
-              return value
-          before=json.loads((root/"before.json").read_text())
-          after=json.loads((root/"after.json").read_text())
-          created=(root/"create.status").read_text().strip()
-          def contains(value):
-              if isinstance(value,dict):
-                  if value.get("name")==wanted: return True
-                  return any(contains(v) for v in value.values())
-              if isinstance(value,list): return any(contains(v) for v in value)
-              return False
-          verified=contains(after)
-          response={}
-          raw=root/"create.raw.json"
-          if raw.exists():
-              try: response=redact(json.loads(raw.read_text()))
-              except Exception: response={"response":"unparseable; raw body intentionally omitted"}
-          record={
-              "project_ref":"dvdziauyvuhcnqhrrvww",
-              "restore_point_name":wanted,
-              "captured_at_utc":datetime.now(timezone.utc).isoformat(),
-              "creation_result":created,
-              "restore_point_listed_after_creation":verified,
-              "before_backup_inventory":redact(before),
-              "after_backup_inventory":redact(after),
-              "create_response":response,
-              "database_migration_applied":False,
-              "restore_executed":False,
+          manifest = {
+              "project_ref": os.environ["SUPABASE_PROJECT_ID"],
+              "database_host": os.environ["DB_HOST"],
+              "database_port": int(os.environ["DB_PORT"]),
+              "database_name": os.environ["DB_NAME"],
+              "database_user": os.environ["DB_USER"],
+              "database_server_version": os.environ["SERVER_VERSION"],
+              "backup_type": "pg_dump_custom_full_database",
+              "backup_file": "allpha-p02-pre-migration.dump",
+              "pg_dump_version": os.environ["PG_DUMP_VERSION"],
+              "archive_toc_entries": int(os.environ["ARCHIVE_ENTRIES"]),
+              "sha256": os.environ["DUMP_SHA256"],
+              "size_bytes": int(os.environ["DUMP_BYTES"]),
+              "captured_at_utc": datetime.now(timezone.utc).isoformat(),
+              "archive_integrity_verified": True,
+              "restore_tested": False,
+              "managed_restore_point_api": "unavailable on prior attempt (HTTP 400: endpoint unavailable)",
+              "pitr_enabled_at_preflight": False,
+              "automated_backup_count_at_preflight": 0,
+              "storage_objects_included": False,
+              "rpo_rto": "Not defined by current project recovery configuration",
+              "database_migration_applied": False,
+              "restore_executed": False,
           }
-          (root/"restore-point-evidence.json").write_text(json.dumps(record,indent=2))
+          Path("recovery-evidence/restore-point-evidence.json").write_text(json.dumps(manifest, indent=2))
           print(json.dumps({
-              "restore_point_name":wanted,
-              "creation_result":created,
-              "restore_point_listed_after_creation":verified,
-              "database_migration_applied":False,
-              "restore_executed":False,
-          },indent=2))
-          if created not in ("200","201","existing"):
-              raise SystemExit("Restore-point creation did not return an accepted result.")
-          if not verified and created != "existing":
-              raise SystemExit("Restore point was not visible in the post-creation backup inventory; do not apply DDL.")
+              "backup_type": manifest["backup_type"],
+              "archive_integrity_verified": manifest["archive_integrity_verified"],
+              "archive_toc_entries": manifest["archive_toc_entries"],
+              "sha256": manifest["sha256"],
+              "size_bytes": manifest["size_bytes"],
+              "database_migration_applied": False,
+              "restore_executed": False,
+          }, indent=2))
+          if manifest["archive_toc_entries"] < 1:
+              raise SystemExit("Backup archive contains no table-of-contents entries.")
           PY
 
-      - name: Upload sanitized restore-point evidence
+      - name: Upload pre-migration database backup and manifest
         uses: actions/upload-artifact@v4
         with:
-          name: eng-p02-pre-migration-restore-point
-          path: recovery-evidence/restore-point-evidence.json
+          name: eng-p02-pre-migration-db-backup
+          path: |
+            recovery-evidence/allpha-p02-pre-migration.dump
+            recovery-evidence/restore-point-evidence.json
+            recovery-evidence/dump.toc
           if-no-files-found: error
           retention-days: 30
+          compression-level: 0

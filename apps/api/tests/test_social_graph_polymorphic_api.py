@@ -287,7 +287,7 @@ def test_recommendations_rank_public_mutual_connections_and_respect_privacy_and_
             known = {
                 FOLLOWEE_A, FOLLOWEE_B, CANDIDATE_A, CANDIDATE_B,
                 CANDIDATE_BLOCKED, CANDIDATE_ALREADY_FOLLOWED,
-                CANDIDATE_BLOCKED_BY, CANDIDATE_PRIVATE,
+                CANDIDATE_BLOCKED_BY, CANDIDATE_PRIVATE, CANDIDATE_MUTED_BY,
             }
             return [{
                 "id": identity,
