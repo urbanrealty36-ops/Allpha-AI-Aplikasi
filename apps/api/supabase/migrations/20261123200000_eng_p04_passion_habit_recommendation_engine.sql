@@ -95,7 +95,7 @@ begin
     raise exception 'interest_signal_actor_not_found' using errcode='P0002';
   end if;
   if p_signal_type is null or p_signal_type not in ('passion','habit')
-     or p_signal_source not in ('user_selected','explicit_feedback','observed_interaction')
+     or p_signal_source is null or p_signal_source not in ('user_selected','explicit_feedback','observed_interaction')
      or p_strength is null or p_strength < 0 or p_strength > 1
      or p_consent_version is null or char_length(p_consent_version) not between 1 and 80 then
     raise exception 'interest_signal_invalid' using errcode='22023';
