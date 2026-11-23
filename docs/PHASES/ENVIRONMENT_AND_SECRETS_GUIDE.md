@@ -15,6 +15,18 @@ Use separate configuration and credentials for local development, automated test
 
 Do not add Supabase service-role keys, database passwords, JWT signing keys, payment credentials, AI provider credentials, or other secrets to `NEXT_PUBLIC_*` variables. Browser-exposed variables are public.
 
+## Consent policy versions
+
+The API accepts a consent record only when its requested version exactly matches the server-side approved version for that consent type:
+
+| Variable | Consent type |
+|---|---|
+| `ALLPHA_POLICY_VERSION_TERMS_OF_SERVICE` | Terms of Service |
+| `ALLPHA_POLICY_VERSION_PRIVACY_POLICY` | Privacy Policy |
+| `ALLPHA_POLICY_VERSION_PRODUCT_UPDATES` | Product updates |
+
+These values are intentionally blank in `apps/api/.env.example`. Do not invent legal text or version identifiers. Configure each value in the API deployment secret/configuration surface only after the corresponding policy content and version have been approved and published. Missing configuration returns `503 CONSENT_POLICY_NOT_CONFIGURED`; a stale client version returns `409 CONSENT_POLICY_VERSION_MISMATCH` before any database write. Consent history remains append-only and the user identity is derived from the verified session.
+
 ## Secret storage
 
 - Local-only secrets belong in an ignored `.env.local` or a local secret manager; never commit populated secret files.
