@@ -100,3 +100,92 @@ def test_membership_guard_rejects_foreign_tenant_row_from_database(monkeypatch):
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "ORGANIZATION_NOT_FOUND"
     assert len(calls) == 1
+
+
+def test_create_organization_rejects_service_response_with_foreign_owner(monkeypatch):
+    async def service_rpc(function_name, *, body=None):
+        assert function_name == "create_organization_for_user"
+        assert body["p_actor_user_id"] == OWNER["id"]
+        return [{
+            "id": ORG,
+            "name": "Foreign owner organization",
+            "slug": "foreign-owner",
+            "owner_id": TARGET,
+        }]
+
+    monkeypatch.setattr("allpha_api.main.service_db_request", service_rpc)
+    app.dependency_overrides[current_user] = _verified_owner
+    try:
+        response = TestClient(app).post(
+            "/v1/organizations",
+            json={"name": "Tenant Boundary", "slug": "tenant-boundary"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "CREATE_FAILED"
+
+
+def test_add_membership_rejects_service_response_from_another_tenant(monkeypatch):
+    async def membership_guard_lookup(method, path, access_token, *, params=None, body=None, prefer=None):
+        assert path == "organization_memberships"
+        assert params["organization_id"] == f"eq.{ORG}"
+        assert params["user_id"] == f"eq.{OWNER['id']}"
+        return [{"organization_id": ORG, "user_id": OWNER["id"], "role": "owner"}]
+
+    async def service_rpc(function_name, *, body=None):
+        assert function_name == "add_organization_member_for_actor"
+        assert body["p_organization_id"] == ORG
+        return [{
+            "organization_id": OTHER_ORG,
+            "user_id": TARGET,
+            "role": "member",
+            "invited_by": OWNER["id"],
+        }]
+
+    monkeypatch.setattr("allpha_api.auth.user_db_request", membership_guard_lookup)
+    monkeypatch.setattr("allpha_api.main.service_db_request", service_rpc)
+    app.dependency_overrides[current_user] = _verified_owner
+    try:
+        response = TestClient(app).post(
+            f"/v1/organizations/{ORG}/memberships",
+            json={"user_id": TARGET, "role": "member"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "MEMBERSHIP_CREATE_FAILED"
+
+
+def test_update_membership_rejects_service_response_from_another_tenant(monkeypatch):
+    async def membership_guard_lookup(method, path, access_token, *, params=None, body=None, prefer=None):
+        assert path == "organization_memberships"
+        assert params["organization_id"] == f"eq.{ORG}"
+        assert params["user_id"] == f"eq.{OWNER['id']}"
+        return [{"organization_id": ORG, "user_id": OWNER["id"], "role": "owner"}]
+
+    async def service_rpc(function_name, *, body=None):
+        assert function_name == "update_organization_member_role_for_actor"
+        assert body["p_organization_id"] == ORG
+        return [{
+            "organization_id": OTHER_ORG,
+            "user_id": TARGET,
+            "role": "admin",
+            "invited_by": OWNER["id"],
+        }]
+
+    monkeypatch.setattr("allpha_api.auth.user_db_request", membership_guard_lookup)
+    monkeypatch.setattr("allpha_api.main.service_db_request", service_rpc)
+    app.dependency_overrides[current_user] = _verified_owner
+    try:
+        response = TestClient(app).patch(
+            f"/v1/organizations/{ORG}/memberships/{TARGET}",
+            json={"role": "admin"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "ORGANIZATION_MEMBER_SCOPE_MISMATCH"
