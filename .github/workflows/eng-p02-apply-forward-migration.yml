@@ -132,6 +132,18 @@ jobs:
           }, indent=2))
           PY
 
+      - name: Check whether the exact target migration is already applied
+        shell: bash
+        run: |
+          set -euo pipefail
+          state="$(docker run --rm --network host \
+            -e DATABASE_URL="$DB_URL" \
+            postgres:17-alpine \
+            sh -lc 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atc "select case when exists (select 1 from supabase_migrations.schema_migrations where version='\''20261123191500'\'') then '\''true'\'' else '\''false'\'' end"')"
+          test "$state" = "true" -o "$state" = "false"
+          echo "TARGET_ALREADY_APPLIED=$state" >> "$GITHUB_ENV"
+          echo "Target migration already applied: $state"
+
       - name: Build isolated Supabase migration workspace
         shell: bash
         run: |
@@ -153,22 +165,28 @@ jobs:
         run: |
           set -euo pipefail
           supabase migration list --db-url "$DB_URL" | tee ../recovery-evidence/migration-list-before.txt
-          supabase db push --dry-run --db-url "$DB_URL" | tee ../recovery-evidence/migration-dry-run.txt
-          python - <<'PY'
-          import re
-          from pathlib import Path
+          if [[ "$TARGET_ALREADY_APPLIED" == "true" ]]; then
+            echo "Target migration 20261123191500 is already recorded; no second apply is required." \
+              | tee ../recovery-evidence/migration-dry-run.txt
+          else
+            supabase db push --dry-run --db-url "$DB_URL" | tee ../recovery-evidence/migration-dry-run.txt
+            python - <<'PY'
+            import re
+            from pathlib import Path
 
-          output = Path("../recovery-evidence/migration-dry-run.txt").read_text()
-          versions = set(re.findall(r"(?<!\d)20\d{12}(?!\d)", output))
-          expected = {"20261123191500"}
-          if versions != expected:
-              raise SystemExit(
-                  f"Refusing production apply: dry-run must contain only {sorted(expected)}, got {sorted(versions)}"
-              )
-          print("Dry-run contains exactly one pending migration: 20261123191500.")
-          PY
+            output = Path("../recovery-evidence/migration-dry-run.txt").read_text()
+            versions = set(re.findall(r"(?<!\d)20\d{12}(?!\d)", output))
+            expected = {"20261123191500"}
+            if versions != expected:
+                raise SystemExit(
+                    f"Refusing production apply: dry-run must contain only {sorted(expected)}, got {sorted(versions)}"
+                )
+            print("Dry-run contains exactly one pending migration: 20261123191500.")
+            PY
+          fi
 
-      - name: Apply only the isolated ENG-P02 forward migration
+      - name: Apply only the isolated ENG-P02 forward migration when pending
+        if: env.TARGET_ALREADY_APPLIED != 'true'
         working-directory: migration-workspace
         shell: bash
         run: |
