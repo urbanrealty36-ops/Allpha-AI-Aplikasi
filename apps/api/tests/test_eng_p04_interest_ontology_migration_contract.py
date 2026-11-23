@@ -54,3 +54,8 @@ def test_interest_ontology_exposes_semantic_relationships_and_sensitive_inferenc
     assert "('technology','gaming_metaverse','parent_of',1)" in source
     assert "sensitivity in ('standard','sensitive')" in source
     assert "where interest_key='health' and sensitivity<>'sensitive'" in source
+
+
+def test_interest_upsert_uses_named_primary_key_to_avoid_output_column_ambiguity():
+    source = MIGRATION.read_text(encoding="utf-8").lower()
+    assert "on conflict on constraint user_interests_pkey do update" in source
