@@ -22,7 +22,7 @@ def test_export_worker_persists_progress_at_real_processing_boundaries():
         raise AssertionError(f"Unexpected worker RPC: {name}")
 
     async def upload(_path, _payload):
-        return None
+        calls.append(("storage_upload", {"path": _path}))
 
     worker.rpc = rpc
     worker.upload = upload
@@ -44,9 +44,15 @@ def test_export_worker_persists_progress_at_real_processing_boundaries():
         (75, "upload"),
         (90, "publishing"),
     ]
-    assert [name for name, _ in calls].index("complete_account_export_job") > [
-        name for name, _ in calls
-    ].index("update_account_export_job_progress")
+    names = [name for name, _ in calls]
+    upload_index = names.index("storage_upload")
+    progress_calls = [
+        (index, payload["p_progress_stage"])
+        for index, (name, payload) in enumerate(calls)
+        if name == "update_account_export_job_progress"
+    ]
+    assert progress_calls[2][0] < upload_index < progress_calls[3][0]
+    assert names.index("complete_account_export_job") > progress_calls[3][0]
 
 
 def test_export_worker_fails_closed_when_progress_write_loses_lease():
