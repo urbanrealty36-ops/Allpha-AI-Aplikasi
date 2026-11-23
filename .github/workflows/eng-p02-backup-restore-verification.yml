@@ -55,12 +55,34 @@ jobs:
           print("Backup artifact identity and original manifest verified; no production restore or DDL is performed.")
           PY
 
+      - name: Create an isolated Supabase restore workspace without project migrations
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p restore-workspace/supabase
+          cat > restore-workspace/supabase/config.toml <<'TOML'
+          project_id = "allpha-p02-restore-verification"
+
+          [api]
+          enabled = false
+
+          [db]
+          port = 54322
+          major_version = 17
+
+          [db.migrations]
+          schema_paths = []
+          TOML
+          # The database backup already contains the production schema. This
+          # isolated workspace intentionally has no application migration files;
+          # it must not replay the repository's historical migration chain.
+
       - uses: supabase/setup-cli@v1
         with:
           version: latest
 
       - name: Start an isolated local Supabase PostgreSQL 17 stack
-        working-directory: apps/api
+        working-directory: restore-workspace
         shell: bash
         run: |
           set -euo pipefail
