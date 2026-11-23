@@ -127,8 +127,17 @@ insert into public.agent_ownerships(agent_id,owner_user_id,ownership_role,status
  ('{AGENT}','{OWNER}','owner','active'),('{OTHER_AGENT}','{OTHER}','owner','active');
 set request.jwt.claim.role='service_role';
 select * from public.set_my_interest_preference_for_actor('{OWNER}','technology','interested');
-do $$
+do $
 begin
+  if (select count(*) from public.interest_catalog
+       where active and interest_key in ('ai_agents','social_network','ai_cinema','live_streaming')) <> 4 then
+    raise exception 'Allpha ecosystem interest taxonomy seed missing';
+  end if;
+  if not exists(select 1 from public.interest_taxonomy_edges
+      where source_interest_key='ai_cinema' and target_interest_key='live_streaming'
+        and relation_type='related_to' and active) then
+    raise exception 'AI Cinema and Live Stage ontology relationship missing';
+  end if;
   if not exists(select 1 from private.user_interest_discovery_index where user_id='{OWNER}' and interest_key='technology') then
     raise exception 'opted-in interest missing from private discovery index';
   end if;
