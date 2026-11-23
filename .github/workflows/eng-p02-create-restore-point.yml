@@ -12,6 +12,7 @@ on:
       - apps/api/supabase/migrations/20261123191600_eng_p03_account_export_and_deletion_request_lifecycle.sql
       - apps/api/supabase/migrations/20261123191800_eng_p03_lease_scoped_export_artifacts.sql
       - apps/api/supabase/migrations/20261123192100_eng_p03_export_artifact_expiration.sql
+      - apps/api/supabase/migrations/20261123192200_eng_p03_deletion_legal_hold_governance_worker.sql
       - apps/api/supabase/migrations/20261123191900_eng_p04_interest_ontology_and_discovery_index.sql
       - apps/api/supabase/migrations/20261123200000_eng_p04_passion_habit_recommendation_engine.sql
 
