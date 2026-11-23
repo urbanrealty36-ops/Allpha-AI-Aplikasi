@@ -43,3 +43,24 @@ def test_signal_affinity_only_matches_the_same_declared_interest():
     assert matched_signal_affinity({"spatial", "3d", "render"}, signals, "passion") == 0.8
     assert matched_signal_affinity({"design", "ui", "ux"}, signals, "habit") == 0.6
     assert matched_signal_affinity({"business", "finance"}, signals, "passion") == 0.0
+
+
+
+def test_optional_scoring_schema_fallback_only_handles_missing_migration(monkeypatch):
+    import asyncio
+    from fastapi import HTTPException
+    from allpha_api.recommendation_engine import optional_scoring_rows
+
+    async def missing_schema(*args, **kwargs):
+        raise HTTPException(503, detail={"code": "DATABASE_SCHEMA_NOT_READY"})
+
+    async def database_outage(*args, **kwargs):
+        raise HTTPException(503, detail={"code": "CONTENT_DATABASE_UNAVAILABLE"})
+
+    assert asyncio.run(optional_scoring_rows(missing_schema, "user_interest_graph_signals", {})) == []
+    try:
+        asyncio.run(optional_scoring_rows(database_outage, "user_interest_graph_signals", {}))
+    except HTTPException as exc:
+        assert exc.detail["code"] == "CONTENT_DATABASE_UNAVAILABLE"
+    else:
+        raise AssertionError("database outage must not be hidden")
