@@ -97,7 +97,7 @@ jobs:
           migration_file="apps/api/supabase/migrations/${TARGET_MIGRATION_VERSION}_${TARGET_MIGRATION_NAME}.sql"
           test -s "$migration_file"
           actual_blob="$(git rev-parse HEAD:"$migration_file")"
-          test "$actual_blob" = "$EXPECTED_MIGRATION_BLOB"
+          test "$actual_blob" = "$EXPECTED_EXPORT_LEASE_MIGRATION_BLOB"
           if grep -Eiq '(delete[[:space:]]+from|update|drop[[:space:]]+table)[[:space:]]+storage\.' "$migration_file"; then
             echo "::error::The account lifecycle migration attempts to mutate Storage objects or metadata."
             exit 1
