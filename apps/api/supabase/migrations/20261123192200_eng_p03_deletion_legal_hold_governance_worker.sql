@@ -41,8 +41,8 @@ begin
       from public.account_deletion_requests r
      where r.status in ('awaiting_policy','scheduled','blocked_legal_hold')
      order by r.requested_at,r.id
-     for update skip locked
      limit p_limit
+     for update skip locked
   loop
     v_processed := v_processed + 1;
     select coalesce(array_agg(h.id order by h.created_at,h.id),'{}'::uuid[])
@@ -91,10 +91,12 @@ begin
         jsonb_build_object('reason_code','LEGAL_HOLD_RELEASED','next_gate',v_policy_state)
       );
       v_unblocked := v_unblocked + 1;
-    elsif v_request.status='awaiting_policy' then
-      if coalesce(v_request.request_metadata->>'deletion_policy_state','') is distinct from v_policy_state then
+    elsif v_request.status in ('awaiting_policy','scheduled') then
+      if v_request.status='scheduled' or coalesce(v_request.request_metadata->>'deletion_policy_state','') is distinct from v_policy_state then
         update public.account_deletion_requests
-           set request_metadata=coalesce(request_metadata,'{}'::jsonb) ||
+           set status='awaiting_policy',scheduled_for=null,
+               error_code=case when v_request.status='scheduled' then 'DELETION_EXECUTION_GATE_INCOMPLETE' else error_code end,
+               request_metadata=coalesce(request_metadata,'{}'::jsonb) ||
                  jsonb_build_object(
                    'legal_hold_active',false,
                    'deletion_policy_state',v_policy_state,
