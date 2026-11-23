@@ -11,6 +11,7 @@ def test_healthz_exposes_account_lifecycle_worker_runtime_state(monkeypatch):
         last_claimed_count = 2
         last_cleanup_count = 1
         last_deletion_governance_count = 3
+        last_deletion_execution_count = 0
         poll_count = 3
         last_error_code = None
 
@@ -30,6 +31,7 @@ def test_healthz_exposes_account_lifecycle_worker_runtime_state(monkeypatch):
         "last_claimed_count": 2,
         "last_cleanup_count": 1,
         "last_deletion_governance_count": 3,
+        "last_deletion_execution_count": 0,
         "poll_count": 3,
         "last_error_code": None,
     }
