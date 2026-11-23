@@ -162,7 +162,7 @@ jobs:
             --target-migration "apps/api/supabase/migrations/${TARGET_MIGRATION_VERSION}_${TARGET_MIGRATION_NAME}.sql" \
             --workspace-dir migration-workspace
           test -f migration-workspace/supabase/config.toml
-          test -f migration-workspace/supabase/migrations/${TARGET_MIGRATION_VERSION}_${TARGET_MIGRATION_NAME}.sql
+          test -f "migration-workspace/supabase/migrations/${TARGET_MIGRATION_VERSION}_${TARGET_MIGRATION_NAME}.sql"
           cat migration-workspace/migration-workspace-manifest.json
 
       - uses: supabase/setup-cli@v1
