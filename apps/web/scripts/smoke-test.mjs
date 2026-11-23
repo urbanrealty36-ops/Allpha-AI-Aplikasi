@@ -877,3 +877,15 @@ assert.ok(messagesPageSource.includes("listAbort.current?.abort()"), "Conversati
 assert.ok(messagesPageSource.includes("messageAbort.current?.abort()"), "Switching conversations must cancel stale message and read-state requests");
 assert.ok(messagesPageSource.includes("sendAbort.current?.abort()"), "Message send lifecycle must be cancellable on auth changes and unmount");
 assert.ok(messagesPageSource.includes('signal:controller.signal'), "Messaging API calls must propagate AbortSignal");
+
+
+// ENG-P04 Web authenticated username discovery uses the canonical privacy-filtered API.
+{
+  const socialGraph = readFileSync(new URL("../components/social/SocialGraphPanel.tsx", import.meta.url), "utf8");
+  assert.ok(socialGraph.includes("/v1/social/discover-users?q="), "Social Graph must use the authenticated username discovery API");
+  assert.ok(socialGraph.includes("/^[a-z0-9_]{3,30}$/"), "Web discovery must validate canonical username syntax before querying");
+  assert.ok(socialGraph.includes('target_type: "human", target_id: item.id, edge_type: "follow"'), "discovery follow must write through canonical social relationship API");
+  assert.ok(socialGraph.includes("discoverable") && socialGraph.includes("Akun privat"), "discovery UI must communicate the privacy/visibility boundary");
+  assert.ok(socialGraph.includes("discoveryBusy") && socialGraph.includes("discoveryError") && socialGraph.includes('role="alert"'), "discovery must expose loading and recoverable error states");
+  assert.doesNotMatch(socialGraph, /SUPABASE_SERVICE_ROLE_KEY|service_role|mockDiscoveredUsers|fakeDiscovery/);
+}

@@ -851,3 +851,11 @@ This is an evidence refresh inside the existing fixed plan. It does not create a
 - **Automated verification:** focused workflow run `45190647980` completed `success`; its API regression job executed all listed ENG-P03/P04 tests, including the new private-registry migration contract. Pytest output reached 100% with no failures.
 - **Migration naming alignment:** repository migration filename is aligned to the actual Supabase ledger version `20261123140636` to prevent local/remote migration-history drift.
 - **Phase status:** ENG-P03 and ENG-P04 remain `in_progress`. This closes the two private-registry RLS gaps only; it does not close the deletion executor/dependency mapping/retention-policy gates or the remaining Feed/Discovery internal implementation scope. Real-account and EAS remain `DEFERRED / NOT VERIFIED`.
+
+
+## 40.10 ENG-P04 Web authenticated username discovery vertical slice (2026-11-23)
+- Implemented manual Human username discovery inside the existing Web Social Graph panel; no redesign or parallel social engine was introduced.
+- `apps/web/components/social/SocialGraphPanel.tsx` validates 3–30 character username prefixes, calls authenticated `GET /v1/social/discover-users`, renders only API-returned discoverable identities, and submits follows through canonical `POST /v1/social/relationships`. Private-profile biography/avatar are not rendered; loading, empty, validation, and API-error states are explicit.
+- `apps/web/scripts/smoke-test.mjs` adds source-contract regression coverage for endpoint, username validation, canonical relationship writes, privacy messaging, and loading/error states. This is source-contract evidence only, not a real authenticated journey.
+- Coverage: Web CHANGE; API/DB INTEGRATE (existing canonical privacy-filtered discovery and relationship endpoints); Native Client INTEGRATE (existing authenticated discovery in `apps/client/App.tsx`); Super Admin NOT AFFECTED (end-user social discovery, no operator workflow).
+- Checks: pending CI on resulting commit. Real-account testing remains DEFERRED / NOT VERIFIED. ENG-P04 remains `in_progress` pending complete authenticated Feed/Discovery and cross-client DoD.

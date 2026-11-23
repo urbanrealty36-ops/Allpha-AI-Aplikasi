@@ -37,6 +37,8 @@ type AgentRecommendation = {
   reason: "owned_by_mutual_connection" | "owned_by_mutual_connection_and_shared_interests";
 };
 
+type DiscoveredUser = { id: string; username: string; display_name: string; avatar_url?: string | null; bio?: string; visibility: "public" | "private"; is_ai: false };
+
 type Props = { apiBase: string; accessToken: string };
 
 async function apiRequest<T>(apiBase: string, accessToken: string, path: string, init: RequestInit = {}): Promise<T> {
@@ -68,6 +70,10 @@ export default function SocialGraphPanel({ apiBase, accessToken }: Props) {
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [agentRecommendations, setAgentRecommendations] = useState<AgentRecommendation[]>([]);
   const [agentRecommendationError, setAgentRecommendationError] = useState("");
+  const [discoveryQuery, setDiscoveryQuery] = useState("");
+  const [discoveredUsers, setDiscoveredUsers] = useState<DiscoveredUser[]>([]);
+  const [discoveryBusy, setDiscoveryBusy] = useState(false);
+  const [discoveryError, setDiscoveryError] = useState("");
   const [draft, setDraft] = useState("");
   const [preference, setPreference] = useState<Interest["preference"]>("interested");
   const [loading, setLoading] = useState(true);
@@ -202,6 +208,38 @@ export default function SocialGraphPanel({ apiBase, accessToken }: Props) {
     }
   }
 
+  async function searchDiscoverableUsers(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const query = discoveryQuery.trim().replace(/^@/, "").toLowerCase();
+    if (!/^[a-z0-9_]{3,30}$/.test(query)) {
+      setDiscoveryError("Masukkan username 3–30 karakter (huruf kecil, angka, atau garis bawah).");
+      setDiscoveredUsers([]);
+      return;
+    }
+    setDiscoveryBusy(true);
+    setDiscoveryError("");
+    try {
+      const result = await apiRequest<{ items: DiscoveredUser[] }>(apiBase, accessToken,
+        "/v1/social/discover-users?q=" + encodeURIComponent(query) + "&limit=20");
+      setDiscoveredUsers(Array.isArray(result.items) ? result.items : []);
+    } catch (cause) {
+      setDiscoveredUsers([]);
+      setDiscoveryError(cause instanceof Error ? cause.message : "Pencarian profil gagal.");
+    } finally { setDiscoveryBusy(false); }
+  }
+
+  async function followDiscoveredUser(item: DiscoveredUser) {
+    setBusy(true); setError(""); setNotice("");
+    try {
+      await apiRequest(apiBase, accessToken, "/v1/social/relationships", {
+        method: "POST", body: JSON.stringify({ target_type: "human", target_id: item.id, edge_type: "follow" }),
+      });
+      setDiscoveredUsers(current => current.filter(candidate => candidate.id !== item.id));
+      setNotice("Permintaan mengikuti @" + item.username + " berhasil dikirim.");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Relasi mengikuti gagal disimpan."); }
+    finally { setBusy(false); }
+  }
+
   return (
     <section aria-labelledby="social-graph-heading" className="mx-auto my-6 w-full max-w-6xl px-4 sm:px-6">
       <div className="rounded-3xl border-2 border-slate-900 bg-white p-5 shadow-[3px_3px_0px_#0f172a] sm:p-6">
@@ -267,6 +305,27 @@ export default function SocialGraphPanel({ apiBase, accessToken }: Props) {
             </div>
           </div>
           <div>
+            <div className="mb-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <h3 className="text-base font-black text-slate-950">Temukan Human</h3>
+              <p className="mt-1 text-xs text-slate-500">Cari awalan username. Hanya akun aktif yang mengaktifkan opsi dapat ditemukan yang akan ditampilkan.</p>
+              <form onSubmit={searchDiscoverableUsers} className="mt-3 flex flex-wrap gap-2">
+                <label className="sr-only" htmlFor="social-discovery-username">Username yang dicari</label>
+                <input id="social-discovery-username" value={discoveryQuery} onChange={event => setDiscoveryQuery(event.target.value)} maxLength={31} autoCapitalize="none" autoComplete="off" spellCheck={false} placeholder="Cari username…" className="min-w-0 flex-1 rounded-xl border-2 border-slate-300 bg-white px-3 py-2 text-sm" />
+                <button type="submit" disabled={discoveryBusy || busy} className="rounded-xl border-2 border-slate-900 bg-slate-900 px-4 py-2 text-sm font-black text-white disabled:opacity-50">{discoveryBusy ? "Mencari…" : "Cari"}</button>
+              </form>
+              {discoveryError && <p role="alert" className="mt-3 text-sm text-rose-700">{discoveryError}</p>}
+              {!discoveryBusy && !discoveryError && discoveredUsers.length === 0 && discoveryQuery.trim().length >= 3 && <p className="mt-3 text-sm text-slate-500">Tidak ada profil yang dapat ditemukan untuk awalan username tersebut.</p>}
+              {discoveredUsers.length > 0 && <ul className="mt-3 space-y-2">{discoveredUsers.map(item => (
+                <li key={item.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-bold text-slate-900">{item.display_name}</p>
+                    <p className="truncate text-xs text-slate-500">@{item.username} · {item.visibility === "private" ? "Akun privat" : "Profil publik"}</p>
+                    {item.visibility === "public" && item.bio && <p className="mt-1 line-clamp-2 text-xs text-slate-600">{item.bio}</p>}
+                  </div>
+                  <button type="button" disabled={busy} onClick={() => void followDiscoveredUser(item)} className="shrink-0 rounded-full border-2 border-slate-900 bg-sky-100 px-3 py-2 text-xs font-black disabled:opacity-50">Ikuti</button>
+                </li>
+              ))}</ul>}
+            </div>
             <h3 className="text-base font-black text-slate-950">Rekomendasi Human</h3>
             <p className="mt-1 text-xs text-slate-500">Hanya profil publik dan discoverable; koneksi bersama tidak menampilkan identitas sumber.</p>
             {loading ? <p className="mt-4 text-sm text-slate-500">Mencari koneksi…</p> : recommendations.length === 0 ? <p className="mt-4 rounded-xl bg-slate-50 p-4 text-sm text-slate-500">Belum ada rekomendasi koneksi yang memenuhi preferensi privasi.</p> : (
