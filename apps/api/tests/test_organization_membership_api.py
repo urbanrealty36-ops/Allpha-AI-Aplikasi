@@ -12,6 +12,7 @@ TARGET = "33333333-3333-4333-8333-333333333333"
 
 async def _owner(request: Request):
     request.state.supabase_access_token = "verified-test-access-token"
+    request.state.user_id = OWNER["id"]
     return OWNER
 
 
@@ -131,4 +132,26 @@ def test_regular_member_cannot_invoke_admin_membership_mutations(monkeypatch):
     finally:
         app.dependency_overrides.clear()
     assert response.status_code == 403
+    assert calls == []
+
+
+def test_membership_guard_rejects_actor_not_bound_to_verified_session(monkeypatch):
+    calls = []
+    async def rpc(name, *, body):
+        calls.append((name, body))
+        return [{"organization_id": ORG, "user_id": TARGET, "role": "member"}]
+    client = _client(monkeypatch, rpc)
+
+    async def mismatched_identity(request: Request):
+        request.state.supabase_access_token = "verified-test-access-token"
+        request.state.user_id = TARGET
+        return OWNER
+
+    app.dependency_overrides[current_user] = mismatched_identity
+    try:
+        response = client.get(f"/v1/organizations/{ORG}/memberships")
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "IDENTITY_MISMATCH"
     assert calls == []

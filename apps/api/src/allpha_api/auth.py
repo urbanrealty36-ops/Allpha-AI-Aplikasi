@@ -202,6 +202,12 @@ async def require_organization_membership(
     whether an organization exists to a non-member.
     """
     access_token = getattr(request.state, "supabase_access_token", None)
+    trusted_actor_id = getattr(request.state, "user_id", None)
+    if not trusted_actor_id or str(trusted_actor_id) != str(actor_user_id):
+        raise HTTPException(
+            status_code=401,
+            detail={"code": "IDENTITY_MISMATCH", "message": "Identitas actor tidak cocok dengan sesi terverifikasi."},
+        )
     if not access_token:
         raise HTTPException(
             status_code=401,
