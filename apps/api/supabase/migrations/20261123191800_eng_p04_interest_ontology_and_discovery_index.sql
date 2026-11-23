@@ -160,12 +160,11 @@ begin
     end if;
   end if;
   return query
-  insert into public.user_interests(user_id,interest_key,preference)
+  insert into public.user_interests as ui(user_id,interest_key,preference)
   values(p_actor_user_id,v_interest_key,p_preference)
   on conflict(user_id,interest_key) do update
     set preference=excluded.preference,updated_at=now()
-  returning public.user_interests.interest_key,public.user_interests.preference,
-            public.user_interests.created_at,public.user_interests.updated_at;
+  returning ui.interest_key,ui.preference,ui.created_at,ui.updated_at;
 end;
 $set_interest$;
 
