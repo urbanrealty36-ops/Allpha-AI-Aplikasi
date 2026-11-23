@@ -71,14 +71,12 @@ jobs:
           [db.migrations]
           schema_paths = []
           TOML
-          # The backup is a complete production schema snapshot. Do not replay
-          # the repository's historical application migration chain here.
 
       - uses: supabase/setup-cli@v1
         with:
           version: 3.2.0
 
-      - name: Start an isolated local Supabase PostgreSQL 17 stack
+      - name: Start an isolated Supabase PostgreSQL 17 stack
         working-directory: restore-workspace
         shell: bash
         run: |
@@ -95,7 +93,6 @@ jobs:
             "select rolcanlogin::text || '|' || rolsuper::text from pg_roles where rolname='supabase_admin'")"
           test "$role_state" = "true|true"
           echo "SUPABASE_DB_CONTAINER=$db_container" >> "$GITHUB_ENV"
-          echo "Verified local Supabase privileged restore role (login + superuser)."
 
       - name: Create a separate disposable restore database
         shell: bash
@@ -119,7 +116,7 @@ jobs:
               --exit-on-error \
               /tmp/allpha-p02-pre-migration.dump
 
-      - name: Verify restored schema, RLS and migration history
+      - name: Verify restored schema, RLS and ENG-P02 migration
         shell: bash
         run: |
           set -euo pipefail
@@ -142,12 +139,9 @@ jobs:
                 select 'consent_rows=' || count(*) from public.user_consents;
                 select 'remote_migration_high_water=' || coalesce(max(version), 'none') from supabase_migrations.schema_migrations;
               " | tee recovery-evidence/restore-verification.txt
-          grep -q '^database_identity=PASS$' recovery-evidence/restore-verification.txt
-          grep -q '^auth_users=PASS$' recovery-evidence/restore-verification.txt
-          grep -q '^profiles=PASS$' recovery-evidence/restore-verification.txt
-          grep -q '^user_settings=PASS$' recovery-evidence/restore-verification.txt
-          grep -q '^user_consents=PASS$' recovery-evidence/restore-verification.txt
-          grep -q '^migration_history=PASS
+          for assertion in database_identity auth_users profiles user_settings user_consents migration_history eng_p02_migration tenant_schema identity_rls; do
+            grep -q "^$assertion=PASS$" recovery-evidence/restore-verification.txt
+          done
 
       - name: Apply ENG-P03 account lifecycle migration to disposable restored database
         shell: bash
@@ -173,11 +167,15 @@ jobs:
               select case when has_function_privilege('service_role','public.claim_account_export_jobs(text,integer,integer)','EXECUTE')
                             and not has_function_privilege('authenticated','public.claim_account_export_jobs(text,integer,integer)','EXECUTE')
                           then 'worker_rpc_grants=PASS' else 'worker_rpc_grants=FAIL' end;
+              select case when has_function_privilege('service_role','public.create_account_deletion_request_for_actor(uuid)','EXECUTE')
+                            and not has_function_privilege('authenticated','public.create_account_deletion_request_for_actor(uuid)','EXECUTE')
+                            and has_function_privilege('authenticated','public.cancel_my_account_deletion(uuid)','EXECUTE')
+                          then 'deletion_rpc_grants=PASS' else 'deletion_rpc_grants=FAIL' end;
               select case when bool_and(relrowsecurity) then 'account_lifecycle_rls=PASS' else 'account_lifecycle_rls=FAIL' end
                 from pg_class c join pg_namespace n on n.oid=c.relnamespace
                where n.nspname='public' and c.relname in ('account_export_jobs','account_deletion_requests','account_lifecycle_events','account_data_retention_policies','account_legal_holds');
             " | tee recovery-evidence/p03-disposable-migration-verification.txt
-          for assertion in account_export_jobs account_deletion_requests account_lifecycle_events retention_policies legal_holds export_source_registry private_export_bucket deletion_policy_fail_closed owner_export_rpc worker_rpc_grants account_lifecycle_rls; do
+          for assertion in account_export_jobs account_deletion_requests account_lifecycle_events retention_policies legal_holds export_source_registry private_export_bucket deletion_policy_fail_closed owner_export_rpc worker_rpc_grants deletion_rpc_grants account_lifecycle_rls; do
             grep -q "^$assertion=PASS$" recovery-evidence/p03-disposable-migration-verification.txt
           done
           echo "P03_MIGRATION_BLOB=$(git rev-parse HEAD:"$migration")" >> "$GITHUB_ENV"
@@ -192,6 +190,7 @@ jobs:
           from pathlib import Path
           archive = Path("recovery-evidence/allpha-p02-pre-migration.dump")
           verification = Path("recovery-evidence/restore-verification.txt")
+          p03_verification = Path("recovery-evidence/p03-disposable-migration-verification.txt")
           result = {
               "project_ref": "dvdziauyvuhcnqhrrvww",
               "source_backup_run_id": int(os.environ["BACKUP_RUN_ID"]),
@@ -205,6 +204,7 @@ jobs:
               "storage_objects_included": False,
               "verified_at_utc": datetime.now(timezone.utc).isoformat(),
               "verification": verification.read_text().splitlines(),
+              "p03_migration_verification": p03_verification.read_text().splitlines(),
           }
           Path("recovery-evidence/restore-verification.json").write_text(json.dumps(result, indent=2) + "\n")
           PY
@@ -217,157 +217,6 @@ jobs:
             recovery-evidence/restore-verification.json
             recovery-evidence/restore-verification.txt
             recovery-evidence/p03-disposable-migration-verification.txt
-          if-no-files-found: error
-          retention-days: 90
-          overwrite: true
- recovery-evidence/restore-verification.txt
-          grep -q '^eng_p02_migration=PASS
-
-      - name: Publish sanitized restore-test evidence
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          import hashlib, json, os
-          from datetime import datetime, timezone
-          from pathlib import Path
-          archive = Path("recovery-evidence/allpha-p02-pre-migration.dump")
-          verification = Path("recovery-evidence/restore-verification.txt")
-          result = {
-              "project_ref": "dvdziauyvuhcnqhrrvww",
-              "source_backup_run_id": int(os.environ["BACKUP_RUN_ID"]),
-              "source_backup_artifact_name": "eng-p02-pre-migration-db-backup",
-              "backup_sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
-              "restore_completed": True,
-              "production_database_touched": False,
-              "production_migration_applied": False,
-              "storage_objects_included": False,
-              "verified_at_utc": datetime.now(timezone.utc).isoformat(),
-              "verification": verification.read_text().splitlines(),
-          }
-          Path("recovery-evidence/restore-verification.json").write_text(json.dumps(result, indent=2) + "\n")
-          PY
-
-      - name: Upload verified disposable restore evidence
-        uses: actions/upload-artifact@v4
-        with:
-          name: eng-p02-disposable-restore-verification
-          path: |
-            recovery-evidence/restore-verification.json
-            recovery-evidence/restore-verification.txt
-          if-no-files-found: error
-          retention-days: 90
-          overwrite: true
- recovery-evidence/restore-verification.txt
-          grep -q '^tenant_schema=PASS
-
-      - name: Publish sanitized restore-test evidence
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          import hashlib, json, os
-          from datetime import datetime, timezone
-          from pathlib import Path
-          archive = Path("recovery-evidence/allpha-p02-pre-migration.dump")
-          verification = Path("recovery-evidence/restore-verification.txt")
-          result = {
-              "project_ref": "dvdziauyvuhcnqhrrvww",
-              "source_backup_run_id": int(os.environ["BACKUP_RUN_ID"]),
-              "source_backup_artifact_name": "eng-p02-pre-migration-db-backup",
-              "backup_sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
-              "restore_completed": True,
-              "production_database_touched": False,
-              "production_migration_applied": False,
-              "storage_objects_included": False,
-              "verified_at_utc": datetime.now(timezone.utc).isoformat(),
-              "verification": verification.read_text().splitlines(),
-          }
-          Path("recovery-evidence/restore-verification.json").write_text(json.dumps(result, indent=2) + "\n")
-          PY
-
-      - name: Upload verified disposable restore evidence
-        uses: actions/upload-artifact@v4
-        with:
-          name: eng-p02-disposable-restore-verification
-          path: |
-            recovery-evidence/restore-verification.json
-            recovery-evidence/restore-verification.txt
-          if-no-files-found: error
-          retention-days: 90
-          overwrite: true
- recovery-evidence/restore-verification.txt
-          grep -q '^identity_rls=PASS
-
-      - name: Publish sanitized restore-test evidence
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          import hashlib, json, os
-          from datetime import datetime, timezone
-          from pathlib import Path
-          archive = Path("recovery-evidence/allpha-p02-pre-migration.dump")
-          verification = Path("recovery-evidence/restore-verification.txt")
-          result = {
-              "project_ref": "dvdziauyvuhcnqhrrvww",
-              "source_backup_run_id": int(os.environ["BACKUP_RUN_ID"]),
-              "source_backup_artifact_name": "eng-p02-pre-migration-db-backup",
-              "backup_sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
-              "restore_completed": True,
-              "production_database_touched": False,
-              "production_migration_applied": False,
-              "storage_objects_included": False,
-              "verified_at_utc": datetime.now(timezone.utc).isoformat(),
-              "verification": verification.read_text().splitlines(),
-          }
-          Path("recovery-evidence/restore-verification.json").write_text(json.dumps(result, indent=2) + "\n")
-          PY
-
-      - name: Upload verified disposable restore evidence
-        uses: actions/upload-artifact@v4
-        with:
-          name: eng-p02-disposable-restore-verification
-          path: |
-            recovery-evidence/restore-verification.json
-            recovery-evidence/restore-verification.txt
-          if-no-files-found: error
-          retention-days: 90
-          overwrite: true
- recovery-evidence/restore-verification.txt
-
-      - name: Publish sanitized restore-test evidence
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          import hashlib, json, os
-          from datetime import datetime, timezone
-          from pathlib import Path
-          archive = Path("recovery-evidence/allpha-p02-pre-migration.dump")
-          verification = Path("recovery-evidence/restore-verification.txt")
-          result = {
-              "project_ref": "dvdziauyvuhcnqhrrvww",
-              "source_backup_run_id": int(os.environ["BACKUP_RUN_ID"]),
-              "source_backup_artifact_name": "eng-p02-pre-migration-db-backup",
-              "backup_sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
-              "restore_completed": True,
-              "production_database_touched": False,
-              "production_migration_applied": False,
-              "storage_objects_included": False,
-              "verified_at_utc": datetime.now(timezone.utc).isoformat(),
-              "verification": verification.read_text().splitlines(),
-          }
-          Path("recovery-evidence/restore-verification.json").write_text(json.dumps(result, indent=2) + "\n")
-          PY
-
-      - name: Upload verified disposable restore evidence
-        uses: actions/upload-artifact@v4
-        with:
-          name: eng-p02-disposable-restore-verification
-          path: |
-            recovery-evidence/restore-verification.json
-            recovery-evidence/restore-verification.txt
           if-no-files-found: error
           retention-days: 90
           overwrite: true
