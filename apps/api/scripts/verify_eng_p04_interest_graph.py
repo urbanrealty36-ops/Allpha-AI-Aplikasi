@@ -206,8 +206,23 @@ begin
     raise exception 'interest graph export sources missing';
   end if;
 end $$;
+update public.user_settings
+   set privacy_settings='{"discoverable_by_username":true,"allow_interest_matching":false}'::jsonb
+ where user_id='{OWNER}';
+do $
+begin
+  if exists(select 1 from public.user_interest_graph_signals where user_id='{OWNER}' and signal_source='observed_interaction') then
+    raise exception 'observed Habit signal survived Discovery consent opt-out';
+  end if;
+  if not exists(select 1 from public.user_interest_graph_signal_events where user_id='{OWNER}' and action='delete' and signal_source='observed_interaction') then
+    raise exception 'Discovery consent opt-out audit event missing';
+  end if;
+end $;
+update public.user_settings
+   set privacy_settings='{"discoverable_by_username":true,"allow_interest_matching":true}'::jsonb
+ where user_id='{OWNER}';
 update public.feed_preferences set personalization_enabled=false where user_id='{OWNER}';
-do $$
+do $
 begin
   if exists(select 1 from public.user_interest_graph_signals where user_id='{OWNER}' and signal_source='observed_interaction') then
     raise exception 'observed Habit signal survived personalization opt-out';
