@@ -398,110 +398,8 @@ jobs:
                 where table_schema='public' and table_name='account_export_jobs' and column_name='expires_at')
                 then 'export_expires_at=PASS' else 'export_expires_at=FAIL' end;
             " | tee -a recovery-evidence/p03-export-expiry-verification.txt
-          grep -q '^export_cleanup_queue=PASS
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          import hashlib, json, os
-          from datetime import datetime, timezone
-          from pathlib import Path
-          archive = Path("recovery-evidence/allpha-p02-pre-migration.dump")
-          verification = Path("recovery-evidence/restore-verification.txt")
-          p03_verification = Path("recovery-evidence/p03-disposable-migration-verification.txt")
-          result = {
-              "project_ref": "dvdziauyvuhcnqhrrvww",
-              "source_backup_run_id": int(os.environ["BACKUP_RUN_ID"]),
-              "source_backup_artifact_name": "eng-p02-pre-migration-db-backup",
-              "backup_sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
-              "restore_completed": True,
-              "production_database_touched": False,
-              "production_migration_applied": False,
-              "p03_disposable_migration_applied": True,
-              "p03_migration_blob": os.environ["P03_MIGRATION_BLOB"],
-              "p03_consent_migration_applied": True,
-              "p03_consent_migration_blob": os.environ["P03_CONSENT_MIGRATION_BLOB"],
-              "p03_consent_idempotency_repair_verified": True,
-              "p03_export_lease_migration_applied": True,
-              "p03_export_lease_migration_blob": os.environ["P03_EXPORT_LEASE_MIGRATION_BLOB"],
-              "p03_export_expiry_migration_applied": True,
-              "p03_export_expiry_migration_blob": os.environ["P03_EXPORT_EXPIRY_MIGRATION_BLOB"],
-              "storage_objects_included": False,
-              "verified_at_utc": datetime.now(timezone.utc).isoformat(),
-              "verification": verification.read_text().splitlines(),
-              "p03_migration_verification": p03_verification.read_text().splitlines(),
-              "p03_consent_migration_verification": Path("recovery-evidence/p03-consent-event-verification.txt").read_text().splitlines(),
-              "p03_export_lease_verification": Path("recovery-evidence/p03-export-lease-verification.txt").read_text().splitlines(),
-              "p03_export_expiry_verification": Path("recovery-evidence/p03-export-expiry-verification.txt").read_text().splitlines(),
-          }
-          Path("recovery-evidence/restore-verification.json").write_text(json.dumps(result, indent=2) + "\n")
-          PY
-
-      - name: Upload verified disposable restore evidence
-        uses: actions/upload-artifact@v4
-        with:
-          name: eng-p02-disposable-restore-verification
-          path: |
-            recovery-evidence/restore-verification.json
-            recovery-evidence/restore-verification.txt
-            recovery-evidence/p03-disposable-migration-verification.txt
-            recovery-evidence/p03-consent-event-verification.txt
-            recovery-evidence/p03-export-lease-verification.txt
-            recovery-evidence/p03-export-expiry-verification.txt
-          if-no-files-found: error
-          retention-days: 90
-          overwrite: true
- recovery-evidence/p03-export-expiry-verification.txt
-          grep -q '^export_expires_at=PASS
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          import hashlib, json, os
-          from datetime import datetime, timezone
-          from pathlib import Path
-          archive = Path("recovery-evidence/allpha-p02-pre-migration.dump")
-          verification = Path("recovery-evidence/restore-verification.txt")
-          p03_verification = Path("recovery-evidence/p03-disposable-migration-verification.txt")
-          result = {
-              "project_ref": "dvdziauyvuhcnqhrrvww",
-              "source_backup_run_id": int(os.environ["BACKUP_RUN_ID"]),
-              "source_backup_artifact_name": "eng-p02-pre-migration-db-backup",
-              "backup_sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
-              "restore_completed": True,
-              "production_database_touched": False,
-              "production_migration_applied": False,
-              "p03_disposable_migration_applied": True,
-              "p03_migration_blob": os.environ["P03_MIGRATION_BLOB"],
-              "p03_consent_migration_applied": True,
-              "p03_consent_migration_blob": os.environ["P03_CONSENT_MIGRATION_BLOB"],
-              "p03_consent_idempotency_repair_verified": True,
-              "p03_export_lease_migration_applied": True,
-              "p03_export_lease_migration_blob": os.environ["P03_EXPORT_LEASE_MIGRATION_BLOB"],
-              "storage_objects_included": False,
-              "verified_at_utc": datetime.now(timezone.utc).isoformat(),
-              "verification": verification.read_text().splitlines(),
-              "p03_migration_verification": p03_verification.read_text().splitlines(),
-              "p03_consent_migration_verification": Path("recovery-evidence/p03-consent-event-verification.txt").read_text().splitlines(),
-              "p03_export_lease_verification": Path("recovery-evidence/p03-export-lease-verification.txt").read_text().splitlines(),
-          }
-          Path("recovery-evidence/restore-verification.json").write_text(json.dumps(result, indent=2) + "\n")
-          PY
-
-      - name: Upload verified disposable restore evidence
-        uses: actions/upload-artifact@v4
-        with:
-          name: eng-p02-disposable-restore-verification
-          path: |
-            recovery-evidence/restore-verification.json
-            recovery-evidence/restore-verification.txt
-            recovery-evidence/p03-disposable-migration-verification.txt
-            recovery-evidence/p03-consent-event-verification.txt
-            recovery-evidence/p03-export-lease-verification.txt
-          if-no-files-found: error
-          retention-days: 90
-          overwrite: true
- recovery-evidence/p03-export-expiry-verification.txt
+          grep -q '^export_cleanup_queue=PASS$' recovery-evidence/p03-export-expiry-verification.txt
+          grep -q '^export_expires_at=PASS$' recovery-evidence/p03-export-expiry-verification.txt
           echo "P03_EXPORT_EXPIRY_MIGRATION_BLOB=$(git rev-parse HEAD:"$migration")" >> "$GITHUB_ENV"
 
       - name: Publish sanitized restore-test evidence
@@ -552,4 +450,3 @@ jobs:
             recovery-evidence/p03-export-lease-verification.txt
           if-no-files-found: error
           retention-days: 90
-          overwrite: true
