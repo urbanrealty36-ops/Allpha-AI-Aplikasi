@@ -52,7 +52,7 @@ def test_remaining_source_dispositions_preserve_shared_conversations_and_spatial
 IDENTITY_TOMBSTONES = MIGRATIONS / "20261123180112_eng_p03_identity_tombstones_and_provider_cancellation.sql"
 EXECUTOR_HARDENING = MIGRATIONS / "20261123180725_eng_p03_executor_referential_integrity_hardening.sql"
 STRIPE_ENVIRONMENT = MIGRATIONS / "20261123181359_eng_p03_billing_stripe_environment_binding.sql"
-LEGACY_BILLING_GUARD = MIGRATIONS / "20261124202000_eng_p03_legacy_billing_order_rpc_guard.sql"
+LEGACY_BILLING_GUARD = MIGRATIONS / "20261123181531_eng_p03_legacy_billing_order_rpc_guard.sql"
 API_SOURCE = Path(__file__).parents[1] / "src" / "allpha_api" / "stripe_billing_api.py"
 WORKER_SOURCE = Path(__file__).parents[1] / "src" / "allpha_api" / "account_lifecycle_worker.py"
 
