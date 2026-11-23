@@ -185,7 +185,7 @@ update public.feed_preferences set personalization_enabled=true where user_id='{
 update public.user_settings
    set privacy_settings='{{"discoverable_by_username":true,"allow_interest_matching":false}}'::jsonb
  where user_id='{OWNER}';
-do $
+do $$
 begin
   begin
     perform * from public.set_user_interest_graph_signal_for_actor(
@@ -194,11 +194,11 @@ begin
     raise exception 'observed Habit signal unexpectedly succeeded without Discovery consent';
   exception when insufficient_privilege then null;
   end;
-end $;
+end $$;
 update public.user_settings
    set privacy_settings='{{"discoverable_by_username":true,"allow_interest_matching":true}}'::jsonb
  where user_id='{OWNER}';
-do $
+do $$
 begin
   begin
     perform * from public.set_user_interest_graph_signal_for_actor(
@@ -207,7 +207,7 @@ begin
     raise exception 'sensitive observed Habit signal unexpectedly succeeded with both consents';
   exception when insufficient_privilege then null;
   end;
-end $;
+end $$;
 select * from public.set_user_interest_graph_signal_for_actor(
  '{OWNER}','technology','habit',0.6,'observed_interaction','interest-graph-v1',null
 );
