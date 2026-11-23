@@ -87,7 +87,7 @@ async def app_lifespan(app: FastAPI):
         worker = AccountLifecycleWorker()
         app.state.account_lifecycle_worker = worker
         worker_task = asyncio.create_task(worker.run(), name="allpha-account-lifecycle-worker")
-        logger.info("account_lifecycle_worker_started mode=api_lifespan")
+        logger.warning("account_lifecycle_worker_attached mode=api_lifespan")
     try:
         yield
     finally:
@@ -338,8 +338,25 @@ async def get_credit_balance(user: dict[str, Any] = Depends(current_user)) -> di
     return {"account_id": user["id"], **balance}
 
 @app.get("/healthz", tags=["system"])
-async def healthz() -> dict[str, str]:
-    return {"status": "ok", "service": APP_NAME}
+async def healthz() -> dict[str, Any]:
+    worker = getattr(app.state, "account_lifecycle_worker", None)
+    worker_status = "disabled" if worker is None else (
+        "degraded" if worker.last_error_code else "running"
+    )
+    return {
+        "status": "ok",
+        "service": APP_NAME,
+        "workers": {
+            "account_lifecycle": {
+                "status": worker_status,
+                "started_at": worker.started_at if worker is not None else None,
+                "last_poll_at": worker.last_poll_at if worker is not None else None,
+                "last_claimed_count": worker.last_claimed_count if worker is not None else 0,
+                "poll_count": worker.poll_count if worker is not None else 0,
+                "last_error_code": worker.last_error_code if worker is not None else None,
+            }
+        },
+    }
 
 
 @app.get("/readyz", tags=["system"])
