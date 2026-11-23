@@ -119,7 +119,7 @@ export function AccountDataLifecycleScreen({ apiBase, getAccessToken }: Props) {
       <Text style={{ color: "#FFFFFF", fontSize: 20, fontWeight: "800" }}>Ekspor & penghapusan data</Text>
       <Text style={{ color: "#AAB4CC", lineHeight: 20 }}>Permintaan diproses backend Allpha. Arsip akun disimpan privat dan tautan unduhan bersifat sementara.</Text>
       {!!error && <Text accessibilityRole="alert" style={{ color: "#FF9AAB" }}>{error}</Text>}
-      {!!message && <Text accessibilityRole="status" style={{ color: "#8FE0B2" }}>{message}</Text>}
+      {!!message && <Text accessibilityLiveRegion="polite" style={{ color: "#8FE0B2" }}>{message}</Text>}
 
       <View style={{ backgroundColor: "#111A2D", borderRadius: 16, padding: 14, gap: 12 }}>
         <Text style={{ color: "#FFFFFF", fontSize: 16, fontWeight: "700" }}>Salinan data akun</Text>
