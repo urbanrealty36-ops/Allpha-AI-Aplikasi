@@ -340,6 +340,61 @@ def test_recommendations_rank_public_mutual_connections_and_respect_privacy_and_
     assert body["items"][0]["reason"] == "mutual_connections"
 
 
+def test_interest_only_recommendations_use_only_opted_in_discovery_index_and_rank_shared_interests(monkeypatch):
+    candidate_a = "00000000-0000-4000-8000-000000000601"
+    candidate_b = "00000000-0000-4000-8000-000000000602"
+    candidate_private = "00000000-0000-4000-8000-000000000603"
+    calls = []
+
+    async def fake_rows(method, path, token, *, params=None, body=None, prefer=None):
+        params = params or {}
+        if path == "user_interests" and method == "GET":
+            return [{"interest_key": "technology"}, {"interest_key": "design_ui_ux"}]
+        return []
+
+    async def fake_server_db(method, table, *, params=None, body=None, prefer=None):
+        params = params or {}
+        calls.append((method, table, params, body))
+        if table == "rpc/find_interest_discovery_candidates":
+            assert method == "POST"
+            assert body == {"p_interest_keys": ["design_ui_ux", "technology"], "p_limit": 5000}
+            return [
+                {"user_id": candidate_a, "interest_key": "technology"},
+                {"user_id": candidate_a, "interest_key": "design_ui_ux"},
+                {"user_id": candidate_b, "interest_key": "technology"},
+            ]
+        if table == "profiles":
+            return [
+                {"id": candidate_a, "username": "interest-a", "display_name": "Interest A", "visibility": "public", "account_status": "active"},
+                {"id": candidate_b, "username": "interest-b", "display_name": "Interest B", "visibility": "public", "account_status": "active"},
+            ]
+        if table == "user_settings":
+            return [
+                {"user_id": candidate_a, "privacy_settings": {"discoverable_by_username": True, "allow_interest_matching": True}},
+                {"user_id": candidate_b, "privacy_settings": {"discoverable_by_username": True, "allow_interest_matching": True}},
+            ]
+        raise AssertionError((method, table, params, body))
+
+    monkeypatch.setattr(social_graph_api, "_rows", fake_rows)
+    monkeypatch.setattr(social_graph_api, "_server_db", fake_server_db)
+    app.dependency_overrides[current_user] = _user
+    try:
+        response = TestClient(app).get("/v1/social/recommendations?limit=10")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["strategy"] == "shared_interests"
+    assert body["count"] == 2
+    assert body["items"][0]["id"] == candidate_a
+    assert body["items"][0]["shared_interests_count"] == 2
+    assert body["items"][0]["recommendation_score"] == 6
+    assert body["items"][1]["id"] == candidate_b
+    assert candidate_private not in {item["id"] for item in body["items"]}
+    assert any(table == "rpc/find_interest_discovery_candidates" for _, table, _, _ in calls)
+
+
 AGENT_RECOMMENDATION_A = "00000000-0000-4000-8000-000000000501"
 AGENT_RECOMMENDATION_BLOCKED = "00000000-0000-4000-8000-000000000502"
 AGENT_RECOMMENDATION_FOLLOWED = "00000000-0000-4000-8000-000000000503"
@@ -410,7 +465,7 @@ def test_agent_recommendations_require_public_active_owned_agents_and_respect_bl
 
     assert response.status_code == 200, response.text
     body = response.json()
-    assert body["strategy"] == "mutual_connection_owners"
+    assert body["strategy"] == "mutual_connection_owners_and_shared_interests"
     assert body["count"] == 1
     assert body["items"][0]["id"] == AGENT_RECOMMENDATION_A
     assert body["items"][0]["mutual_followers_count"] == 2
