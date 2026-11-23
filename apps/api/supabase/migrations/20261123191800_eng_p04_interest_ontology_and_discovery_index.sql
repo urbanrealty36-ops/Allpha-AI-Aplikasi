@@ -231,3 +231,4 @@ grant execute on function public.find_interest_discovery_candidates(text[],integ
 
 revoke insert,update,delete on public.user_interests from anon,authenticated;
 grant select on public.user_interests to authenticated;
+grant select,insert,update,delete on public.user_interests to service_role;
