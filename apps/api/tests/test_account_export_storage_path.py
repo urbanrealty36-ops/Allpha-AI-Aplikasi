@@ -1,6 +1,6 @@
 import uuid
 
-from allpha_api.account_lifecycle_api import _valid_export_storage_path
+from allpha_api.account_lifecycle_api import _export_artifact_expired, _valid_export_storage_path
 
 
 USER_ID = "11111111-1111-4111-8111-111111111111"
@@ -24,3 +24,11 @@ def test_rejects_export_path_for_another_user_or_job():
 def test_rejects_path_traversal_and_non_uuid_lease_tokens():
     assert not _valid_export_storage_path(USER_ID, JOB_ID, f"{USER_ID}/{JOB_ID}/../other.json.gz")
     assert not _valid_export_storage_path(USER_ID, JOB_ID, f"{USER_ID}/{JOB_ID}/not-a-uuid.json.gz")
+
+
+def test_export_expiration_is_fail_closed_for_invalid_timestamp_and_respects_policy_timestamp():
+    assert _export_artifact_expired("2026-01-01T00:00:00Z")
+    assert not _export_artifact_expired("2099-01-01T00:00:00Z")
+    assert not _export_artifact_expired(None)
+    assert _export_artifact_expired("not-a-timestamp")
+    assert _export_artifact_expired("2099-01-01T00:00:00")
