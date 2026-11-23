@@ -224,6 +224,7 @@ begin
   return query
   select i.user_id,i.interest_key
     from private.user_interest_discovery_index i
+    join public.interest_catalog c on c.interest_key=i.interest_key and c.active=true
    where i.interest_key=any(p_interest_keys)
    order by i.interest_key,i.user_id
    limit p_limit;
