@@ -16,7 +16,7 @@ on:
       - "apps/api/supabase/migrations/20261123180112_eng_p03_identity_tombstones_and_provider_cancellation.sql"
       - "apps/api/supabase/migrations/20261123180725_eng_p03_executor_referential_integrity_hardening.sql"
       - "apps/api/supabase/migrations/20261123181359_eng_p03_billing_stripe_environment_binding.sql"
-      - "apps/api/supabase/migrations/20261124202000_eng_p03_legacy_billing_order_rpc_guard.sql"
+      - "apps/api/supabase/migrations/20261123181531_eng_p03_legacy_billing_order_rpc_guard.sql"
       - "apps/api/src/allpha_api/stripe_billing_api.py"
       - "apps/api/tests/test_account_lifecycle_api.py"
       - "apps/api/tests/test_account_lifecycle_governance_api.py"
