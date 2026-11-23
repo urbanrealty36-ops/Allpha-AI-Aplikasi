@@ -212,3 +212,73 @@ def test_export_worker_retains_artifact_when_completion_result_is_ambiguous():
         assert "complete_account_export_job" in calls
 
     asyncio.run(scenario())
+
+
+def test_expired_export_cleanup_worker_deletes_artifact_then_confirms_database_state():
+    async def scenario():
+        worker = _worker()
+        deleted = []
+        calls = []
+
+        async def rpc(name, payload):
+            calls.append((name, payload))
+            if name == "enqueue_expired_account_export_artifacts":
+                return 1
+            if name == "claim_account_export_artifact_cleanup_jobs":
+                return [{
+                    "id": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+                    "export_job_id": JOB["id"],
+                    "storage_bucket": "account-exports",
+                    "storage_path": f"{JOB['user_id']}/{JOB['id']}/{JOB['lease_token']}.json.gz",
+                    "lease_token": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+                    "attempts": 1,
+                }]
+            if name == "complete_account_export_artifact_cleanup_job":
+                return True
+            raise AssertionError(name)
+
+        async def delete_upload(path):
+            deleted.append(path)
+
+        worker.rpc = rpc
+        worker.delete_upload = delete_upload
+        assert await worker.cleanup_batch() == 1
+        assert deleted == [f"{JOB['user_id']}/{JOB['id']}/{JOB['lease_token']}.json.gz"]
+        assert calls[-1][0] == "complete_account_export_artifact_cleanup_job"
+
+    asyncio.run(scenario())
+
+
+def test_expired_export_cleanup_retries_when_storage_delete_fails():
+    async def scenario():
+        worker = _worker()
+        failed = []
+
+        async def rpc(name, payload):
+            if name == "enqueue_expired_account_export_artifacts":
+                return 1
+            if name == "claim_account_export_artifact_cleanup_jobs":
+                return [{
+                    "id": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+                    "export_job_id": JOB["id"],
+                    "storage_bucket": "account-exports",
+                    "storage_path": f"{JOB['user_id']}/{JOB['id']}/{JOB['lease_token']}.json.gz",
+                    "lease_token": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+                    "attempts": 2,
+                }]
+            if name == "fail_account_export_artifact_cleanup_job":
+                failed.append(payload)
+                return True
+            raise AssertionError(name)
+
+        async def delete_upload(path):
+            raise RuntimeError("storage unavailable")
+
+        worker.rpc = rpc
+        worker.delete_upload = delete_upload
+        assert await worker.cleanup_batch() == 1
+        assert len(failed) == 1
+        assert failed[0]["p_error_code"] == "RuntimeError"
+        assert failed[0]["p_retry_seconds"] == 60
+
+    asyncio.run(scenario())
