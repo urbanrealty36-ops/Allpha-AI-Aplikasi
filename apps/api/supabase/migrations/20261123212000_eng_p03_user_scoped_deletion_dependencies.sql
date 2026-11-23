@@ -202,7 +202,7 @@ begin
     jsonb_build_object('execution_job_id',v_job.id,'policy_snapshot',v_policy_snapshot));
   return jsonb_build_object('outcome','queued','job_id',v_job.id);
 end;
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.execute_account_deletion_execution_job(p_job_id uuid, p_lease_token uuid)
  RETURNS boolean
@@ -393,5 +393,4 @@ begin
   where id=v_job.id;
   return true;
 end;
-$function$
-
+$function$;
