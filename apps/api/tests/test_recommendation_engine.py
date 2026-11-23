@@ -1,4 +1,4 @@
-from allpha_api.recommendation_engine import (
+from allpha_api.recommendation_engine import normalize_weights, (
     DEFAULT_WEIGHTS,
     matched_signal_affinity,
     policy_from_rows,
