@@ -23,7 +23,11 @@ values
   ('business_finance','Bisnis & Finansial','auth.interest.businessFinance','business',array['Bisnis & Finansial','Bisnis dan Finansial'],true,50),
   ('design_ui_ux','Desain & UI/UX','auth.interest.designUi','design',array['Desain & UI/UX','Desain'],true,60),
   ('education_research','Edukasi & Riset','auth.interest.education','education',array['Edukasi & Riset','Edukasi'],true,70),
-  ('gaming_metaverse','Gaming & Metaverse','auth.interest.metaverse','gaming',array['Gaming & Metaverse','Gaming'],true,80)
+  ('gaming_metaverse','Gaming & Metaverse','auth.interest.metaverse','gaming',array['Gaming & Metaverse','Gaming'],true,80),
+  ('ai_agents','AI Agents','auth.interest.aiAgents','ai',array['AI Agents','Agen AI'],true,90),
+  ('social_network','Social Network','auth.interest.socialNetwork','social',array['Social Network','Jejaring Sosial'],true,100),
+  ('ai_cinema','AI Cinema & Film','auth.interest.aiCinema','cinema',array['AI Cinema','Film AI'],true,110),
+  ('live_streaming','Live Streaming & Stage','auth.interest.liveStreaming','live',array['Live Streaming','Live Stage'],true,120)
 on conflict (interest_key) do update set
   label=excluded.label,label_key=excluded.label_key,category=excluded.category,
   aliases=excluded.aliases,active=excluded.active,sort_order=excluded.sort_order,updated_at=now();
@@ -69,7 +73,12 @@ values
   ('content_creator','design_ui_ux','related_to',0.8),
   ('business_finance','technology','related_to',0.6),
   ('education_research','technology','related_to',0.6),
-  ('gaming_metaverse','spatial_3d','related_to',0.8)
+  ('gaming_metaverse','spatial_3d','related_to',0.8),
+  ('technology','ai_agents','parent_of',1),
+  ('social_network','content_creator','related_to',0.8),
+  ('content_creator','ai_cinema','related_to',0.8),
+  ('ai_cinema','live_streaming','related_to',0.9),
+  ('social_network','ai_agents','related_to',0.7)
 on conflict (source_interest_key,target_interest_key,relation_type) do update
 set weight=excluded.weight,active=true;
 
