@@ -1,11 +1,10 @@
 name: ENG-P02 Verify Pre-Migration Backup Restore
 
 on:
-  workflow_dispatch:
-  push:
+  workflow_run:
+    workflows: ["ENG-P02 Create Pre-Migration Database Backup"]
+    types: [completed]
     branches: [main]
-    paths:
-      - .github/workflows/eng-p02-backup-restore-verification.yml
 
 permissions:
   actions: read
@@ -20,9 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      BACKUP_RUN_ID: "45095637852"
-      BACKUP_ARTIFACT_ID: "14783236131"
-      EXPECTED_BACKUP_SHA256: "786e964f7f39bddb405d00fc5e88c330b8af82dbb165d47e71175c9f3e970df0"
+      BACKUP_RUN_ID: ${{ github.event.workflow_run.id }}
       LOCAL_DB_PASSWORD: postgres
     steps:
       - uses: actions/checkout@v4
@@ -42,17 +39,17 @@ jobs:
           test -s recovery-evidence/allpha-p02-pre-migration.dump
           test -s recovery-evidence/restore-point-evidence.json
           actual_sha256="$(sha256sum recovery-evidence/allpha-p02-pre-migration.dump | awk '{print $1}')"
-          test "$actual_sha256" = "$EXPECTED_BACKUP_SHA256"
+          export ACTUAL_BACKUP_SHA256="$actual_sha256"
           python - <<'PY'
-          import json
+          import json, os
           from pathlib import Path
           manifest = json.loads(Path("recovery-evidence/restore-point-evidence.json").read_text())
           assert manifest["project_ref"] == "dvdziauyvuhcnqhrrvww"
           assert manifest["restore_tested"] is False
           assert manifest["database_migration_applied"] is False
           assert manifest["restore_executed"] is False
-          assert manifest["sha256"] == "786e964f7f39bddb405d00fc5e88c330b8af82dbb165d47e71175c9f3e970df0"
-          print("Backup artifact identity and original manifest verified; no production restore or DDL is performed.")
+          assert manifest["sha256"] == os.environ["ACTUAL_BACKUP_SHA256"]
+          print("Fresh backup artifact identity and self-checksum verified; no production restore or DDL is performed.")
           PY
 
       - name: Create an isolated Supabase restore workspace without project migrations
@@ -160,8 +157,8 @@ jobs:
           evidence = Path("recovery-evidence/restore-verification.txt").read_text().splitlines()
           result = {
               "project_ref": "dvdziauyvuhcnqhrrvww",
-              "source_backup_run_id": 45095637852,
-              "source_backup_artifact_id": 14783236131,
+              "source_backup_run_id": int(os.environ["BACKUP_RUN_ID"]),
+              "source_backup_artifact_name": "eng-p02-pre-migration-db-backup",
               "backup_sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
               "restore_target": "isolated local Supabase PostgreSQL 17 disposable database",
               "restore_completed": True,
