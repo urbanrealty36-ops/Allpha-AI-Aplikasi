@@ -251,3 +251,87 @@ def test_accept_reject_and_remove_relationships_use_server_only_commands(monkeyp
         "accept_social_follow_for_actor", "reject_social_follow_for_actor", "remove_social_edge_for_actor"
     ]
     assert all(body["p_actor_user_id"] == OWNER and body["p_edge_id"] == edge_id for _, body in calls)
+
+
+FOLLOWEE_A = "00000000-0000-4000-8000-000000000401"
+FOLLOWEE_B = "00000000-0000-4000-8000-000000000402"
+CANDIDATE_A = "00000000-0000-4000-8000-000000000411"
+CANDIDATE_B = "00000000-0000-4000-8000-000000000412"
+CANDIDATE_BLOCKED = "00000000-0000-4000-8000-000000000413"
+CANDIDATE_ALREADY_FOLLOWED = "00000000-0000-4000-8000-000000000414"
+CANDIDATE_BLOCKED_BY = "00000000-0000-4000-8000-000000000415"
+CANDIDATE_PRIVATE = "00000000-0000-4000-8000-000000000416"
+
+
+def test_recommendations_rank_public_mutual_connections_and_respect_privacy_and_blocks(monkeypatch):
+    async def fake_rows(method, path, token, *, params=None, body=None, prefer=None):
+        params = params or {}
+        if path != "social_edges" or method != "GET":
+            return []
+        if params.get("actor_user_id") == f"eq.{OWNER}" and params.get("edge_type") == "eq.follow":
+            if params.get("status") == "eq.active":
+                return [{"target_user_id": FOLLOWEE_A}, {"target_user_id": FOLLOWEE_B}]
+            return [{"target_user_id": CANDIDATE_ALREADY_FOLLOWED, "status": "active"}]
+        if params.get("actor_user_id") == f"eq.{OWNER}" and params.get("edge_type") == "in.(block,mute)":
+            return [{"target_user_id": CANDIDATE_BLOCKED, "edge_type": "block"}]
+        if params.get("target_user_id") == f"eq.{OWNER}" and params.get("edge_type") == "eq.block":
+            return [{"actor_user_id": CANDIDATE_BLOCKED_BY}]
+        return []
+
+    async def fake_server_db(method, table, *, params=None, body=None, prefer=None):
+        params = params or {}
+        if table == "profiles":
+            ids = params.get("id", "").removeprefix("in.(").removesuffix(")")
+            requested = set(ids.split(",")) if ids else set()
+            known = {
+                FOLLOWEE_A, FOLLOWEE_B, CANDIDATE_A, CANDIDATE_B,
+                CANDIDATE_BLOCKED, CANDIDATE_ALREADY_FOLLOWED,
+                CANDIDATE_BLOCKED_BY, CANDIDATE_PRIVATE,
+            }
+            return [{
+                "id": identity,
+                "visibility": "private" if identity == CANDIDATE_PRIVATE else "public",
+                "account_status": "active",
+                "username": "user-" + identity[-3:],
+                "display_name": "User " + identity[-3:],
+                "avatar_url": None,
+                "bio": None,
+            } for identity in requested & known]
+        if table == "social_edges":
+            return [
+                {"actor_user_id": CANDIDATE_A, "target_user_id": FOLLOWEE_A},
+                {"actor_user_id": CANDIDATE_A, "target_user_id": FOLLOWEE_B},
+                {"actor_user_id": CANDIDATE_B, "target_user_id": FOLLOWEE_A},
+                {"actor_user_id": CANDIDATE_BLOCKED, "target_user_id": FOLLOWEE_A},
+                {"actor_user_id": CANDIDATE_ALREADY_FOLLOWED, "target_user_id": FOLLOWEE_B},
+                {"actor_user_id": CANDIDATE_BLOCKED_BY, "target_user_id": FOLLOWEE_A},
+                {"actor_user_id": CANDIDATE_PRIVATE, "target_user_id": FOLLOWEE_A},
+            ]
+        if table == "user_settings":
+            return [
+                {"user_id": FOLLOWEE_A, "privacy_settings": {"discoverable_by_username": True, "profile_visibility": "public"}},
+                {"user_id": FOLLOWEE_B, "privacy_settings": {"discoverable_by_username": True, "profile_visibility": "public"}},
+                {"user_id": CANDIDATE_A, "privacy_settings": {"discoverable_by_username": True, "profile_visibility": "public"}},
+                {"user_id": CANDIDATE_B, "privacy_settings": {"discoverable_by_username": False, "profile_visibility": "public"}},
+                {"user_id": CANDIDATE_BLOCKED, "privacy_settings": {"discoverable_by_username": True, "profile_visibility": "public"}},
+                {"user_id": CANDIDATE_ALREADY_FOLLOWED, "privacy_settings": {"discoverable_by_username": True, "profile_visibility": "public"}},
+                {"user_id": CANDIDATE_BLOCKED_BY, "privacy_settings": {"discoverable_by_username": True, "profile_visibility": "public"}},
+                {"user_id": CANDIDATE_PRIVATE, "privacy_settings": {"discoverable_by_username": True, "profile_visibility": "private"}},
+            ]
+        raise AssertionError((method, table, params, body))
+
+    monkeypatch.setattr(social_graph_api, "_rows", fake_rows)
+    monkeypatch.setattr(social_graph_api, "_server_db", fake_server_db)
+    app.dependency_overrides[current_user] = _user
+    try:
+        response = TestClient(app).get("/v1/social/recommendations?limit=10")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["strategy"] == "mutual_connections"
+    assert body["count"] == 1
+    assert body["items"][0]["id"] == CANDIDATE_A
+    assert body["items"][0]["mutual_followers_count"] == 2
+    assert body["items"][0]["reason"] == "mutual_connections"
