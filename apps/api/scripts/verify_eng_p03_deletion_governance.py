@@ -6,6 +6,7 @@ import subprocess,sys,time,uuid
 ROOT=Path(__file__).resolve().parents[3]
 MIGRATION=ROOT/"apps/api/supabase/migrations/20261123192200_eng_p03_deletion_legal_hold_governance_worker.sql"
 SOURCE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123153243_eng_p03_account_deletion_specialized_source_handlers.sql"
+CANONICAL_REGISTRY_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123154208_eng_p03_canonical_source_handler_registry.sql"
 CONTAINER="allpha-p03-deletion-"+uuid.uuid4().hex[:8]
 A="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 B="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
@@ -158,6 +159,11 @@ create table private.account_export_sources(
  source_key text primary key, table_name text not null, filter_kind text not null,
  owner_columns text[] not null default '{}', sort_order integer not null default 100, enabled boolean not null default true
 );
+create table public.account_deletion_source_policies(
+ source_key text primary key,data_class text,deletion_action text,policy_version text,reason text,
+ active boolean not null default false,approved_by uuid,approved_at timestamptz
+);
+create function public.list_account_deletion_source_registry() returns boolean language sql as $ select true $;
 create table public.agent_ownerships(agent_id uuid,owner_user_id uuid,ownership_role text,status text);
 create table public.agent_skills(id uuid primary key,agent_id uuid,created_by uuid);
 create table public.agent_runtime_tasks(id uuid primary key,owner_user_id uuid);
@@ -171,6 +177,7 @@ create table public.community_posts(id uuid primary key,author_id uuid,community
 create table public.workspace_documents(id uuid primary key,created_by uuid,workspace_id uuid);
 create table public.workspace_annotations(id uuid primary key,author_id uuid,workspace_id uuid);
 insert into private.account_export_sources(source_key,table_name,filter_kind) values
+ ('unmapped_source','messages','participant_conversations'),
  ('agent_skills_owned','agent_skills','owned_agents'),
  ('agent_runtime_checkpoints','agent_runtime_checkpoints','owned_runtime_tasks'),
  ('agent_runtime_effect_receipts','agent_runtime_effect_receipts','owned_runtime_tasks'),
@@ -183,6 +190,7 @@ insert into private.account_export_sources(source_key,table_name,filter_kind) va
 """)
                 source_sql=SOURCE_MIGRATION.read_text(encoding="utf-8").split("\ndo " + chr(36) + chr(36),1)[0]
         psql(source_sql)
+        psql(CANONICAL_REGISTRY_MIGRATION.read_text(encoding="utf-8"))
         psql(f"""
 insert into public.agent_ownerships values
  ('{A}','{A}','owner','active'),('{B}','{B}','owner','active'),('{C}','{A}','operator','active'),
@@ -210,8 +218,17 @@ select private.delete_account_source_rows('messages_in_conversations','{A}');
 select private.delete_account_source_rows('community_posts_in_memberships','{A}');
 select private.delete_account_source_rows('workspace_documents_in_memberships','{A}');
 select private.delete_account_source_rows('workspace_annotations_in_memberships','{A}');
+do $
+begin
+ if (select count(*) from public.list_account_deletion_source_registry() where enabled and deletion_handler_available)<>9 then
+   raise exception 'canonical deletion handler registry did not expose all nine specialized handlers';
+ end if;
+ if (select count(*) from public.list_account_deletion_source_registry() where enabled and not deletion_handler_available)<>1 then
+   raise exception 'canonical deletion handler registry failed closed for unknown source';
+ end if;
+end $;
 reset role;
-do $$
+do $
 begin
  if (select count(*) from public.agent_skills)<>2 then raise exception 'agent skill deletion escaped active owner scope'; end if;
  if (select count(*) from public.agent_runtime_checkpoints)<>1 or (select count(*) from public.agent_runtime_effect_receipts)<>1 then raise exception 'runtime task child deletion scope incorrect'; end if;
