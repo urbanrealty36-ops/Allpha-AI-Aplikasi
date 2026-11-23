@@ -50,6 +50,7 @@ def test_feed_ranks_followed_creator_and_applies_block_mute_filters(monkeypatch)
     followed_owner = "eng-p14-followed"
     fresh_owner = "eng-p14-fresh"
     hidden_owner = "eng-p14-hidden"
+    related_owner = "eng-p14-related"
     content_rows = [
         {"id": "00000000-0000-0000-0000-000000000001", "owner_id": followed_owner, "body": "followed",
          "content_type": "text", "visibility": "public", "status": "published", "moderation_status": "approved",
@@ -63,12 +64,23 @@ def test_feed_ranks_followed_creator_and_applies_block_mute_filters(monkeypatch)
         {"id": "00000000-0000-0000-0000-000000000004", "owner_id": "eng-p14-not-interested", "body": "Crypto news",
          "content_type": "text", "visibility": "public", "status": "published", "moderation_status": "approved",
          "version": 1, "created_at": now.isoformat(), "updated_at": now.isoformat(), "published_at": now.isoformat()},
+        {"id": "00000000-0000-0000-0000-000000000005", "owner_id": related_owner, "body": "Spatial 3D render",
+         "content_type": "text", "visibility": "public", "status": "published", "moderation_status": "approved",
+         "version": 1, "created_at": now.isoformat(), "updated_at": now.isoformat(), "published_at": now.isoformat()},
     ]
 
     async def fake_db(method, table, *, params=None, body=None, prefer=None):
         params = params or {}
         if table in {"user_interest_graph_signals", "recommendation_scoring_policies", "interest_taxonomy_edges"}:
             return []
+        if table == "interest_taxonomy_edges":
+            return [{
+                "source_interest_key": "ai",
+                "target_interest_key": "spatial_3d",
+                "relation_type": "parent_of",
+                "weight": 0.8,
+                "active": True,
+            }]
         if table == "feed_preferences":
             return []
         if table == "feed_feedback":
@@ -108,11 +120,13 @@ def test_feed_ranks_followed_creator_and_applies_block_mute_filters(monkeypatch)
         assert response.status_code == 200, response.text
         payload = response.json()
         assert payload["mode"] == "for_you"
-        assert len(payload["items"]) == 2
+        assert len(payload["items"]) == 3
         assert payload["items"][0]["owner_id"] == followed_owner
         assert "followed_creator" in payload["items"][0]["ranking_signals"]
         fresh_item = next(item for item in payload["items"] if item["owner_id"] == fresh_owner)
         assert "explicit_interest_match" in fresh_item["ranking_signals"]
+        related_item = next(item for item in payload["items"] if item["owner_id"] == related_owner)
+        assert "explicit_interest_match" in related_item["ranking_signals"]
         assert hidden_owner not in {item["owner_id"] for item in payload["items"]}
         assert "eng-p14-not-interested" not in {item["owner_id"] for item in payload["items"]}
     finally:
