@@ -60,6 +60,10 @@ grant usage on schema public to service_role;
         psql("""
 create policy organizations_legacy_permissive_read
   on public.organizations for select to authenticated using (true);
+create policy memberships_legacy_permissive_read
+  on public.organization_memberships for select to authenticated using (true);
+create policy audit_events_legacy_permissive_read
+  on public.audit_events for select to authenticated using (true);
 grant all privileges on table public.organizations,public.organization_memberships,public.audit_events to authenticated;
 grant insert (owner_id), update (owner_id) on table public.organizations to authenticated;
 """)
@@ -146,6 +150,17 @@ select 1 / case when count(*) = 0 then 1 else 0 end = 1 as outsider_organization
   from public.organizations where slug='eng-p02-repair-check';
 select 1 / case when count(*) = 0 then 1 else 0 end = 1 as outsider_membership_read_denied
   from public.organization_memberships where user_id='11111111-1111-4111-8111-111111111111';
+select 1 / case when count(*) = 0 then 1 else 0 end = 1 as outsider_audit_read_denied
+  from public.audit_events where organization_id=current_setting('app.test_org_id')::uuid;
+select 1 / case when not exists (
+  select 1 from pg_catalog.pg_policies
+   where schemaname='public'
+     and policyname in (
+       'organizations_legacy_permissive_read',
+       'memberships_legacy_permissive_read',
+       'audit_events_legacy_permissive_read'
+     )
+) then 1 else 0 end = 1 as legacy_tenant_policies_removed;
 select set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',false);
 select set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',false);
 select id, is_current, user_agent, ip from public.list_my_auth_sessions('66666666-6666-4666-8666-666666666666');
