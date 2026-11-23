@@ -237,7 +237,7 @@ async def get_social_recommendations(
         if row.get("interest_key")
     })
     if not followed_ids and (node_type == "agent" or not viewer_interest_keys):
-        return {"items": [], "count": 0, "strategy": "mutual_connections_and_shared_interests"}
+        return {"items": [], "count": 0, "strategy": "mutual_connections_and_shared_interests", "ranking_version": policy_version}
 
     followee_profiles = []
     followee_settings = []
@@ -405,7 +405,7 @@ async def get_social_recommendations(
     ranked_ids = sorted(
         candidate_pool,
         key=lambda candidate_id: (
-            -(mutual_counts.get(candidate_id, 0) * 2 + interest_counts.get(candidate_id, 0) * 3),
+            -score_creator_candidate(mutual_counts.get(candidate_id, 0), interest_counts.get(candidate_id, 0), policy_weights),
             -mutual_counts.get(candidate_id, 0),
             candidate_id,
         ),
