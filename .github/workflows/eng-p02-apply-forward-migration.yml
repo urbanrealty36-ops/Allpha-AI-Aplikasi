@@ -81,7 +81,7 @@ jobs:
             exit 1
           fi
           if grep -Eiq '(^|[^a-z_])(drop[[:space:]]+(table|schema|column)|truncate([[:space:]]|;))([^a-z_]|$)' apps/api/supabase/migrations/20261123191500_eng_p02_forward_repair_tenant_and_session_schema.sql; then
-            echo "::error::The reviewed migration contains destructive data/schema operations; refuse automatic application."
+            echo "::error::The reviewed migration contains destructive table/schema operations or truncation; refuse automatic application."
             exit 1
           fi
           echo "Forward-only and no-destructive-operation guard: PASS."
