@@ -102,6 +102,13 @@ async def _server_db(method: str, table: str, *, params: dict[str, str] | None =
     if response.status_code >= 300:
         if response.status_code == 409:
             raise HTTPException(409, detail={"code": "CONTENT_CONFLICT", "message": "Konten berubah; muat ulang sebelum mencoba lagi."})
+        try:
+            database_error = response.json()
+        except ValueError:
+            database_error = {}
+        database_code = str(database_error.get("code") or "")
+        if database_code in {"PGRST202", "PGRST205", "42P01", "42883"}:
+            raise HTTPException(503, detail={"code": "DATABASE_SCHEMA_NOT_READY", "message": "Skema database belum menerapkan migrasi yang dibutuhkan."})
         raise HTTPException(503, detail={"code": "CONTENT_DATABASE_WRITE_FAILED", "message": "Perubahan konten tidak dapat disimpan."})
     if not response.content:
         return None
