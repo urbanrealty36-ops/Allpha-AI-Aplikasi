@@ -51,6 +51,9 @@ def test_remaining_source_dispositions_preserve_shared_conversations_and_spatial
 
 IDENTITY_TOMBSTONES = MIGRATIONS / "20261123180112_eng_p03_identity_tombstones_and_provider_cancellation.sql"
 EXECUTOR_HARDENING = MIGRATIONS / "20261123180725_eng_p03_executor_referential_integrity_hardening.sql"
+STRIPE_ENVIRONMENT = MIGRATIONS / "20261124201000_eng_p03_billing_stripe_environment_binding.sql"
+API_SOURCE = Path(__file__).parents[1] / "src" / "allpha_api" / "stripe_billing_api.py"
+WORKER_SOURCE = Path(__file__).parents[1] / "src" / "allpha_api" / "account_lifecycle_worker.py"
 
 
 def test_financial_fk_references_use_private_pseudonymous_identity_subjects():
@@ -91,3 +94,20 @@ def test_storage_cleanup_source_and_ownership_transfer_history_are_tombstone_saf
     assert "account_deletion_transfer_identity_subject_unavailable" in source
     assert "user_id=null" in source
     assert "account_deletion_execution_job_subject_redaction_anchor_missing" in source
+
+
+
+def test_subscription_cancellation_uses_the_persisted_stripe_environment_not_checkout_mode():
+    migration = " ".join(STRIPE_ENVIRONMENT.read_text(encoding="utf-8").lower().split())
+    api = " ".join(API_SOURCE.read_text(encoding="utf-8").lower().split())
+    worker = " ".join(WORKER_SOURCE.read_text(encoding="utf-8").lower().split())
+    assert "add column if not exists stripe_environment text" in migration
+    assert "p_stripe_environment text" in migration
+    assert "billing_orders_stripe_environment_check" in migration
+    assert "stripe_environment=v_order.stripe_environment" in migration
+    assert "rename column stripe_mode to stripe_environment" in migration
+    assert "bs.stripe_environment" in migration
+    assert "billing_stripe_environment_required" in migration
+    assert '"p_stripe_environment": stripe_environment' in api
+    assert 'job.get("stripe_environment")' in worker
+    assert "stripe_environment != mode" in worker
