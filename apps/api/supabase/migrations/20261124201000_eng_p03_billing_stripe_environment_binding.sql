@@ -35,7 +35,7 @@ declare
 begin
   if p_owner_user_id is null or coalesce(p_product_key,'') = ''
     or char_length(coalesce(p_idempotency_key,'')) not between 8 and 160
-    or p_stripe_environment not in ('test','live') then
+    or p_stripe_environment is null or p_stripe_environment not in ('test','live') then
     raise exception 'BILLING_ORDER_COMMAND_INVALID' using errcode='22023';
   end if;
   select * into v_order from public.billing_orders
