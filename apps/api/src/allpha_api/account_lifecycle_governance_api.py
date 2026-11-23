@@ -421,7 +421,7 @@ async def update_deletion_dependency_rule(
     existing = await privileged_rest_request(
         "GET", "account_deletion_dependency_rules",
         params={"select": "id,child_schema,child_table,constraint_name,fk_column,delete_rule,resolution_action",
-                "id": f"eq.{rule_id}", "active": "eq.true", "limit": "1"},
+                "id": f"eq.{rule_id}", "limit": "1"},
     )
     if not existing:
         raise fail(404, "ACCOUNT_DELETION_DEPENDENCY_NOT_FOUND", "Aturan foreign key aktif tidak ditemukan.")
@@ -444,7 +444,7 @@ async def update_deletion_dependency_rule(
     )
     rows = await privileged_rest_request(
         "PATCH", "account_deletion_dependency_rules",
-        params={"id": f"eq.{rule_id}", "active": "eq.true"},
+        params={"id": f"eq.{rule_id}"},
         body={"resolution_action": action, "reason": payload.reason,
               "approved_by": str(operator["id"]), "approved_at": datetime.now(timezone.utc).isoformat(),
               "active": payload.active},
