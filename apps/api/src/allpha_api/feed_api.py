@@ -516,7 +516,8 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent", "followi
         not_interested_keys = [str(row["interest_key"]).casefold() for row in (interest_rows or [])
                                if row.get("interest_key") and row.get("preference") == "not_interested"]
         graph_signals = await optional_scoring_rows(_server_db, "user_interest_graph_signals", {
-            "select": "interest_key,signal_type,strength", "user_id": f"eq.{owner}", "limit": "500",
+            "select": "interest_key,signal_type,strength", "user_id": f"eq.{owner}",
+            "agent_id": "is.null", "limit": "500",
         })
         scoring_rows = await optional_scoring_rows(_server_db, "recommendation_scoring_policies", {
             "select": "version,weights,active", "policy_key": "eq.default", "active": "eq.true", "limit": "1",
