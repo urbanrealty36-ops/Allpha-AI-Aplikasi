@@ -79,7 +79,7 @@ jobs:
 
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 3.2.0
 
       - name: Start an isolated local Supabase PostgreSQL 17 stack
         working-directory: restore-workspace
