@@ -68,3 +68,19 @@ def test_interest_signal_data_is_exported_and_observed_signals_are_removed_on_op
     assert "s.signal_source='observed_interaction'" in source
     assert "create policy user_interest_graph_signals_select_self" in source
     assert "create policy user_interest_graph_signal_events_select_self" in source
+
+
+def test_signal_storage_is_nulls_not_distinct_and_uses_a_server_owned_consent_version():
+    source = MIGRATION.read_text(encoding="utf-8").lower()
+    assert "nulls not distinct" in source
+    assert "on conflict (user_id,agent_id,interest_key,signal_type) do update" in source
+    assert "p_consent_version is distinct from 'interest-graph-v1'" in source
+    assert "p_signal_type is null" in source
+    assert "p_signal_source is null" in source
+
+
+def test_privacy_opt_out_removes_observed_signals_for_human_and_owned_agents():
+    source = MIGRATION.read_text(encoding="utf-8").lower()
+    assert "s.user_id=new.user_id and s.signal_source='observed_interaction'" in source
+    assert "returning s.user_id,s.agent_id,s.interest_key,s.signal_type" in source
+    assert "select user_id,agent_id,interest_key,signal_type,'delete'" in source
