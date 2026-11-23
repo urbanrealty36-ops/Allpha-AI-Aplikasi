@@ -96,14 +96,11 @@ catalog_router = APIRouter(tags=["interest-ontology"])
 
 
 @catalog_router.get("/v1/interests/catalog")
-async def list_interest_catalog(
-    request: Request,
-    user: dict[str, Any] = Depends(current_user),
-) -> dict[str, Any]:
+async def list_interest_catalog() -> dict[str, Any]:
     items = await user_db_request(
         "GET",
         "interest_catalog",
-        request.state.supabase_access_token,
+        None,
         params={
             "select": "interest_key,label,label_key,category,aliases,sensitivity,sort_order",
             "active": "eq.true",
@@ -114,7 +111,7 @@ async def list_interest_catalog(
     relationships = await user_db_request(
         "GET",
         "interest_taxonomy_edges",
-        request.state.supabase_access_token,
+        None,
         params={
             "select": "source_interest_key,target_interest_key,relation_type,weight",
             "active": "eq.true",
