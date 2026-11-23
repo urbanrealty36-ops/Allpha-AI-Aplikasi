@@ -5,6 +5,7 @@ import subprocess,sys,time,uuid
 
 ROOT=Path(__file__).resolve().parents[3]
 MIGRATION=ROOT/"apps/api/supabase/migrations/20261123192200_eng_p03_deletion_legal_hold_governance_worker.sql"
+SOURCE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123153243_eng_p03_account_deletion_specialized_source_handlers.sql"
 CONTAINER="allpha-p03-deletion-"+uuid.uuid4().hex[:8]
 A="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 B="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
@@ -149,7 +150,84 @@ begin
   end if;
 end $$;
 """)
-        print("PASS: ENG-P03 legal hold block/release, policy-pending audit, RPC privilege and non-destructive fail-closed behavior.")
+        # Exercise the specialized source handlers in an isolated PostgreSQL database.
+        psql("""
+create schema private;
+grant usage on schema private to service_role;
+create table private.account_export_sources(
+ source_key text primary key, table_name text not null, filter_kind text not null,
+ owner_columns text[] not null default '{}', sort_order integer not null default 100, enabled boolean not null default true
+);
+create table public.agent_ownerships(agent_id uuid,owner_user_id uuid,ownership_role text,status text);
+create table public.agent_skills(id uuid primary key,agent_id uuid,created_by uuid);
+create table public.agent_runtime_tasks(id uuid primary key,owner_user_id uuid);
+create table public.agent_runtime_checkpoints(id uuid primary key,task_id uuid);
+create table public.agent_runtime_effect_receipts(id uuid primary key,task_id uuid);
+create table public.content_items(id uuid primary key,owner_id uuid);
+create table public.content_comments(id uuid primary key,content_id uuid,actor_user_id uuid);
+create table public.content_reactions(id uuid primary key,content_id uuid,actor_user_id uuid);
+create table public.messages(id uuid primary key,sender_user_id uuid,conversation_id uuid);
+create table public.community_posts(id uuid primary key,author_id uuid,community_id uuid);
+create table public.workspace_documents(id uuid primary key,created_by uuid,workspace_id uuid);
+create table public.workspace_annotations(id uuid primary key,author_id uuid,workspace_id uuid);
+insert into private.account_export_sources(source_key,table_name,filter_kind) values
+ ('agent_skills_owned','agent_skills','owned_agents'),
+ ('agent_runtime_checkpoints','agent_runtime_checkpoints','owned_runtime_tasks'),
+ ('agent_runtime_effect_receipts','agent_runtime_effect_receipts','owned_runtime_tasks'),
+ ('content_comments_on_owned','content_comments','owned_content'),
+ ('content_reactions_on_owned','content_reactions','content_activity'),
+ ('messages_in_conversations','messages','conversation_messages'),
+ ('community_posts_in_memberships','community_posts','member_communities'),
+ ('workspace_documents_in_memberships','workspace_documents','member_workspaces'),
+ ('workspace_annotations_in_memberships','workspace_annotations','member_workspaces');
+""")
+        source_sql=SOURCE_MIGRATION.read_text(encoding="utf-8").split("\ndo $",1)[0]
+        psql(source_sql)
+        psql(f"""
+insert into public.agent_ownerships values
+ ('{A}','{A}','owner','active'),('{B}','{B}','owner','active'),('{C}','{A}','operator','active'),
+ ('{uuid.uuid4()}','{A}','owner','inactive');
+insert into public.agent_skills(id,agent_id,created_by) values
+ ('{uuid.uuid4()}','{A}','{A}'),('{uuid.uuid4()}','{B}','{B}'),('{uuid.uuid4()}','{C}','{A}');
+insert into public.agent_runtime_tasks values ('{A}','{A}'),('{B}','{B}');
+insert into public.agent_runtime_checkpoints values ('{uuid.uuid4()}','{A}'),('{uuid.uuid4()}','{B}');
+insert into public.agent_runtime_effect_receipts values ('{uuid.uuid4()}','{A}'),('{uuid.uuid4()}','{B}');
+insert into public.content_items values ('{A}','{A}'),('{B}','{B}');
+insert into public.content_comments values ('{uuid.uuid4()}','{A}','{B}'),('{uuid.uuid4()}','{B}','{A}');
+insert into public.content_reactions values ('{uuid.uuid4()}','{A}','{B}'),('{uuid.uuid4()}','{B}','{A}'),('{uuid.uuid4()}','{B}','{B}');
+insert into public.messages values ('{uuid.uuid4()}','{A}','{C}'),('{uuid.uuid4()}','{B}','{C}');
+insert into public.community_posts values ('{uuid.uuid4()}','{A}','{C}'),('{uuid.uuid4()}','{B}','{C}');
+insert into public.workspace_documents values ('{uuid.uuid4()}','{A}','{C}'),('{uuid.uuid4()}','{B}','{C}');
+insert into public.workspace_annotations values ('{uuid.uuid4()}','{A}','{C}'),('{uuid.uuid4()}','{B}','{C}');
+set request.jwt.claim.role='service_role';
+set role service_role;
+select private.delete_account_source_rows('agent_skills_owned','{A}');
+select private.delete_account_source_rows('agent_runtime_checkpoints','{A}');
+select private.delete_account_source_rows('agent_runtime_effect_receipts','{A}');
+select private.delete_account_source_rows('content_comments_on_owned','{A}');
+select private.delete_account_source_rows('content_reactions_on_owned','{A}');
+select private.delete_account_source_rows('messages_in_conversations','{A}');
+select private.delete_account_source_rows('community_posts_in_memberships','{A}');
+select private.delete_account_source_rows('workspace_documents_in_memberships','{A}');
+select private.delete_account_source_rows('workspace_annotations_in_memberships','{A}');
+reset role;
+do $
+begin
+ if (select count(*) from public.agent_skills)<>2 then raise exception 'agent skill deletion escaped active owner scope'; end if;
+ if (select count(*) from public.agent_runtime_checkpoints)<>1 or (select count(*) from public.agent_runtime_effect_receipts)<>1 then raise exception 'runtime task child deletion scope incorrect'; end if;
+ if (select count(*) from public.content_comments)<>1 then raise exception 'owned content comments deletion scope incorrect'; end if;
+ if (select count(*) from public.content_reactions)<>1 then raise exception 'content activity deletion scope incorrect'; end if;
+ if (select count(*) from public.messages)<>1 then raise exception 'shared conversation deleted another sender message'; end if;
+ if (select count(*) from public.community_posts)<>1 then raise exception 'community membership deleted another author post'; end if;
+ if (select count(*) from public.workspace_documents)<>1 then raise exception 'workspace membership deleted another creator document'; end if;
+ if (select count(*) from public.workspace_annotations)<>1 then raise exception 'workspace membership deleted another author annotation'; end if;
+ if has_function_privilege('authenticated','private.delete_account_source_rows(text,uuid)','EXECUTE')
+    or has_function_privilege('anon','private.delete_account_source_rows(text,uuid)','EXECUTE') then
+   raise exception 'specialized deletion helper exposed to client roles';
+ end if;
+end $;
+""")
+        print("PASS: ENG-P03 legal hold governance and all nine specialized source handlers preserve other users' shared records.")
     finally:
         run(["docker","rm","--force",CONTAINER],check=False)
 
