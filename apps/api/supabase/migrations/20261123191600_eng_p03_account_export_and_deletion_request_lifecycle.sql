@@ -12,6 +12,7 @@ create table if not exists public.account_export_jobs (
   max_attempts integer not null default 5 check (max_attempts between 1 and 10),
   next_attempt_at timestamptz not null default now(),
   lease_token uuid,
+  lease_owner text,
   lease_expires_at timestamptz,
   storage_bucket text not null default 'account-exports',
   storage_path text,
@@ -76,15 +77,19 @@ create index if not exists account_lifecycle_events_subject_idx
 -- is inferred by engineering. Deletion scheduling requires approved rows for
 -- every data class and an independently recorded legal-hold review.
 create table if not exists public.account_data_retention_policies (
-  data_class text primary key,
+  id uuid primary key default gen_random_uuid(),
+  data_class text not null,
   retention_days integer not null check (retention_days >= 0),
   policy_version text not null check (char_length(policy_version) between 1 and 40),
   legal_basis text not null check (char_length(legal_basis) between 1 and 500),
   approved_by uuid not null,
   approved_at timestamptz not null,
   active boolean not null default false,
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  unique (data_class, policy_version)
 );
+create unique index if not exists account_retention_one_active_policy_per_class
+  on public.account_data_retention_policies(data_class) where active;
 
 create table if not exists public.account_legal_holds (
   id uuid primary key default gen_random_uuid(),
@@ -277,7 +282,7 @@ begin
         pg_catalog.format('t.%I::text = $2::text', column_name), ' OR '
       )
       into v_predicate
-      from pg_catalog.unnest(v_source.owner_columns) as column_name;
+      from pg_catalog.unnest(v_source.owner_columns) as owner_column(column_name);
       if v_predicate is null then
         continue;
       end if;
@@ -406,6 +411,14 @@ begin
   end if;
 
   return query
+  update public.account_export_jobs j
+  set status = 'failed', failed_at = pg_catalog.now(),
+      error_code = 'EXPORT_LEASE_EXHAUSTED', lease_token = null,
+      lease_owner = null, lease_expires_at = null, updated_at = pg_catalog.now()
+  where j.status = 'running' and j.lease_expires_at <= pg_catalog.now()
+    and j.attempts >= j.max_attempts;
+
+  return query
   with candidates as (
     select j.id
     from public.account_export_jobs j
@@ -421,6 +434,7 @@ begin
   set status = 'running',
       attempts = j.attempts + 1,
       lease_token = gen_random_uuid(),
+      lease_owner = p_worker_id,
       lease_expires_at = pg_catalog.now() + pg_catalog.make_interval(secs => p_lease_seconds),
       started_at = coalesce(j.started_at, pg_catalog.now()),
       updated_at = pg_catalog.now()
@@ -429,6 +443,30 @@ begin
   returning j.id,j.user_id,j.lease_token,j.attempts;
 end;
 $$;
+
+create or replace function public.renew_account_export_job_lease(
+  p_job_id uuid,p_lease_token uuid,p_lease_seconds integer default 300
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $
+begin
+  if auth.role() <> 'service_role' then
+    raise exception 'service_role_required' using errcode = '42501';
+  end if;
+  if p_lease_seconds not between 30 and 900 then
+    raise exception 'invalid_export_lease_duration' using errcode = '22023';
+  end if;
+  update public.account_export_jobs j
+  set lease_expires_at = pg_catalog.now() + pg_catalog.make_interval(secs => p_lease_seconds),
+      updated_at = pg_catalog.now()
+  where j.id = p_job_id and j.status = 'running'
+    and j.lease_token = p_lease_token and j.lease_expires_at > pg_catalog.now();
+  return found;
+end;
+$;
 
 create or replace function public.build_my_account_export_snapshot(p_job_id uuid,p_lease_token uuid)
 returns jsonb
@@ -482,6 +520,7 @@ begin
       manifest = p_manifest,
       completed_at = pg_catalog.now(),
       lease_token = null,
+      lease_owner = null,
       lease_expires_at = null,
       error_code = null,
       updated_at = pg_catalog.now()
@@ -521,6 +560,7 @@ begin
       failed_at = case when j.attempts >= j.max_attempts then pg_catalog.now() else null end,
       error_code = left(coalesce(p_error_code,'EXPORT_FAILED'),80),
       lease_token = null,
+      lease_owner = null,
       lease_expires_at = null,
       updated_at = pg_catalog.now()
   where j.id = p_job_id and j.status = 'running' and j.lease_token = p_lease_token
@@ -661,7 +701,7 @@ revoke all on function public.request_my_account_export(text) from public, anon;
 grant execute on function public.request_my_account_export(text) to authenticated;
 revoke all on function public.claim_account_export_jobs(text,integer,integer) from public, anon, authenticated;
 grant execute on function public.claim_account_export_jobs(text,integer,integer) to service_role;
-revoke all on function public.build_my_account_export_snapshot(uuid,uuid) from public, anon, authenticated;
+revoke all on function public.renew_account_export_job_lease(uuid,uuid,integer) from public, anon, authenticated;\ngrant execute on function public.renew_account_export_job_lease(uuid,uuid,integer) to service_role;\nrevoke all on function public.build_my_account_export_snapshot(uuid,uuid) from public, anon, authenticated;
 grant execute on function public.build_my_account_export_snapshot(uuid,uuid) to service_role;
 revoke all on function public.complete_account_export_job(uuid,uuid,text,text,bigint,jsonb) from public, anon, authenticated;
 grant execute on function public.complete_account_export_job(uuid,uuid,text,text,bigint,jsonb) to service_role;
