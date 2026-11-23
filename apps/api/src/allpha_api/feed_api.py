@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from allpha_api.auth import current_user, optional_current_user, service_db_request
 from allpha_api.content_api import _server_db, _signed_media_preview_url
 from allpha_api.operator_security import require_operator_scope, write_operator_audit
-from allpha_api.recommendation_engine import (FEED_RANKING_VERSION, matched_signal_affinity, policy_from_rows, score_content_candidate, optional_scoring_rows)
+from allpha_api.recommendation_engine import (FEED_RANKING_VERSION, expand_interest_weights, matched_signal_affinity, policy_from_rows, score_content_candidate, optional_scoring_rows)
 
 router = APIRouter(tags=["social-feed"])
 FIELDS = "id,owner_id,ai_agent_id,content_type,body,visibility,status,moderation_status,version,provenance,created_at,updated_at,published_at"
@@ -503,6 +503,7 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent", "followi
         ]
 
     interest_keys: list[str] = []
+    interest_weights: dict[str, float] = {}
     not_interested_keys: list[str] = []
     graph_signals: list[dict[str, Any]] = []
     policy_weights: dict[str, float] | None = None
@@ -515,6 +516,12 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent", "followi
                          if row.get("interest_key") and row.get("preference") == "interested"]
         not_interested_keys = [str(row["interest_key"]).casefold() for row in (interest_rows or [])
                                if row.get("interest_key") and row.get("preference") == "not_interested"]
+        taxonomy_edges = await optional_scoring_rows(_server_db, "interest_taxonomy_edges", {
+            "select": "source_interest_key,target_interest_key,relation_type,weight,active",
+            "active": "eq.true",
+            "limit": "1000",
+        })
+        interest_weights = expand_interest_weights(interest_keys, taxonomy_edges)
         graph_signals = await optional_scoring_rows(_server_db, "user_interest_graph_signals", {
             "select": "interest_key,signal_type,strength", "user_id": f"eq.{owner}",
             "agent_id": "is.null", "limit": "500",
@@ -554,7 +561,7 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent", "followi
         followed_creator = bool(owner and _creator_node_key(row) in followed)
         body_tokens = set(re.findall(r"[a-z0-9]+", str(row.get("body") or "").casefold()))
         interest_matches = sum(
-            1 for key in interest_keys
+            weight for key, weight in interest_weights.items()
             if (terms := set(re.findall(r"[a-z0-9]+", key))) and terms.issubset(body_tokens)
         )
         passion_affinity = matched_signal_affinity(body_tokens, graph_signals, "passion")
