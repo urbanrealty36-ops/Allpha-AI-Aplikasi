@@ -85,7 +85,17 @@ def build_workspace(
     config_source = source_dir.parent / "config.toml"
     if not config_source.is_file():
         raise ValueError(f"Canonical Supabase config is missing: {config_source}")
-    shutil.copy2(config_source, supabase_dir / "config.toml")
+    config_text = config_source.read_text(encoding="utf-8")
+    config_text, replaced = re.subn(
+        r"(?m)^schema_paths\\s*=\\s*\\[\\s*\\]\\s*$",
+        'schema_paths = ["./migrations/*.sql"]',
+        config_text,
+    )
+    if replaced != 1:
+        raise ValueError(
+            "Canonical Supabase config must contain exactly one disabled db.migrations.schema_paths setting"
+        )
+    (supabase_dir / "config.toml").write_text(config_text, encoding="utf-8")
 
     copied_files: list[str] = []
     for version in sorted(selected):
@@ -107,7 +117,7 @@ def build_workspace(
         "copied_file_count": len(copied_files),
         "copied_files": copied_files,
         "excluded_local_pending_versions": pending_local_versions,
-        "production_mutated": False,
+        "schema_paths": ["./migrations/*.sql"],\n        "production_mutated": False,
     }
     (workspace_dir / "migration-workspace-manifest.json").write_text(
         json.dumps(manifest, indent=2) + "\n",
