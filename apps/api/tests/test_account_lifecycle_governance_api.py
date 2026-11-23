@@ -37,7 +37,7 @@ def test_retention_policy_creation_is_inactive_and_bound_to_verified_operator(mo
     monkeypatch.setattr(governance, "privileged_rest_request", privileged)
     monkeypatch.setattr(governance, "write_operator_audit", audit)
     payload = governance.RetentionPolicyCreate(
-        data_class="social_content", retention_days=365,
+        data_class="owner_private", retention_days=365,
         policy_version="legal-policy-2026.1", legal_basis="Policy reference approved by counsel",
     )
     result = asyncio.run(governance.create_retention_policy(payload, _request(), OPERATOR))
@@ -83,7 +83,7 @@ def test_retention_policy_creation_rejects_duplicate_version(monkeypatch):
 
     monkeypatch.setattr(governance, "write_operator_audit", audit)
     payload = governance.RetentionPolicyCreate(
-        data_class="social_content", retention_days=365,
+        data_class="owner_private", retention_days=365,
         policy_version="v1", legal_basis="Approved legal basis reference",
     )
     with pytest.raises(HTTPException) as error:
@@ -382,3 +382,12 @@ def test_source_policy_allows_registered_specialized_owner_safe_handler(monkeypa
     saved = next(body for _, table, body in calls if table == "account_deletion_source_policies")
     assert saved["deletion_action"] == "delete_rows"
     assert saved["active"] is False
+
+
+
+def test_retention_policy_rejects_noncanonical_data_class():
+    with pytest.raises(ValueError):
+        governance.RetentionPolicyCreate(
+            data_class="social_content", retention_days=365,
+            policy_version="v1", legal_basis="Approved legal basis reference",
+        )
