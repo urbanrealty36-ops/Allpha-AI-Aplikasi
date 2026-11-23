@@ -17,7 +17,7 @@ async def _owner(request: Request):
 
 
 def _client(monkeypatch, rpc, *, membership_role="owner"):
-    monkeypatch.setattr("allpha_api.main.service_db_request", rpc)
+    monkeypatch.setattr("allpha_api.organization_service.service_db_request", rpc)
 
     async def membership_lookup(method, path, access_token, *, params=None, body=None, prefer=None):
         assert method == "GET"
