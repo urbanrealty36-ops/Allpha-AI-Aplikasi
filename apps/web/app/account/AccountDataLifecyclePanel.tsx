@@ -17,7 +17,7 @@ type ExportJob = {
 
 type DeletionRequest = {
   id: string;
-  status: "awaiting_policy" | "scheduled" | "processing" | "blocked_legal_hold" | "completed" | "cancelled" | "failed";
+  status: "awaiting_policy" | "scheduled" | "processing" | "blocked_legal_hold" | "blocked_dependency" | "completed" | "cancelled" | "failed";
   requested_at: string;
   policy_version?: string | null;
   scheduled_for?: string | null;
