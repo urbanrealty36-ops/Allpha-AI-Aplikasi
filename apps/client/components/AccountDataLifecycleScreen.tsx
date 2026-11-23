@@ -141,7 +141,7 @@ export function AccountDataLifecycleScreen({ apiBase, getAccessToken }: Props) {
             {item.status === "running" && <>
               <Text accessibilityLiveRegion="polite" style={{ color: "#AAB4CC" }}>{progressLabel(item.progress_stage)} · {item.progress_percent ?? 5}%</Text>
               <View accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: 100, now: item.progress_percent ?? 5 }} style={{ height: 6, borderRadius: 6, backgroundColor: "#303A52", overflow: "hidden" }}>
-                <View style={{ height: 6, width: Math.max(5, Math.min(100, item.progress_percent ?? 5)) + "%", backgroundColor: "#A5B4FC" }} />
+                <View style={{ height: 6, width: `${Math.max(5, Math.min(100, item.progress_percent ?? 5))}%` as `${number}%`, backgroundColor: "#A5B4FC" }} />
               </View>
             </>}
             {!!item.error_code && <Text style={{ color: "#FF9AAB" }}>{item.error_code}</Text>}
