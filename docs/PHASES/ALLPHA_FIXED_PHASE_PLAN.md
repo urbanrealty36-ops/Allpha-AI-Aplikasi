@@ -654,3 +654,12 @@ This is an evidence refresh inside the existing fixed plan. It does not create a
 - **Commits:** `5f998d65a290957644cf6773d0da10f368bd5358` (Super Admin scope/type contract); `faf7035937cfd2aa7da3a19cbe799adb49e27d35` (P03 migration dry-run target binding).
 - **Verification:** prior P03 disposable restore/apply attempt `45141781567` failed only at the stale P02 dry-run assertion; the CLI output showed exactly one pending P03 migration. A fresh workflow run on the corrected main is required before treating the fix as verified. P03 production DDL remains unapplied at this checkpoint.
 - **Status:** ENG-P03 remains `in_progress`. Next: rerun fresh-backup disposable restore → isolated P03 migration → exact-target production apply; then verify lifecycle RLS/RPC grants, export source registry, private bucket and worker lease/retry. Continue consent and onboarding recovery coverage after migration safety gate.
+
+
+## 36. ENG-P03 onboarding draft recovery and Super Admin scope fix — 2026-11-23
+
+- **Onboarding recovery:** `AuthOnboardingFlow` now saves only non-secret form progress in tab-scoped `sessionStorage`, restores the draft on reopen/reload, validates bounded values, and clears the draft after successful authentication/registration. Email and password are never persisted; credentials must be re-entered. Storage failures are non-blocking.
+- **Operator governance UI:** `platform:account_lifecycle.manage` was added to the Super Admin local scope union to match the already-existing backend Literal; duplicate navigation entry removed. No scope escalation or new backend permission was introduced.
+- **Commit:** `9838c8e840a735307067a3a297b48ec46559fd0b` (onboarding draft recovery); prior Super Admin contract fix `5f998d65a290957644cf6773d0da10f368bd5358`.
+- **Checks:** Allpha Smoke `45141994260` completed SUCCESS before the onboarding draft change and covers the Super Admin typecheck fix. A new smoke run is required for commit `9838c8e`; no claim is made yet for the new onboarding code.
+- **Status:** ENG-P03 remains `in_progress`. Consent UI remains history-only and no legal policy text/version is invented. Next: finish fresh-backup → isolated P03 migration → exact-target apply; then add explicit consent-event/revocation lifecycle with immutable history and policy-version authority, and complete deletion worker scheduling under the configured per-data-class retention and legal-hold gates.
