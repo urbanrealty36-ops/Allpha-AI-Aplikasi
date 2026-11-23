@@ -489,3 +489,68 @@ def test_agent_recommendations_require_public_active_owned_agents_and_respect_bl
     assert body["items"][0]["id"] == AGENT_RECOMMENDATION_A
     assert body["items"][0]["mutual_followers_count"] == 2
     assert body["items"][0]["reason"] == "owned_by_mutual_connection"
+
+
+
+def test_agent_recommendations_include_interest_only_owners_but_recheck_owner_privacy(monkeypatch):
+    owner_public = "00000000-0000-4000-8000-000000000701"
+    owner_private = "00000000-0000-4000-8000-000000000702"
+    agent_public = "00000000-0000-4000-8000-000000000711"
+    agent_private = "00000000-0000-4000-8000-000000000712"
+    calls = []
+
+    async def fake_rows(method, path, token, *, params=None, body=None, prefer=None):
+        params = params or {}
+        if path == "user_interests" and method == "GET":
+            return [{"interest_key": "ai_cinema"}]
+        return []
+
+    async def fake_server_db(method, table, *, params=None, body=None, prefer=None):
+        params = params or {}
+        calls.append((method, table, params, body))
+        if table == "recommendation_scoring_policies":
+            return []
+        if table == "interest_taxonomy_edges":
+            return []
+        if table == "rpc/find_interest_discovery_candidates":
+            assert body == {"p_interest_keys": ["ai_cinema"], "p_limit": 5000}
+            return [
+                {"user_id": owner_public, "interest_key": "ai_cinema"},
+                {"user_id": owner_private, "interest_key": "ai_cinema"},
+            ]
+        if table == "profiles":
+            assert params.get("visibility") == "eq.public"
+            assert params.get("account_status") == "eq.active"
+            return [{"id": owner_public, "visibility": "public", "account_status": "active"}]
+        if table == "user_settings":
+            return [
+                {"user_id": owner_public, "privacy_settings": {"discoverable_by_username": True, "profile_visibility": "public"}},
+                {"user_id": owner_private, "privacy_settings": {"discoverable_by_username": False, "profile_visibility": "public"}},
+            ]
+        if table == "ai_agents":
+            assert params.get("created_by") == f"in.({owner_public})"
+            return [{
+                "id": agent_public, "created_by": owner_public, "handle": "cinema-agent",
+                "display_name": "Cinema Agent", "visibility": "public", "status": "active",
+            }]
+        if table == "agent_ownerships":
+            return [{"agent_id": agent_public, "owner_user_id": owner_public}]
+        raise AssertionError((method, table, params, body))
+
+    monkeypatch.setattr(social_graph_api, "_rows", fake_rows)
+    monkeypatch.setattr(social_graph_api, "_server_db", fake_server_db)
+    app.dependency_overrides[current_user] = _user
+    try:
+        response = TestClient(app).get("/v1/social/recommendations?node_type=agent&limit=10")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["strategy"] == "shared_interest_owners"
+    assert body["count"] == 1
+    assert body["items"][0]["id"] == agent_public
+    assert body["items"][0]["mutual_followers_count"] == 0
+    assert body["items"][0]["shared_interests_count"] == 1
+    assert body["items"][0]["reason"] == "owned_by_shared_interests"
+    assert owner_private not in str(body)

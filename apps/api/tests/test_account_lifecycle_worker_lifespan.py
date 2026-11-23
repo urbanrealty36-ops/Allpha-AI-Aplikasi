@@ -47,3 +47,20 @@ def test_account_lifecycle_worker_remains_disabled_by_default(monkeypatch):
             assert app.state.account_lifecycle_worker is None
 
     asyncio.run(exercise())
+
+
+def test_external_railway_worker_prevents_duplicate_api_consumer(monkeypatch):
+    monkeypatch.setenv("ALLPHA_ACCOUNT_LIFECYCLE_WORKER_ENABLED", "true")
+    monkeypatch.setenv("ALLPHA_ACCOUNT_LIFECYCLE_WORKER_EXTERNAL_SERVICE", "allpha-account-lifecycle-worker")
+
+    class WorkerFactory:
+        def __new__(cls):
+            raise AssertionError("API must not start a duplicate consumer when Railway worker is configured")
+
+    monkeypatch.setattr("allpha_api.account_lifecycle_worker.AccountLifecycleWorker", WorkerFactory)
+
+    async def exercise():
+        async with app_lifespan(app):
+            assert app.state.account_lifecycle_worker is None
+
+    asyncio.run(exercise())

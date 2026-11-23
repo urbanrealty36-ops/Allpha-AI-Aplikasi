@@ -1,0 +1,155 @@
+name: ENG-P04 Interest Graph Production Migrations
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/api/supabase/migrations/20261123191900_eng_p04_interest_ontology_and_discovery_index.sql"
+      - "apps/api/supabase/migrations/20261123200000_eng_p04_passion_habit_recommendation_engine.sql"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eng-p04-interest-graph-production-migrations
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_ID: dvdziauyvuhcnqhrrvww
+      EXPECTED_ONTOLOGY_BLOB: "4e0dd9030d3fee7a1854fe622edae8e28da31ae1"
+      EXPECTED_SIGNAL_BLOB: "0b4a4d0a1e86a07f6962837804d525eb3488de99"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Require canonical production credentials and pinned migration sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$SUPABASE_ACCESS_TOKEN"
+          test -n "$SUPABASE_DB_PASSWORD"
+          test "$SUPABASE_PROJECT_ID" = "dvdziauyvuhcnqhrrvww"
+          test "$(git rev-parse HEAD:apps/api/supabase/migrations/20261123191900_eng_p04_interest_ontology_and_discovery_index.sql)" = "$EXPECTED_ONTOLOGY_BLOB"
+          test "$(git rev-parse HEAD:apps/api/supabase/migrations/20261123200000_eng_p04_passion_habit_recommendation_engine.sql)" = "$EXPECTED_SIGNAL_BLOB"
+          for file in apps/api/supabase/migrations/20261123191900_eng_p04_interest_ontology_and_discovery_index.sql apps/api/supabase/migrations/20261123200000_eng_p04_passion_habit_recommendation_engine.sql; do
+            if grep -Eiq '(^|[^a-z_])(drop[[:space:]]+(table|schema|column)|truncate([[:space:]]|;))([^a-z_]|$)' "$file"; then
+              echo "::error::Refusing destructive ENG-P04 migration source: $file"
+              exit 1
+            fi
+          done
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 3.2.0
+
+      - name: Resolve canonical Supavisor shared-session connection
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_ID/config/database/pooler" -o /tmp/pooler-config.json
+          python - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          from urllib.parse import quote
+          data=json.loads(Path("/tmp/pooler-config.json").read_text())
+          if isinstance(data,dict): data=[data]
+          for item in data:
+              connection=str(item.get("connection_string") or item.get("connectionString") or "")
+              match=re.search(r"@\\[?([A-Za-z0-9.-]+)\\]?:([0-9]+)(?:/|$)",connection)
+              host=str(item.get("db_host") or (match.group(1) if match else "")).strip()
+              authority=connection.split("://",1)[-1].split("@",1)[0] if connection else ""
+              user=str(item.get("db_user") or (authority.split(":",1)[0] if authority else "")).strip()
+              tail=connection.split("@",1)[-1] if "@" in connection else ""
+              database=str(item.get("db_name") or (tail.split("/",1)[1].split("?",1)[0] if "/" in tail else "")).strip()
+              if host.endswith(".pooler.supabase.com") and user and database:
+                  db_url=f"postgresql://{quote(user,safe='')}:{quote(os.environ['SUPABASE_DB_PASSWORD'],safe='')}@{host}:5432/{quote(database,safe='')}?sslmode=require"
+                  Path(os.environ["GITHUB_ENV"]).open("a").write(f"DB_URL={db_url}\\n")
+                  print(f"Resolved Supavisor shared-session endpoint {host}:5432/{database}; password redacted.")
+                  break
+          else:
+              raise SystemExit("No canonical Supavisor shared-session endpoint was returned.")
+          PY
+
+      - name: Apply the ontology migration as an isolated versioned target
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p recovery-evidence
+          docker run --rm --network host -e DATABASE_URL="$DB_URL" postgres:17-alpine \
+            sh -lc 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atc "select version from supabase_migrations.schema_migrations order by version"' \
+            > recovery-evidence/remote-before-ontology.txt
+          mkdir -p migration-workspace-ontology
+          python apps/api/scripts/build_migration_workspace.py \
+            --source-dir apps/api/supabase/migrations \
+            --remote-versions-file recovery-evidence/remote-before-ontology.txt \
+            --target-migration apps/api/supabase/migrations/20261123191900_eng_p04_interest_ontology_and_discovery_index.sql \
+            --workspace-dir migration-workspace-ontology
+          cd migration-workspace-ontology
+          supabase migration list --db-url "$DB_URL" | tee ../recovery-evidence/ontology-migration-list-before.txt
+          supabase db push --dry-run --db-url "$DB_URL" 2>&1 | tee ../recovery-evidence/ontology-dry-run.txt
+          grep -Fq "20261123191900_eng_p04_interest_ontology_and_discovery_index.sql" ../recovery-evidence/ontology-dry-run.txt
+          mapfile -t pending < <(grep -Eo '20[0-9]{12}' ../recovery-evidence/ontology-dry-run.txt | sort -u)
+          test "${#pending[@]}" -eq 1
+          test "${pending[0]}" = "20261123191900"
+          supabase db push --yes --db-url "$DB_URL"
+
+      - name: Apply Passion and Habit migration as the next isolated versioned target
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --network host -e DATABASE_URL="$DB_URL" postgres:17-alpine \
+            sh -lc 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atc "select version from supabase_migrations.schema_migrations order by version"' \
+            > recovery-evidence/remote-before-signals.txt
+          mkdir -p migration-workspace-signals
+          python apps/api/scripts/build_migration_workspace.py \
+            --source-dir apps/api/supabase/migrations \
+            --remote-versions-file recovery-evidence/remote-before-signals.txt \
+            --target-migration apps/api/supabase/migrations/20261123200000_eng_p04_passion_habit_recommendation_engine.sql \
+            --workspace-dir migration-workspace-signals
+          cd migration-workspace-signals
+          supabase migration list --db-url "$DB_URL" | tee ../recovery-evidence/signals-migration-list-before.txt
+          supabase db push --dry-run --db-url "$DB_URL" 2>&1 | tee ../recovery-evidence/signals-dry-run.txt
+          grep -Fq "20261123200000_eng_p04_passion_habit_recommendation_engine.sql" ../recovery-evidence/signals-dry-run.txt
+          mapfile -t pending < <(grep -Eo '20[0-9]{12}' ../recovery-evidence/signals-dry-run.txt | sort -u)
+          test "${#pending[@]}" -eq 1
+          test "${pending[0]}" = "20261123200000"
+          supabase db push --yes --db-url "$DB_URL"
+
+      - name: Verify production ontology, privacy, signals and recommendation policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --network host -e DATABASE_URL="$DB_URL" postgres:17-alpine sh -lc 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -At' <<'SQL' | tee recovery-evidence/production-verification.txt
+          select case when exists(select 1 from supabase_migrations.schema_migrations where version='20261123191900') then 'interest_ontology_migration=PASS' else 'interest_ontology_migration=FAIL' end;
+          select case when exists(select 1 from supabase_migrations.schema_migrations where version='20261123200000') then 'passion_habit_migration=PASS' else 'passion_habit_migration=FAIL' end;
+          select case when (select count(*) from public.interest_catalog where active and interest_key in ('ai_agents','social_network','ai_cinema','live_streaming'))=4 then 'ecosystem_interest_taxonomy=PASS' else 'ecosystem_interest_taxonomy=FAIL' end;
+          select case when exists(select 1 from public.interest_taxonomy_edges where source_interest_key='ai_cinema' and target_interest_key='live_streaming' and relation_type='related_to' and active) then 'cinema_live_ontology_edge=PASS' else 'cinema_live_ontology_edge=FAIL' end;
+          select case when to_regclass('private.user_interest_discovery_index') is not null then 'private_interest_index=PASS' else 'private_interest_index=FAIL' end;
+          select case when not exists(select 1 from private.user_interest_discovery_index i join public.interest_catalog c using(interest_key) where c.sensitivity='sensitive') then 'sensitive_interest_excluded=PASS' else 'sensitive_interest_excluded=FAIL' end;
+          select case when to_regclass('public.user_interest_graph_signals') is not null and to_regclass('public.user_interest_graph_signal_events') is not null then 'passion_habit_tables=PASS' else 'passion_habit_tables=FAIL' end;
+          select case when exists(select 1 from public.recommendation_scoring_policies where policy_key='default' and active) then 'canonical_recommendation_policy=PASS' else 'canonical_recommendation_policy=FAIL' end;
+          select case when has_function_privilege('service_role','public.find_interest_discovery_candidates(text[],integer)','EXECUTE') and not has_function_privilege('authenticated','public.find_interest_discovery_candidates(text[],integer)','EXECUTE') then 'discovery_rpc_privileges=PASS' else 'discovery_rpc_privileges=FAIL' end;
+          SQL
+          for check in interest_ontology_migration passion_habit_migration ecosystem_interest_taxonomy cinema_live_ontology_edge private_interest_index sensitive_interest_excluded passion_habit_tables canonical_recommendation_policy discovery_rpc_privileges; do
+            grep -q "^$check=PASS$" recovery-evidence/production-verification.txt
+          done
+          (cd apps/api && python -m pytest tests/test_eng_p04_interest_ontology_migration_contract.py tests/test_eng_p04_privacy_migration_contract.py tests/test_interest_graph_api.py tests/test_recommendation_engine.py tests/test_social_graph_polymorphic_api.py -q)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eng-p04-interest-graph-production-evidence
+          path: |
+            recovery-evidence/*.txt
+            migration-workspace-ontology/migration-workspace-manifest.json
+            migration-workspace-signals/migration-workspace-manifest.json
+          if-no-files-found: error
+          retention-days: 90

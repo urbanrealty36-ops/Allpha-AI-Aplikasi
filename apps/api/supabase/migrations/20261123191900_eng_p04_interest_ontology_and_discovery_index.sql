@@ -119,7 +119,7 @@ begin
     insert into private.user_interest_discovery_index(user_id,interest_key)
     select ui.user_id,ui.interest_key
       from public.user_interests ui
-      join public.interest_catalog c on c.interest_key=ui.interest_key and c.active=true
+      join public.interest_catalog c on c.interest_key=ui.interest_key and c.active=true and c.sensitivity='standard'
      where ui.user_id=p_user_id and ui.preference='interested'
     on conflict (user_id,interest_key) do update set indexed_at=now();
   end if;
@@ -273,12 +273,29 @@ begin
   return query
   select i.user_id,i.interest_key
     from private.user_interest_discovery_index i
-    join public.interest_catalog c on c.interest_key=i.interest_key and c.active=true
+    join public.interest_catalog c on c.interest_key=i.interest_key and c.active=true and c.sensitivity='standard'
    where i.interest_key=any(p_interest_keys)
    order by i.interest_key,i.user_id
    limit p_limit;
 end;
 $find_interest_candidates$;
+
+
+-- Rebuild the private discovery projection for existing users after the
+-- canonical ontology and sensitivity classifications are installed.
+do $backfill_interest_discovery_index$
+declare
+  v_user_id uuid;
+begin
+  for v_user_id in
+    select user_id from public.user_settings
+    union
+    select user_id from public.user_interests
+  loop
+    perform private.refresh_user_interest_discovery_index(v_user_id);
+  end loop;
+end;
+$backfill_interest_discovery_index$;
 
 revoke all on function private.refresh_user_interest_discovery_index(uuid) from public,anon,authenticated;
 revoke all on function private.refresh_interest_index_from_user_interests() from public,anon,authenticated;

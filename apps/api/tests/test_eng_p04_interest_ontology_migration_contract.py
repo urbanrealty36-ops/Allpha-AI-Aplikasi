@@ -68,3 +68,11 @@ def test_allpha_cinema_live_and_agent_ontology_relationships_are_seeded():
     assert "('social_network','content_creator','related_to',0.8)" in source
     assert "('content_creator','ai_cinema','related_to',0.8)" in source
     assert "('ai_cinema','live_streaming','related_to',0.9)" in source
+
+
+def test_sensitive_interests_never_enter_cross_user_discovery_index_and_existing_rows_are_rebuilt():
+    source = MIGRATION.read_text(encoding="utf-8").lower()
+    assert "c.sensitivity='standard'" in source
+    assert "backfill_interest_discovery_index" in source
+    assert "select user_id from public.user_settings" in source
+    assert "select user_id from public.user_interests" in source

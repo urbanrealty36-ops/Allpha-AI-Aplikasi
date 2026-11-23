@@ -73,15 +73,15 @@ logger = logging.getLogger('allpha.api')
 
 @asynccontextmanager
 async def app_lifespan(app: FastAPI):
-    """Run the account lifecycle queue in the canonical API process when enabled.
-
-    Railway's current resource quota does not allow provisioning another service;
-    the worker still uses the same lease-based RPC contract and service credentials.
-    """
+    """Run one account lifecycle consumer: dedicated Railway service or API fallback."""
     worker = None
     worker_task: asyncio.Task[None] | None = None
     app.state.account_lifecycle_worker = None
-    if os.getenv("ALLPHA_ACCOUNT_LIFECYCLE_WORKER_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}:
+    external_service = os.getenv("ALLPHA_ACCOUNT_LIFECYCLE_WORKER_EXTERNAL_SERVICE", "").strip()
+    worker_enabled = os.getenv("ALLPHA_ACCOUNT_LIFECYCLE_WORKER_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+    if external_service:
+        logger.warning("account_lifecycle_worker_external service=%s", external_service)
+    elif worker_enabled:
         from allpha_api.account_lifecycle_worker import AccountLifecycleWorker
 
         worker = AccountLifecycleWorker()

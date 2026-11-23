@@ -236,7 +236,7 @@ async def get_social_recommendations(
         str(row["interest_key"]) for row in viewer_interest_rows
         if row.get("interest_key")
     })
-    if not followed_ids and (node_type == "agent" or not viewer_interest_keys):
+    if not followed_ids and not viewer_interest_keys:
         return {"items": [], "count": 0, "strategy": "mutual_connections_and_shared_interests", "ranking_version": policy_version}
 
     followee_profiles = []
@@ -327,12 +327,42 @@ async def get_social_recommendations(
     policy_version, policy_weights = policy_from_rows(scoring_rows)
 
     if node_type == "agent":
-        if not mutual_counts:
-            return {"items": [], "count": 0, "strategy": "mutual_connection_owners"}
-        owner_ids = sorted(mutual_counts)
+        # Interest-only discovery is a first-class path; do not require mutual
+        # follows when the owner explicitly opted into public interest matching.
+        candidate_owner_ids = sorted(set(mutual_counts) | set(interest_counts))
+        if not candidate_owner_ids:
+            return {"items": [], "count": 0, "strategy": "mutual_connections_and_shared_interests", "ranking_version": policy_version}
+
+        candidate_owner_filter = "in.(" + ",".join(candidate_owner_ids) + ")"
+        current_owner_profiles = await _server_db("GET", "profiles", params={
+            "select": "id,visibility,account_status",
+            "id": candidate_owner_filter,
+            "visibility": "eq.public",
+            "account_status": "eq.active",
+            "limit": str(min(500, len(candidate_owner_ids))),
+        })
+        current_owner_settings = await _server_db("GET", "user_settings", params={
+            "select": "user_id,privacy_settings",
+            "user_id": candidate_owner_filter,
+            "limit": str(min(500, len(candidate_owner_ids))),
+        })
+        discoverable_owner_ids = {
+            str(row["user_id"]) for row in (current_owner_settings or [])
+            if isinstance(row.get("privacy_settings"), dict)
+            and row["privacy_settings"].get("discoverable_by_username") is True
+            and row["privacy_settings"].get("profile_visibility", "public") == "public"
+        }
+        active_public_owner_ids = {
+            str(row["id"]) for row in (current_owner_profiles or [])
+            if row.get("visibility") == "public" and row.get("account_status") == "active"
+        }
+        owner_ids = sorted(set(candidate_owner_ids) & active_public_owner_ids & discoverable_owner_ids)
+        if not owner_ids:
+            return {"items": [], "count": 0, "strategy": "shared_interest_owners" if interest_counts else "mutual_connection_owners", "ranking_version": policy_version}
+        owner_filter = "in.(" + ",".join(owner_ids) + ")"
         agent_rows = await _server_db("GET", "ai_agents", params={
             "select": "id,created_by,handle,display_name,avatar_url,description,visibility,status",
-            "created_by": "in.(" + ",".join(owner_ids) + ")",
+            "created_by": owner_filter,
             "visibility": "eq.public", "status": "eq.active",
             "order": "display_name.asc", "limit": str(min(200, limit * 4)),
         })
@@ -403,9 +433,22 @@ async def get_social_recommendations(
                 interest_counts.get(str(row.get("created_by")), 0),
                 policy_weights,
             ),
-            "reason": "owned_by_mutual_connection_and_shared_interests" if interest_counts.get(str(row.get("created_by")), 0) else "owned_by_mutual_connection",
+            "reason": (
+                "owned_by_mutual_connection_and_shared_interests"
+                if mutual_counts.get(str(row.get("created_by")), 0) and interest_counts.get(str(row.get("created_by")), 0)
+                else "owned_by_shared_interests"
+                if interest_counts.get(str(row.get("created_by")), 0)
+                else "owned_by_mutual_connection"
+            ),
         } for row in eligible_agents[:limit]]
-        return {"items": items, "count": len(items), "strategy": "mutual_connection_owners_and_shared_interests", "ranking_version": policy_version}
+        strategy = (
+            "mutual_connection_owners_and_shared_interests"
+            if mutual_counts and interest_counts
+            else "shared_interest_owners"
+            if interest_counts
+            else "mutual_connection_owners"
+        )
+        return {"items": items, "count": len(items), "strategy": strategy, "ranking_version": policy_version}
 
     candidate_pool = set(mutual_counts) | set(interest_counts)
     if not candidate_pool:
