@@ -375,6 +375,112 @@ class AccountLifecycleWorker:
                 lease_lost.set()
                 return
 
+    async def _cancel_stripe_subscription(
+        self,
+        subscription_id: str,
+        idempotency_key: str,
+        stripe_mode: str | None,
+    ) -> str:
+        """Cancel one Stripe subscription using a stable idempotency key."""
+        if os.getenv("ALLPHA_STRIPE_ENABLED", "false").strip().lower() != "true":
+            raise RuntimeError("ACCOUNT_DELETION_STRIPE_DISABLED")
+        key = os.getenv("STRIPE_SECRET_KEY", "").strip()
+        mode = os.getenv("ALLPHA_STRIPE_MODE", "").strip().lower()
+        if not key or mode not in {"test", "live"}:
+            raise RuntimeError("ACCOUNT_DELETION_STRIPE_NOT_CONFIGURED")
+        if stripe_mode not in {"test", "live"} or stripe_mode != mode:
+            raise RuntimeError("ACCOUNT_DELETION_STRIPE_MODE_MISMATCH")
+        if (mode == "live" and not key.startswith("sk_live_")) or (
+            mode == "test" and not key.startswith("sk_test_")
+        ):
+            raise RuntimeError("ACCOUNT_DELETION_STRIPE_KEY_MODE_MISMATCH")
+        if not subscription_id.startswith("sub_") or not idempotency_key.startswith("account-deletion:"):
+            raise RuntimeError("ACCOUNT_DELETION_STRIPE_REFERENCE_INVALID")
+
+        headers = {"Accept": "application/json", "Idempotency-Key": idempotency_key}
+        api_version = os.getenv("ALLPHA_STRIPE_API_VERSION", "").strip()
+        if api_version:
+            headers["Stripe-Version"] = api_version
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(20.0, connect=5.0),
+            auth=(key, ""),
+        ) as client:
+            response = await client.delete(
+                f"https://api.stripe.com/v1/subscriptions/{quote(subscription_id, safe='')}",
+                headers=headers,
+            )
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise RuntimeError("ACCOUNT_DELETION_STRIPE_RESPONSE_INVALID") from exc
+        if response.status_code == 404:
+            error = payload.get("error") if isinstance(payload, dict) else None
+            if isinstance(error, dict) and error.get("code") == "resource_missing":
+                return "canceled"
+        response.raise_for_status()
+        if not isinstance(payload, dict) or payload.get("status") != "canceled":
+            raise RuntimeError("ACCOUNT_DELETION_STRIPE_CANCELLATION_UNCONFIRMED")
+        return "canceled"
+
+    async def deletion_subscription_cancellation_batch(self) -> int:
+        """Cancel active subscriptions before the account identity can be erased."""
+        prepared = await self.rpc("prepare_account_deletion_subscription_cancellations", {})
+        if not isinstance(prepared, int) or isinstance(prepared, bool):
+            raise RuntimeError("ACCOUNT_DELETION_SUBSCRIPTION_PREPARE_INVALID")
+        jobs = await self.rpc(
+            "claim_account_deletion_subscription_cancellation_jobs",
+            {
+                "p_worker_id": self.worker_id,
+                "p_limit": int(os.getenv("ACCOUNT_DELETION_SUBSCRIPTION_BATCH_SIZE", "10")),
+                "p_lease_seconds": 300,
+            },
+        )
+        if not isinstance(jobs, list) or not jobs:
+            return 0
+
+        for job in jobs:
+            if not isinstance(job, dict):
+                continue
+            job_id = str(job.get("id") or "")
+            lease_token = str(job.get("lease_token") or "")
+            try:
+                if not job_id or not lease_token:
+                    raise RuntimeError("ACCOUNT_DELETION_SUBSCRIPTION_LEASE_INVALID")
+                subscription_id = job.get("stripe_subscription_id")
+                if not isinstance(subscription_id, str) or not subscription_id:
+                    raise RuntimeError("ACCOUNT_DELETION_STRIPE_SUBSCRIPTION_ID_MISSING")
+                await self._cancel_stripe_subscription(
+                    subscription_id,
+                    str(job.get("idempotency_key") or ""),
+                    job.get("stripe_mode") if isinstance(job.get("stripe_mode"), str) else None,
+                )
+                completed = await self.rpc(
+                    "complete_account_deletion_subscription_cancellation_job",
+                    {"p_job_id": job_id, "p_lease_token": lease_token},
+                )
+                if completed is not True:
+                    raise RuntimeError("ACCOUNT_DELETION_SUBSCRIPTION_COMPLETION_UNCONFIRMED")
+            except Exception as exc:
+                log.exception("account_deletion_subscription_cancellation_failed job_id=%s", job_id)
+                if job_id and lease_token:
+                    try:
+                        attempts = max(1, int(job.get("attempts") or 1))
+                        await self.rpc(
+                            "fail_account_deletion_subscription_cancellation_job",
+                            {
+                                "p_job_id": job_id,
+                                "p_lease_token": lease_token,
+                                "p_error_code": type(exc).__name__[:80],
+                                "p_retry_seconds": min(86400, 30 * (2 ** min(attempts - 1, 10))),
+                            },
+                        )
+                    except Exception:
+                        log.exception(
+                            "account_deletion_subscription_failure_persist_failed job_id=%s",
+                            job_id,
+                        )
+        return len(jobs)
+
     async def deletion_execution_batch(self) -> int:
         """Prepare and execute only policy-complete, lease-fenced account deletions."""
         if os.getenv("ACCOUNT_DELETION_EXECUTION_ENABLED", "false").strip().lower() not in _TRUE:
@@ -386,6 +492,10 @@ class AccountLifecycleWorker:
         )
         if not isinstance(prepared, list):
             raise RuntimeError("ACCOUNT_DELETION_PREPARE_RESPONSE_INVALID")
+
+        # Stripe cancellation is a durable prerequisite; the SQL executor independently
+        # blocks if a provider cancellation is pending or any subscription remains active.
+        await self.deletion_subscription_cancellation_batch()
 
         jobs = await self.rpc(
             "claim_account_deletion_execution_jobs",
