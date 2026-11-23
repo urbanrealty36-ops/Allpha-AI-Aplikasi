@@ -16,9 +16,7 @@ begin
   if coalesce(auth.role(),'') <> 'service_role' then
     raise exception 'service_role_required' using errcode='42501';
   end if;
-  if p_source_key is null or p_user_id is null then
-    raise exception 'account_deletion_source_probe_arguments_required' using errcode='22023';
-  end if;
+  if p_source_key is null or p_user_id is null then return true; end if;
   select * into v_source from private.account_export_sources
    where source_key=p_source_key and enabled=true;
   if not found then return false; end if;
