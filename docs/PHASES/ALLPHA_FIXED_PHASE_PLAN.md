@@ -798,3 +798,13 @@ This is an evidence refresh inside the existing fixed plan. It does not create a
 - **Production database:** progress columns and trigger exist; `authenticated` cannot execute `update_account_export_job_progress`, while `service_role` can. The export source registry includes both Passion/Habit signal tables under owner-scoped `user_id` filters.
 - **Verification boundary:** focused pytest workflow source now includes the worker-progress and migration-contract tests, but the available GitHub connector did not expose the push workflow run result. Do not mark these new tests passed until a run result is inspectable. Railway API and worker deployment checks above are actual production evidence.
 - **Phase status:** ENG-P03 and ENG-P04 remain `in_progress`. PRD §74.1 defines six data classes, but §2924 explicitly leaves retention periods and deletion SLAs unresolved; production has zero active retention policies and zero deletion requests. The irreversible deletion executor must not be activated without a valid source-to-class map and policy values. ENG-P05 remains next after P03/P04 DoD.
+
+
+## 40.5 ENG-P04 discovery relationship semantics correction — 2026-11-23
+
+- Fixed Human and Agent recommendation exclusions so only `follow` edges with `status='active'` suppress an already-followed candidate. Removed historical follows no longer permanently suppress discovery.
+- Fixed incoming relationship filtering: incoming `block` remains reciprocal and excludes the blocking identity; incoming `mute` is one-way and does not hide the muting identity from the viewer. Outgoing block/mute continue to suppress the target from the actor's own discovery results.
+- Regression coverage updated in `apps/api/tests/test_social_graph_polymorphic_api.py` for removed Human follows, incoming Human mute, active Agent follows, and incoming Agent block semantics.
+- Commits: `60510530b60c008abde0776d4767f5917bfd0f3a` (API fix), `13ef2cb8bc9b8e758c0a04f69a9000ce56c614ae` (regression coverage).
+- Status remains **ENG-P04 IN PROGRESS**: code change is committed to `main`; production deployment was still BUILDING/DEPLOYING at the last check. Production currently has zero `content_items`, `social_edges`, `user_interests`, and `user_interest_graph_signals`, so authenticated real-user Feed/Discovery journeys cannot yet be evidenced from production data. No synthetic production rows were inserted.
+- Status remains **ENG-P03 IN PROGRESS**: deletion execution is still fail-closed because the PRD has no approved retention periods/SLA and the source-to-data-class/dependency manifest is incomplete. Do not promote P05 until the ENG-P03 and ENG-P04 gates are met.
