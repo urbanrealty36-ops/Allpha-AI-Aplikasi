@@ -315,3 +315,4 @@ grant select on public.user_interests to authenticated;
 grant select,insert,update,delete on public.user_interests to service_role;
 
 
+-- CI contract: install the API dev extra before the focused P04 regression suite.
