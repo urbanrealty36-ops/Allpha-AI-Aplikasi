@@ -258,3 +258,99 @@ def test_legal_hold_listing_rejects_unhashed_subject_reference(monkeypatch):
         asyncio.run(governance.list_legal_holds("not-a-hash", 25, OPERATOR))
     assert error.value.status_code == 422
     assert error.value.detail["code"] == "ACCOUNT_LEGAL_HOLD_SUBJECT_INVALID"
+
+
+
+def test_source_policy_update_requires_registered_source_and_safe_handler(monkeypatch):
+    calls = []
+    audits = []
+
+    async def privileged(method, table, *, params=None, body=None, prefer=None):
+        calls.append((method, table, params, body, prefer))
+        if table == "rpc/list_account_deletion_source_registry":
+            return [{"source_key": "profile", "table_name": "profiles", "filter_kind": "owner_columns",
+                     "owner_columns": ["id"], "enabled": True}]
+        if table == "account_deletion_source_policies":
+            return [{**body, "source_key": "profile"}]
+        return []
+
+    async def audit(request, **kwargs):
+        audits.append(kwargs)
+
+    monkeypatch.setattr(governance, "privileged_rest_request", privileged)
+    monkeypatch.setattr(governance, "write_operator_audit", audit)
+    payload = governance.SourcePolicyUpdate(
+        data_class="owner_private", deletion_action="delete_rows", dependency_order=10,
+        policy_version="v1", reason="Owner profile data deletion mapping", active=False,
+    )
+    result = asyncio.run(governance.update_deletion_source_policy("profile", payload, _request(), OPERATOR))
+    assert result["item"]["source_key"] == "profile"
+    write = next(call for call in calls if call[1] == "account_deletion_source_policies")
+    assert write[3]["approved_by"] == OPERATOR["id"]
+    assert write[3]["active"] is False
+    assert "resolution=merge-duplicates" in write[4]
+    assert [item["outcome"] for item in audits] == ["attempted", "allowed"]
+
+
+def test_source_policy_rejects_delete_rows_without_owner_scoped_handler(monkeypatch):
+    async def privileged(method, table, *, params=None, body=None, prefer=None):
+        return [{"source_key": "conversation_messages", "table_name": "messages",
+                 "filter_kind": "conversation_messages", "owner_columns": [], "enabled": True}]
+
+    async def audit(request, **kwargs):
+        return None
+
+    monkeypatch.setattr(governance, "privileged_rest_request", privileged)
+    monkeypatch.setattr(governance, "write_operator_audit", audit)
+    payload = governance.SourcePolicyUpdate(
+        data_class="session_scoped", deletion_action="delete_rows", dependency_order=20,
+        policy_version="v1", reason="Delete owner messages", active=True,
+    )
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(governance.update_deletion_source_policy("conversation_messages", payload, _request(), OPERATOR))
+    assert error.value.status_code == 409
+    assert error.value.detail["code"] == "ACCOUNT_DELETION_SOURCE_HANDLER_UNAVAILABLE"
+
+
+def test_dependency_rule_rejects_incompatible_database_cascade(monkeypatch):
+    async def privileged(method, table, *, params=None, body=None, prefer=None):
+        return [{"id": str(POLICY_ID), "delete_rule": "RESTRICT", "fk_column": "owner_id"}]
+
+    async def audit(request, **kwargs):
+        return None
+
+    monkeypatch.setattr(governance, "privileged_rest_request", privileged)
+    monkeypatch.setattr(governance, "write_operator_audit", audit)
+    payload = governance.DependencyRuleUpdate(
+        resolution_action="database_cascade", reason="Attempted incompatible cascade", active=True,
+    )
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(governance.update_deletion_dependency_rule(POLICY_ID, payload, _request(), OPERATOR))
+    assert error.value.status_code == 409
+    assert error.value.detail["code"] == "ACCOUNT_DELETION_DEPENDENCY_ACTION_INCOMPATIBLE"
+
+
+def test_dependency_rule_updates_only_compatible_fk_action_and_audits(monkeypatch):
+    calls = []
+    audits = []
+
+    async def privileged(method, table, *, params=None, body=None, prefer=None):
+        calls.append((method, table, params, body, prefer))
+        if method == "GET":
+            return [{"id": str(POLICY_ID), "delete_rule": "CASCADE", "fk_column": "owner_id"}]
+        return [{**body, "id": str(POLICY_ID), "resolution_action": "database_cascade"}]
+
+    async def audit(request, **kwargs):
+        audits.append(kwargs)
+
+    monkeypatch.setattr(governance, "privileged_rest_request", privileged)
+    monkeypatch.setattr(governance, "write_operator_audit", audit)
+    payload = governance.DependencyRuleUpdate(
+        resolution_action="database_cascade", reason="Database FK is defined as cascade", active=True,
+    )
+    result = asyncio.run(governance.update_deletion_dependency_rule(POLICY_ID, payload, _request(), OPERATOR))
+    assert result["item"]["resolution_action"] == "database_cascade"
+    patch = next(call for call in calls if call[0] == "PATCH")
+    assert patch[3]["approved_by"] == OPERATOR["id"]
+    assert patch[3]["active"] is True
+    assert [item["outcome"] for item in audits] == ["attempted", "allowed"]
