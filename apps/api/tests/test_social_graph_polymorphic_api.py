@@ -362,13 +362,22 @@ def test_interest_only_recommendations_use_only_opted_in_discovery_index_and_ran
         params = params or {}
         if table == "recommendation_scoring_policies":
             return []
+        if table == "interest_taxonomy_edges":
+            return [{
+                "source_interest_key": "technology",
+                "target_interest_key": "spatial_3d",
+                "relation_type": "parent_of",
+                "weight": 0.8,
+                "active": True,
+            }]
         calls.append((method, table, params, body))
         if table == "rpc/find_interest_discovery_candidates":
             assert method == "POST"
-            assert body == {"p_interest_keys": ["design_ui_ux", "technology"], "p_limit": 5000}
+            assert body == {"p_interest_keys": ["design_ui_ux", "spatial_3d", "technology"], "p_limit": 5000}
             return [
                 {"user_id": candidate_a, "interest_key": "technology"},
                 {"user_id": candidate_a, "interest_key": "design_ui_ux"},
+                {"user_id": candidate_a, "interest_key": "spatial_3d"},
                 {"user_id": candidate_b, "interest_key": "technology"},
             ]
         if table == "profiles":
@@ -396,8 +405,8 @@ def test_interest_only_recommendations_use_only_opted_in_discovery_index_and_ran
     assert body["strategy"] == "shared_interests"
     assert body["count"] == 2
     assert body["items"][0]["id"] == candidate_a
-    assert body["items"][0]["shared_interests_count"] == 2
-    assert body["items"][0]["recommendation_score"] == 6
+    assert body["items"][0]["shared_interests_count"] == 2.8
+    assert body["items"][0]["recommendation_score"] == 8.4
     assert body["items"][1]["id"] == candidate_b
     assert candidate_private not in {item["id"] for item in body["items"]}
     assert any(table == "rpc/find_interest_discovery_candidates" for _, table, _, _ in calls)
