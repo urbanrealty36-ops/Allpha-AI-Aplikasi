@@ -35,7 +35,7 @@ def test_export_worker_renews_lease_while_snapshot_is_running():
             if name == "build_my_account_export_snapshot":
                 snapshot_started.set()
                 await release_snapshot.wait()
-                return {"schema_version": "1.0", "source_count": 1, "manifest": [], "data": {}}
+                return {"schema_version": "1.0", "source_count": 1, "manifest": [{"source": "profile", "row_count": 1}], "data": {"profile": []}}
             if name == "complete_account_export_job":
                 completed.append(payload)
                 return True
