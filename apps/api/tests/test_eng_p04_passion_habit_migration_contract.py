@@ -45,3 +45,26 @@ def test_personalization_opt_out_purges_observed_signals_and_export_includes_his
     assert "s.signal_source='observed_interaction'" in source
     assert "interest_graph_signals','user_interest_graph_signals'" in source
     assert "interest_graph_signal_events','user_interest_graph_signal_events'" in source
+
+
+def test_agent_signals_are_owner_bound_and_sensitive_observation_is_blocked():
+    source = MIGRATION.read_text(encoding="utf-8").lower()
+    assert "agent_id uuid references public.ai_agents(id)" in source
+    assert "interest_agent_ownership_required" in source
+    assert "interest_sensitive_inference_prohibited" in source
+    assert "c.sensitivity into v_key,v_sensitivity" in source
+
+
+def test_personalization_opt_out_purges_observed_signals_and_export_includes_history():
+    source = MIGRATION.read_text(encoding="utf-8").lower()
+    assert "feed_preferences_purge_observed_interest_signals" in source
+    assert "new.personalization_enabled is false" in source
+    assert "s.signal_source='observed_interaction'" in source
+    assert "interest_graph_signals','user_interest_graph_signals'" in source
+    assert "interest_graph_signal_events','user_interest_graph_signal_events'" in source
+
+
+def test_signal_source_is_required_and_server_version_is_fixed():
+    source = MIGRATION.read_text(encoding="utf-8").lower()
+    assert "p_signal_source is null" in source
+    assert "p_consent_version is null or char_length(p_consent_version) not between 1 and 80" in source
