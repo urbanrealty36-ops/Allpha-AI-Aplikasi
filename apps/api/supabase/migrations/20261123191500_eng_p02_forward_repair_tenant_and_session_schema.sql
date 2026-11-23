@@ -272,6 +272,28 @@ alter table public.organizations enable row level security;
 alter table public.organization_memberships enable row level security;
 alter table public.audit_events enable row level security;
 
+-- Remove any historical permissive policy on these tenant tables before
+-- installing the canonical policy set. PostgreSQL combines permissive policies
+-- with OR, so leaving one stale SELECT policy would bypass membership checks.
+do $allpha_tenant_policy_reset$
+declare
+  existing_policy record;
+begin
+  for existing_policy in
+    select tablename, policyname
+      from pg_catalog.pg_policies
+     where schemaname = 'public'
+       and tablename in ('organizations','organization_memberships','audit_events')
+  loop
+    execute pg_catalog.format(
+      'drop policy %I on public.%I',
+      existing_policy.policyname,
+      existing_policy.tablename
+    );
+  end loop;
+end;
+$allpha_tenant_policy_reset$;
+
 drop policy if exists organizations_select_members on public.organizations;
 -- Membership is the sole tenant-read authority. Organization owners are
 -- inserted into organization_memberships by the owner-membership trigger;
@@ -369,10 +391,16 @@ revoke all on function public.create_organization_owner_membership() from public
 revoke all on function public.audit_organization_created() from public,anon,authenticated;
 
 grant usage on schema public to authenticated,service_role;
+-- Clear table-level and column-level grants left by historical schema versions,
+-- then restore only the read capability required by the RLS policies.
+revoke all privileges on table public.organizations,public.organization_memberships,public.audit_events from anon,authenticated;
+revoke all privileges (id,slug,name,owner_id,created_at,updated_at)
+  on table public.organizations from anon,authenticated;
+revoke all privileges (organization_id,user_id,role,invited_by,created_at)
+  on table public.organization_memberships from anon,authenticated;
+revoke all privileges (id,actor_user_id,organization_id,action,resource_type,resource_id,request_id,metadata,created_at)
+  on table public.audit_events from anon,authenticated;
 grant select on public.organizations,public.organization_memberships,public.audit_events to authenticated;
-revoke insert,update,delete on public.organizations,public.organization_memberships,public.audit_events from authenticated;
-revoke insert (id,slug,name,owner_id,created_at,updated_at), update (id,slug,name,owner_id,created_at,updated_at)
-  on public.organizations from authenticated;
 grant execute on function public.create_organization_for_user(uuid,text,text) to service_role;
 grant execute on function public.add_organization_member_for_actor(uuid,uuid,uuid,text) to service_role;
 grant execute on function public.update_organization_member_role_for_actor(uuid,uuid,uuid,text) to service_role;
