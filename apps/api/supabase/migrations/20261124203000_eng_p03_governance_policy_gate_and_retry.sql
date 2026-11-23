@@ -76,7 +76,7 @@ $old$;
 
   select
     (select count(*) from public.agent_ownerships ao
-      where ao.owner_user_id=v_request.user_id and ao.ownership_role='owner' and ao.status='active'
+      where ao.owner_user_id=v_request.user_id 
         and not exists(select 1 from public.account_deletion_ownership_transfers tr
           join public.profiles sp on sp.id=tr.successor_user_id and sp.account_status='active'
          where tr.request_id=p_request_id and tr.user_id=v_request.user_id
@@ -104,7 +104,7 @@ $new$;
   v_old_meta text := $old$
         'unmapped_sources',v_missing_sources,'blocked_foreign_keys',v_blocked_fks,
         'checked_at',clock_timestamp()),updated_at=clock_timestamp() where id=p_request_id;
-$new$;
+$old$;
   v_new_meta text := $new$
         'unmapped_sources',v_missing_sources,'blocked_foreign_keys',v_blocked_fks,
         'missing_fk_rules',v_missing_fk_rules,'missing_ownership_transfers',v_missing_transfers,
@@ -300,7 +300,7 @@ begin
 
     select
       (select count(*) from public.agent_ownerships ao
-        where ao.owner_user_id=v_request.user_id and ao.ownership_role='owner' and ao.status='active'
+        where ao.owner_user_id=v_request.user_id 
           and not exists(select 1 from public.account_deletion_ownership_transfers tr
             join public.profiles sp on sp.id=tr.successor_user_id and sp.account_status='active'
            where tr.request_id=v_request.id and tr.user_id=v_request.user_id
@@ -386,3 +386,22 @@ end;
 $$;
 revoke all on function public.evaluate_account_deletion_governance(integer) from public,anon,authenticated;
 grant execute on function public.evaluate_account_deletion_governance(integer) to service_role;
+
+
+-- Ownership FK transfer applies to every owner_user_id reference in the ownership registry,
+-- including inactive historical rows; role/status are preserved on the transferred row.
+do $$
+declare
+  v_definition text;
+  v_old text := $old$and ao.ownership_role='owner' and ao.status='active'$old$;
+begin
+  v_definition:=pg_get_functiondef('public.set_my_account_deletion_ownership_transfer(uuid,text,uuid,uuid)'::regprocedure);
+  if position(v_old in v_definition)>0 then
+    execute replace(v_definition,v_old,'');
+  end if;
+  v_definition:=pg_get_functiondef('public.execute_account_deletion_execution_job(uuid,uuid)'::regprocedure);
+  if position(v_old in v_definition)>0 then
+    execute replace(v_definition,v_old,'');
+  end if;
+end;
+$$;
