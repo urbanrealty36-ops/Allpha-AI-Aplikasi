@@ -120,7 +120,7 @@ declare
   v_old text := $old$
           v_sql:=format('UPDATE %I.%I SET %I=NULL WHERE %I::text = $1',
             v_rule.child_schema,v_rule.child_table,v_rule.fk_column,v_rule.fk_column);
-$new$;
+$old$;
   v_new text := $new$
           if v_rule.child_table='community_invites' and v_rule.fk_column='created_by' then
             update public.community_invites
