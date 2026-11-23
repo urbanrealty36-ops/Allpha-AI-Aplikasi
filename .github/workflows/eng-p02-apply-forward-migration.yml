@@ -152,8 +152,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          supabase migration list --remote="$DB_URL" | tee ../recovery-evidence/migration-list-before.txt
-          supabase db push --dry-run --remote="$DB_URL" | tee ../recovery-evidence/migration-dry-run.txt
+          supabase migration list --db-url "$DB_URL" | tee ../recovery-evidence/migration-list-before.txt
+          supabase db push --dry-run --db-url "$DB_URL" | tee ../recovery-evidence/migration-dry-run.txt
           python - <<'PY'
           import re
           from pathlib import Path
@@ -173,7 +173,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          supabase db push --yes --remote="$DB_URL"
+          supabase db push --yes --db-url "$DB_URL"
 
       - name: Verify production migration ledger and tenant authorization boundary
         shell: bash
@@ -218,7 +218,7 @@ jobs:
             grep -q "^$assertion=PASS$" recovery-evidence/production-post-migration-verification.txt
           done
 
-          (cd migration-workspace && supabase migration list --remote="$DB_URL") \
+          (cd migration-workspace && supabase migration list --db-url "$DB_URL") \
             | tee recovery-evidence/migration-list-after.txt
 
       - name: Upload sanitized production migration evidence
