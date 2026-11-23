@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import AccountLifecycleGovernancePanel from "./AccountLifecycleGovernancePanel";
 
 type OperatorScope =
   | "platform:operations.read"
@@ -210,6 +211,20 @@ export default function OperationsPage() {
     () => allScopes.filter((scope) => operator?.scopes.includes(scope)),
     [operator],
   );
+  const getCurrentAccessToken = useCallback(async () => {
+    if (!session) throw new Error("Sesi operator tidak tersedia.");
+    let current = session;
+    if (current.expires_at <= Date.now() + 30_000) {
+      try {
+        current = await refreshAuth(current);
+        setSession(current);
+      } catch {
+        setSession(null);
+        throw new Error("Sesi operator berakhir. Silakan login kembali.");
+      }
+    }
+    return current.access_token;
+  }, [session]);
 
   const refreshProbes = async () => {
     setBusy(true);
@@ -657,6 +672,7 @@ export default function OperationsPage() {
       <Link className="nav" href="/cinema-governance">◈ &nbsp; AI Cinema · Rights & Lifecycle</Link>
       <Link className="nav" href="/billing-governance">◇ &nbsp; Billing & Stripe Governance</Link>
       {operator?.scopes.includes("platform:account_lifecycle.manage") && <a className="nav" href="#account-lifecycle">◇ &nbsp; Account Lifecycle Governance</a>}
+      {operator?.scopes.includes("platform:account_lifecycle.manage") && <a className="nav" href="#account-lifecycle">◇ &nbsp; Account Lifecycle Governance</a>}
       <Link className="nav" href="/community-moderation">◈ &nbsp; Moderasi komunitas</Link>
       <a className="nav" href="#operator-access">◎ &nbsp; Operator access</a>
       {canManage && <a className="nav" href="#operator-grants">◇ &nbsp; Operator grants</a>}
@@ -762,6 +778,7 @@ export default function OperationsPage() {
         </tbody></table></div>
         {agencyDraftDetail && <article className="probe"><div className="probeText"><b>{agencyDraftDetail.name} · {agencyDraftDetail.version_key}</b><p>License: {agencyDraftDetail.provenance.license} · Commit: <code>{agencyDraftDetail.provenance.commit.slice(0, 12)}</code></p><p>Source: <a href={agencyDraftDetail.provenance.source_url} target="_blank" rel="noreferrer">{agencyDraftDetail.provenance.path}</a></p><p>Flags otomatis: {(agencyDraftDetail.review.security_flags || []).join(", ") || "Tidak ada pola terdeteksi; ini bukan jaminan bebas risiko."}</p><p>Checksum: <code>{agencyDraftDetail.content_sha256}</code></p><p>AI Character role: {agencyDraftDetail.character_profile.role || agencyDraftDetail.name} · Asset status: {agencyDraftDetail.character_profile.asset_status || "needs_catalog_mapping"} · asset_key: <code>{agencyDraftDetail.character_profile.asset_key || "null"}</code></p><details><summary>Instruksi adaptasi Allpha</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere",maxHeight:360,overflow:"auto"}}>{agencyDraftDetail.adapted_instructions}</pre></details><details><summary>Instruksi sumber asli</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere",maxHeight:360,overflow:"auto"}}>{agencyDraftDetail.source_instructions_markdown}</pre></details></div><button className="secondaryButton" onClick={() => setAgencyDraftDetail(null)}>Tutup</button></article>}
       </section>}
+      {session && operator?.scopes.includes("platform:account_lifecycle.manage") && <AccountLifecycleGovernancePanel apiBase={apiBase} getAccessToken={getCurrentAccessToken}/>}
             {session && canReadAudit && <section className="panel" id="operator-audit">
         <header className="panelHead"><div><h2>Audit events</h2><p>Event terbaru dari tabel audit khusus operator; token dan payload sensitif tidak ditampilkan.</p></div><span className="pill online">AUDIT READ</span></header>
         <div className="tableWrap"><table><thead><tr><th>Waktu</th><th>Aktor</th><th>Aksi</th><th>Resource</th><th>Hasil</th><th>Request ID</th></tr></thead><tbody>
