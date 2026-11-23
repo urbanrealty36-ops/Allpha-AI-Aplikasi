@@ -56,14 +56,14 @@ jobs:
         working-directory: apps/api
         run: |
           python -m pytest \
-            tests/test_account_lifecycle_worker.py \\
+            tests/test_account_lifecycle_worker.py \
             tests/test_account_lifecycle_worker_lifespan.py \
             tests/test_account_lifecycle_worker_progress.py \
             tests/test_eng_p03_account_export_progress_migration_contract.py \
             tests/test_eng_p03_interest_graph_export_migration_contract.py \
             tests/test_interest_graph_api.py \
             tests/test_recommendation_engine.py \
-            tests/test_social_graph_polymorphic_api.py \\
+            tests/test_social_graph_polymorphic_api.py \
             tests/test_social_feed_api.py \
             tests/test_eng_p04_interest_ontology_migration_contract.py \
             tests/test_eng_p04_privacy_migration_contract.py \
