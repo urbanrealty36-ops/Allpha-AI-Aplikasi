@@ -100,7 +100,8 @@ begin
     raise exception 'service_role_required' using errcode='42501';
   end if;
   if p_worker_id is null or pg_catalog.char_length(p_worker_id) not between 1 and 160
-     or p_limit not between 1 and 100 or p_lease_seconds not between 30 and 3600 then
+     or p_limit is null or p_limit not between 1 and 100
+     or p_lease_seconds is null or p_lease_seconds not between 30 and 3600 then
     raise exception 'invalid_export_cleanup_claim_bounds' using errcode='22023';
   end if;
 
@@ -136,17 +137,17 @@ language plpgsql
 security definer
 set search_path = ''
 as $complete_export_cleanup$
-declare v_export_job_id uuid;
+declare
+  v_export_job_id uuid;
+  v_export_status text;
 begin
   if coalesce(auth.role(),'') <> 'service_role' then
     raise exception 'service_role_required' using errcode='42501';
   end if;
-  update public.account_export_artifact_cleanup_jobs q
-     set status='completed',completed_at=pg_catalog.clock_timestamp(),
-         lease_token=null,lease_owner=null,lease_expires_at=null,
-         error_code=null,updated_at=pg_catalog.clock_timestamp()
+  select q.export_job_id into v_export_job_id
+    from public.account_export_artifact_cleanup_jobs q
    where q.id=p_job_id and q.lease_token=p_lease_token and q.status='running'
-  returning q.export_job_id into v_export_job_id;
+   for update;
   if not found then return false; end if;
 
   update public.account_export_jobs j
@@ -154,6 +155,17 @@ begin
          lease_expires_at=null,updated_at=pg_catalog.clock_timestamp()
    where j.id=v_export_job_id and j.status='succeeded'
      and j.expires_at is not null and j.expires_at <= pg_catalog.clock_timestamp();
+  if not found then
+    select j.status into v_export_status
+      from public.account_export_jobs j where j.id=v_export_job_id;
+    if v_export_status is distinct from 'expired' then return false; end if;
+  end if;
+
+  update public.account_export_artifact_cleanup_jobs q
+     set status='completed',completed_at=pg_catalog.clock_timestamp(),
+         lease_token=null,lease_owner=null,lease_expires_at=null,
+         error_code=null,updated_at=pg_catalog.clock_timestamp()
+   where q.id=p_job_id and q.lease_token=p_lease_token and q.status='running';
   return found;
 end;
 $complete_export_cleanup$;
