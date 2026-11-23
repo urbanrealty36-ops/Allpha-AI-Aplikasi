@@ -388,6 +388,8 @@ def test_deletion_execution_worker_deletes_queued_storage_then_executes_database
                 return [{"processed_count": 1, "queued_count": 1, "blocked_count": 0}]
             if name == "claim_account_deletion_execution_jobs":
                 return [{"id": execution_id, "lease_token": execution_lease, "attempts": 1}]
+            if name == "renew_account_deletion_execution_job_lease":
+                return True
             if name == "claim_account_deletion_storage_jobs":
                 storage_batches += 1
                 if storage_batches == 1:
@@ -414,8 +416,11 @@ def test_deletion_execution_worker_deletes_queued_storage_then_executes_database
         assert deleted == [("content-media", "owner/content/asset.mp4")]
         names = [name for name, _ in calls]
         assert names.index("complete_account_deletion_storage_job") < names.index("execute_account_deletion_execution_job")
-        assert calls[1][1]["p_lease_seconds"] == 3600
-        assert calls[2][1]["p_job_lease_token"] == execution_lease
+        renewal = next(payload for name, payload in calls if name == "renew_account_deletion_execution_job_lease")
+        storage_claim = next(payload for name, payload in calls if name == "claim_account_deletion_storage_jobs")
+        assert renewal["p_lease_token"] == execution_lease
+        assert renewal["p_lease_seconds"] == 3600
+        assert storage_claim["p_job_lease_token"] == execution_lease
 
     asyncio.run(scenario())
 
@@ -436,6 +441,8 @@ def test_deletion_execution_worker_retries_storage_failure_without_running_row_d
                 return [{"processed_count": 1, "queued_count": 1, "blocked_count": 0}]
             if name == "claim_account_deletion_execution_jobs":
                 return [{"id": execution_id, "lease_token": execution_lease, "attempts": 2}]
+            if name == "renew_account_deletion_execution_job_lease":
+                return True
             if name == "claim_account_deletion_storage_jobs":
                 return [{
                     "id": storage_id,
