@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 
 from allpha_api.auth import current_user, optional_current_user, user_db_request, service_db_request
 from allpha_api.feed_api import _server_db
-from allpha_api.recommendation_engine import optional_scoring_rows, policy_from_rows, score_creator_candidate
+from allpha_api.recommendation_engine import expand_interest_weights, optional_scoring_rows, policy_from_rows, score_creator_candidate
 
 router = APIRouter(prefix="/v1/social", tags=["social-graph"])
 
@@ -303,16 +303,24 @@ async def get_social_recommendations(
             mutual_counts[candidate_id] = mutual_counts.get(candidate_id, 0) + 1
 
     interest_candidate_rows = []
+    interest_counts: dict[str, float] = {}
     if viewer_interest_keys:
+        taxonomy_edges = await optional_scoring_rows(_server_db, "interest_taxonomy_edges", {
+            "select": "source_interest_key,target_interest_key,relation_type,weight,active",
+            "active": "eq.true",
+            "limit": "1000",
+        })
+        interest_weights = expand_interest_weights(viewer_interest_keys, taxonomy_edges)
         interest_candidate_rows = await _server_db("POST", "rpc/find_interest_discovery_candidates", body={
-            "p_interest_keys": viewer_interest_keys,
+            "p_interest_keys": sorted(interest_weights),
             "p_limit": 5000,
         })
-    interest_counts: dict[str, int] = {}
-    for row in interest_candidate_rows or []:
-        candidate_id = str(row.get("user_id") or "")
-        if candidate_id and candidate_id != viewer_id:
-            interest_counts[candidate_id] = interest_counts.get(candidate_id, 0) + 1
+        for row in interest_candidate_rows or []:
+            candidate_id = str(row.get("user_id") or "")
+            interest_key = str(row.get("interest_key") or "")
+            affinity = interest_weights.get(interest_key, 0.0)
+            if candidate_id and candidate_id != viewer_id and affinity > 0:
+                interest_counts[candidate_id] = interest_counts.get(candidate_id, 0.0) + affinity
     scoring_rows = await optional_scoring_rows(_server_db, "recommendation_scoring_policies", {
         "select": "version,weights,active", "policy_key": "eq.default", "active": "eq.true", "limit": "1",
     })
