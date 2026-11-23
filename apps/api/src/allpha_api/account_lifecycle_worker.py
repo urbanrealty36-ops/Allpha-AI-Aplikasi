@@ -39,6 +39,7 @@ class AccountLifecycleWorker:
         self.last_poll_at: str | None = None
         self.last_claimed_count = 0
         self.last_cleanup_count = 0
+        self.last_deletion_governance_count = 0
         self.poll_count = 0
         self.last_error_code: str | None = None
         self.lease_heartbeat_seconds = max(5, min(600, int(os.getenv("ACCOUNT_EXPORT_LEASE_HEARTBEAT_SECONDS", str(_EXPORT_LEASE_HEARTBEAT_SECONDS)))))
@@ -298,6 +299,17 @@ class AccountLifecycleWorker:
                     log.exception("account_export_artifact_cleanup_failure_persist_failed cleanup_job_id=%s", job_id)
         return len(jobs)
 
+    async def deletion_governance_batch(self) -> int:
+        """Reconcile legal holds; never execute deletion without complete policy mapping."""
+        if os.getenv("ACCOUNT_DELETION_GOVERNANCE_ENABLED", "false").strip().lower() not in {"1", "true", "yes"}:
+            return 0
+        rows = await self.rpc("evaluate_account_deletion_governance", {
+            "p_limit": int(os.getenv("ACCOUNT_DELETION_GOVERNANCE_BATCH_SIZE", "100")),
+        })
+        if not isinstance(rows, list) or not rows or not isinstance(rows[0], dict):
+            return 0
+        return int(rows[0].get("processed_count") or 0)
+
     async def run(self) -> None:
         poll_seconds = max(2, min(60, int(os.getenv("ACCOUNT_EXPORT_POLL_SECONDS", "10"))))
         log.warning("account_lifecycle_worker_started worker_id=%s poll_seconds=%s", self.worker_id, poll_seconds)
@@ -306,6 +318,7 @@ class AccountLifecycleWorker:
                 try:
                     count = await self.batch()
                     cleanup_count = await self.cleanup_batch()
+                    deletion_governance_count = await self.deletion_governance_batch()
                     self.last_error_code = None
                 except asyncio.CancelledError:
                     raise
@@ -314,11 +327,13 @@ class AccountLifecycleWorker:
                     log.exception("account_export_batch_failed")
                     count = 0
                     cleanup_count = 0
+                    deletion_governance_count = 0
                 self.last_poll_at = datetime.now(timezone.utc).isoformat()
                 self.last_claimed_count = count
                 self.last_cleanup_count = cleanup_count
+                self.last_deletion_governance_count = deletion_governance_count
                 self.poll_count += 1
-                if count == 0 and cleanup_count == 0:
+                if count == 0 and cleanup_count == 0 and deletion_governance_count == 0:
                     await asyncio.sleep(poll_seconds)
         finally:
             log.warning(
