@@ -12,6 +12,7 @@ CONTAINER="allpha-p03-deletion-"+uuid.uuid4().hex[:8]
 A="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 B="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
 C="cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+D="dddddddd-dddd-4ddd-8ddd-dddddddddddd"
 HOLD_A="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 HOLD_B="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 OPEN_C="cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
@@ -228,7 +229,7 @@ end {dollar_quote};
         psql(f"""
 insert into public.agent_ownerships values
  ('{A}','{A}','owner','active'),('{B}','{B}','owner','active'),('{C}','{A}','operator','active'),
- ('{uuid.uuid4()}','{A}','owner','inactive');
+ ('{D}','{A}','owner','inactive');
 insert into public.agent_skills(id,agent_id,created_by) values
  ('{uuid.uuid4()}','{A}','{A}'),('{uuid.uuid4()}','{B}','{B}'),('{uuid.uuid4()}','{C}','{A}');
 insert into public.agent_runtime_tasks values ('{A}','{A}'),('{B}','{B}');
@@ -264,7 +265,7 @@ end {dollar_quote};
 reset role;
 do {dollar_quote}
 begin
- if (select count(*) from public.agent_skills)<>2 then raise exception 'agent skill deletion escaped active owner scope'; end if;
+ if (select count(*) from public.agent_skills)<>3 then raise exception 'agent skill deletion escaped active owner scope'; end if;
  if (select count(*) from public.agent_runtime_checkpoints)<>1 or (select count(*) from public.agent_runtime_effect_receipts)<>1 then raise exception 'runtime task child deletion scope incorrect'; end if;
  if (select count(*) from public.content_comments)<>1 then raise exception 'owned content comments deletion scope incorrect'; end if;
  if (select count(*) from public.content_reactions)<>1 then raise exception 'content activity deletion scope incorrect'; end if;
