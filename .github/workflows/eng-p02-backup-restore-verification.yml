@@ -21,7 +21,7 @@ jobs:
     timeout-minutes: 45
     env:
       BACKUP_RUN_ID: ${{ github.event.workflow_run.id }}
-      EXPECTED_EXPORT_LEASE_MIGRATION_BLOB: dc1d3d7e6cc2ca715450e7955893371488998047
+      EXPECTED_EXPORT_LEASE_MIGRATION_BLOB: aa5fe5763432f8a2c9ca31fffb432b2327aa98c2
 
     steps:
       - uses: actions/checkout@v4
