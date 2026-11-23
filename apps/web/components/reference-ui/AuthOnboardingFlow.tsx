@@ -171,6 +171,66 @@ export default function AuthOnboardingFlow({
   const [skillsLoading, setSkillsLoading] = useState(true);
   const [skillsError, setSkillsError] = useState('');
   const [availableSkills, setAvailableSkills] = useState<SkillCatalogEntry[]>([]);
+  const [draftReady, setDraftReady] = useState(false);
+  const onboardingDraftKey = 'allpha:onboarding:draft:v1:' + currentUser.id;
+
+  // Recover only non-secret onboarding fields within this browser tab. Email and
+  // password are deliberately excluded; credentials must always be re-entered.
+  useEffect(() => {
+    if (!isOpen) return;
+    setDraftReady(false);
+    try {
+      const raw = window.sessionStorage.getItem(onboardingDraftKey);
+      if (raw) {
+        const saved = JSON.parse(raw) as Record<string, unknown>;
+        const textValue = (key: string, fallback: string, max = 500) =>
+          typeof saved[key] === 'string' && (saved[key] as string).length <= max ? saved[key] as string : fallback;
+        const listValue = (key: string, maxItems = 40) =>
+          Array.isArray(saved[key]) ? (saved[key] as unknown[]).filter((item): item is string => typeof item === 'string').slice(0, maxItems) : null;
+        setHumanName(textValue('humanName', currentUser.name, 80));
+        setHumanHandle(textValue('humanHandle', currentUser.username, 30));
+        setHumanBio(textValue('humanBio', currentUser.bio, 500));
+        setSelectedAvatar(textValue('selectedAvatar', currentUser.avatar, 2048));
+        setSelectedInterests(listValue('selectedInterests', 20) || []);
+        setAgentName(textValue('agentName', currentAgent.name, 80));
+        setAgentHandle(textValue('agentHandle', currentAgent.handle, 40));
+        setAgentSpecialty(textValue('agentSpecialty', currentAgent.specialty, 240));
+        setAgentPersona(textValue('agentPersona', 'Ramah & Kreatif', 120));
+        setSelectedSkills(listValue('selectedSkills', 50) || currentAgent.skills || []);
+        setSelectedAgentAvatar(textValue('selectedAgentAvatar', currentAgent.avatar3DImage || currentAgent.avatar || AVATAR_3D_CATALOG[0].image, 2048));
+        setSelectedAvatarCodename(textValue('selectedAvatarCodename', currentAgent.avatar3DCodename || AVATAR_3D_CATALOG[0].id, 80));
+        if (typeof saved.selectedBidang === 'string' && saved.selectedBidang in BIDANG_SKILLS_CATALOG) setSelectedBidang(saved.selectedBidang as AgentBidang);
+        if (['Kesehatan', 'IT & Teknologi', 'Marketing', 'Kreativitas', 'Gaming & 3D'].includes(String(saved.agentCategory))) setAgentCategory(saved.agentCategory as typeof agentCategory);
+        if (typeof saved.isAutoReplyEnabled === 'boolean') setIsAutoReplyEnabled(saved.isAutoReplyEnabled);
+        if (!initialAuthMode && (saved.step === 'HUMAN_REGISTER' || saved.step === 'AGENT_ONBOARDING')) setStep(saved.step);
+        if (!initialAuthMode && (saved.authMode === 'REGISTER' || saved.authMode === 'LOGIN')) setAuthMode(saved.authMode);
+        showFlowToast('Draft onboarding dipulihkan. Email dan password perlu dimasukkan kembali.');
+      }
+    } catch {
+      try { window.sessionStorage.removeItem(onboardingDraftKey); } catch { /* storage may be unavailable */ }
+    } finally {
+      setDraftReady(true);
+    }
+  }, [isOpen, onboardingDraftKey, currentUser.name, currentUser.username, currentUser.bio, currentUser.avatar, currentAgent.name, currentAgent.handle, currentAgent.specialty, currentAgent.skills, currentAgent.avatar3DImage, currentAgent.avatar, currentAgent.avatar3DCodename, initialAuthMode]);
+
+  useEffect(() => {
+    if (!isOpen || !draftReady || step === 'SUCCESS') return;
+    try {
+      window.sessionStorage.setItem(onboardingDraftKey, JSON.stringify({
+        step, authMode, humanName, humanHandle, humanBio, selectedAvatar, selectedInterests,
+        agentName, agentHandle, selectedBidang, selectedSkills, agentSpecialty, agentCategory,
+        agentPersona, selectedAgentAvatar, selectedAvatarCodename, isAutoReplyEnabled,
+        savedAt: new Date().toISOString(),
+      }));
+    } catch {
+      // A full or privacy-restricted browser storage must never block onboarding.
+    }
+  }, [isOpen, draftReady, onboardingDraftKey, step, authMode, humanName, humanHandle, humanBio, selectedAvatar, selectedInterests, agentName, agentHandle, selectedBidang, selectedSkills, agentSpecialty, agentCategory, agentPersona, selectedAgentAvatar, selectedAvatarCodename, isAutoReplyEnabled]);
+
+  const clearOnboardingDraft = () => {
+    try { window.sessionStorage.removeItem(onboardingDraftKey); } catch { /* storage may be unavailable */ }
+    setDraftReady(false);
+  };
 
   useEffect(() => {
     let active = true;
@@ -266,6 +326,7 @@ export default function AuthOnboardingFlow({
           persona: agentPersona,
         });
         if (result === 'verification_pending') { setVerificationPending(true); return; }
+        clearOnboardingDraft();
         setStep('SUCCESS');
         window.setTimeout(() => onClose(), 1200);
       } catch (cause) {
@@ -305,6 +366,7 @@ export default function AuthOnboardingFlow({
     try {
       const result = await onComplete({ user: updatedHuman, agent: updatedAgent, email: humanEmail.trim(), password: humanPassword, authMode, interests: selectedInterests, persona: agentPersona });
       if (result === 'verification_pending') { setVerificationPending(true); return; }
+      clearOnboardingDraft();
       setStep('SUCCESS');
       setTimeout(() => onClose(), 1800);
     } catch (cause) {
