@@ -16,6 +16,7 @@ concurrency:
 
 jobs:
   restore-backup-to-disposable-supabase-postgres:
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -149,7 +150,7 @@ jobs:
         shell: bash
         run: |
           python - <<'PY'
-          import hashlib, json
+          import hashlib, json, os
           from datetime import datetime, timezone
           from pathlib import Path
 
