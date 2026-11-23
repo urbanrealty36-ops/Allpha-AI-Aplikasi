@@ -279,7 +279,7 @@ jobs:
           echo "consent_rpc_behavior=PASS" | tee -a recovery-evidence/p03-consent-event-verification.txt
           echo "P03_CONSENT_MIGRATION_BLOB=$(git rev-parse HEAD:"$migration")" >> "$GITHUB_ENV"
 
-      - name: Apply ENG-P03 lease-scoped export artifact migration to disposable restored database
+      - name: Verify ENG-P03 lease-scoped export artifact migration and behavior on disposable restore
         shell: bash
         run: |
           set -euo pipefail
