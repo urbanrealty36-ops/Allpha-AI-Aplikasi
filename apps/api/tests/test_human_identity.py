@@ -148,6 +148,49 @@ def test_consent_record_uses_service_only_append_only_rpc_and_verified_actor(mon
     }
 
 
+def test_consent_history_reads_owner_events_and_server_policy_versions(monkeypatch):
+    from fastapi import Request
+    from allpha_api.auth import current_user
+
+    monkeypatch.setenv("ALLPHA_POLICY_VERSION_TERMS_OF_SERVICE", "tos-2026-11")
+    monkeypatch.setenv("ALLPHA_POLICY_VERSION_PRIVACY_POLICY", "privacy-2026-11")
+    monkeypatch.delenv("ALLPHA_POLICY_VERSION_PRODUCT_UPDATES", raising=False)
+    calls = []
+
+    async def fake_user_db_request(method, path, access_token, **kwargs):
+        calls.append((method, path, access_token, kwargs))
+        return [{
+            "id": "event-1",
+            "consent_type": "product_updates",
+            "policy_version": "v2",
+            "decision": "revoked",
+            "source": "account_settings",
+            "idempotency_key": "event-idempotency-1",
+            "recorded_at": "2026-11-23T00:00:00Z",
+        }]
+
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = "consent-session-token"
+        return {"id": "human-123", "email": "human@example.invalid"}
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = client.get("/v1/me/consents", headers={"Authorization": "Bearer test"})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert calls[0][0:3] == ("GET", "user_consent_events", "consent-session-token")
+    assert calls[0][3]["params"]["user_id"] == "eq.human-123"
+    assert response.json()["items"][0]["decision"] == "revoked"
+    assert response.json()["current_policy_versions"] == {
+        "terms_of_service": "tos-2026-11",
+        "privacy_policy": "privacy-2026-11",
+        "product_updates": None,
+    }
+
+
 def test_consent_rejects_client_invented_policy_version_without_database_write(monkeypatch):
     from fastapi import Request
     from allpha_api.auth import current_user
