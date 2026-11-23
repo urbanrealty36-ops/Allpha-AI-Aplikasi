@@ -5,7 +5,7 @@ MIGRATION = (
     Path(__file__).parents[1]
     / "supabase"
     / "migrations"
-    / "20261123201000_eng_p03_export_interest_graph_sources.sql"
+    / "20261123124933_eng_p03_export_interest_graph_sources.sql"
 )
 
 
@@ -13,8 +13,8 @@ def test_account_export_includes_owner_scoped_passion_and_habit_sources():
     source = " ".join(MIGRATION.read_text(encoding="utf-8").lower().split())
 
     for source_key, table_name, order in (
-        ("interest_graph_signals", "user_interest_graph_signals", 48),
-        ("interest_graph_signal_events", "user_interest_graph_signal_events", 49),
+        ("interest_graph_signals", "user_interest_graph_signals", 44),
+        ("interest_graph_signal_events", "user_interest_graph_signal_events", 45),
     ):
         assert f"('{source_key}','{table_name}','owner_columns',array['user_id']::text[],{order},true)" in source
 
