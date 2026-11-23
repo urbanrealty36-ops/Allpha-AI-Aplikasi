@@ -689,26 +689,28 @@ def test_follow_request_accept_returns_safe_not_found_when_not_owned_or_pending(
 def test_interest_upsert_and_delete_are_scoped_to_authenticated_user(monkeypatch):
     calls = []
 
-    async def fake_user_db_request(method, path, access_token, **kwargs):
-        calls.append((method, path, access_token, kwargs))
-        if method == "POST":
-            return [{"interest_key": "desain.3d", "preference": "interested"}]
-        return [{"interest_key": "desain.3d"}]
+    async def fake_service_db_request(function_name, *, body):
+        calls.append((function_name, body))
+        if function_name == "set_my_interest_preference_for_actor":
+            return [{"interest_key": "spatial_3d", "preference": "interested"}]
+        if function_name == "delete_my_interest_for_actor":
+            return [{"interest_key": "spatial_3d"}]
+        raise AssertionError(f"Unexpected service RPC: {function_name}")
 
     async def fake_current_user(request: Request):
         request.state.supabase_access_token = "interest-session-token"
         return {"id": "interest-owner", "email": "owner@example.invalid"}
 
-    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    monkeypatch.setattr("allpha_api.main.service_db_request", fake_service_db_request)
     app.dependency_overrides[current_user] = fake_current_user
     try:
         put_response = client.put(
             "/v1/me/interests",
             headers={"Authorization": "Bearer interest-session-token"},
-            json={"interest_key": "desain.3d", "preference": "interested"},
+            json={"interest_key": "spatial_3d", "preference": "interested"},
         )
         delete_response = client.delete(
-            "/v1/me/interests/desain.3d",
+            "/v1/me/interests/spatial_3d",
             headers={"Authorization": "Bearer interest-session-token"},
         )
     finally:
@@ -716,13 +718,17 @@ def test_interest_upsert_and_delete_are_scoped_to_authenticated_user(monkeypatch
 
     assert put_response.status_code == 200
     assert delete_response.status_code == 200
-    assert len(calls) == 2
-    assert calls[0][0:3] == ("POST", "user_interests", "interest-session-token")
-    assert calls[0][3]["body"]["user_id"] == "interest-owner"
-    assert calls[0][3]["params"]["on_conflict"] == "user_id,interest_key"
-    assert calls[1][0:3] == ("DELETE", "user_interests", "interest-session-token")
-    assert calls[1][3]["params"]["user_id"] == "eq.interest-owner"
-    assert calls[1][3]["params"]["interest_key"] == "eq.desain.3d"
+    assert calls == [
+        ("set_my_interest_preference_for_actor", {
+            "p_actor_user_id": "interest-owner",
+            "p_interest_key": "spatial_3d",
+            "p_preference": "interested",
+        }),
+        ("delete_my_interest_for_actor", {
+            "p_actor_user_id": "interest-owner",
+            "p_interest_key": "spatial_3d",
+        }),
+    ]
 
 
 def test_social_edge_delete_returns_not_found_and_never_deletes_another_actor_edge(monkeypatch):
