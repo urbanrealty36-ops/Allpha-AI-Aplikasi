@@ -19,6 +19,8 @@ jobs:
           python-version: "3.11"
       - run: python -m pip install -e "apps/api[dev]"
       - run: pytest apps/api/tests
+      - name: Verify ENG-P04 ontology and Passion/Habit migrations on disposable PostgreSQL 17
+        run: python apps/api/scripts/verify_eng_p04_interest_graph.py
 
   web-build:
     runs-on: ubuntu-latest
