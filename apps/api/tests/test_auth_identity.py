@@ -252,7 +252,7 @@ def test_profile_update_is_self_scoped_and_rejects_server_owned_fields(monkeypat
         request.state.supabase_access_token = "scoped-test-token"
         return {"id": "authenticated-user", "email": "user@example.invalid"}
 
-    monkeypatch.setattr("allpha_api.organization_service.user_db_request", fake_user_db_request)
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
     app.dependency_overrides[current_user] = fake_current_user
     try:
         response = client.patch(
@@ -406,7 +406,7 @@ def test_membership_lookup_for_authorized_user_uses_session_token_and_org_scope(
         return {"id": "00000000-0000-4000-8000-000000000111", "email": "tenant-a@example.invalid"}
 
     monkeypatch.setattr("allpha_api.auth.user_db_request", fake_user_db_request)
-    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    monkeypatch.setattr("allpha_api.organization_service.user_db_request", fake_user_db_request)
     app.dependency_overrides[current_user] = fake_current_user
     try:
         response = client.get(
