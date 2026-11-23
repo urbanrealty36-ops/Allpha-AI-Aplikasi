@@ -78,7 +78,10 @@ def test_retention_policy_creation_rejects_duplicate_version(monkeypatch):
         return [{"id": str(POLICY_ID)}]
 
     monkeypatch.setattr(governance, "privileged_rest_request", privileged)
-    monkeypatch.setattr(governance, "write_operator_audit", lambda *args, **kwargs: None)
+    async def audit(request, **kwargs):
+        return None
+
+    monkeypatch.setattr(governance, "write_operator_audit", audit)
     payload = governance.RetentionPolicyCreate(
         data_class="social_content", retention_days=365,
         policy_version="v1", legal_basis="Approved legal basis reference",
