@@ -14,6 +14,7 @@ JOB = {
 
 def _worker():
     worker = object.__new__(AccountLifecycleWorker)
+    worker.worker_id = "test-account-export-worker"
     worker.lease_heartbeat_seconds = 0.01
     return worker
 
