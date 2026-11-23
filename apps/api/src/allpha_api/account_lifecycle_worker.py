@@ -450,7 +450,11 @@ class AccountLifecycleWorker:
                         if not storage_job_id or not storage_lease:
                             raise RuntimeError("ACCOUNT_DELETION_STORAGE_LEASE_INVALID")
                         try:
+                            if lease_lost.is_set():
+                                raise RuntimeError("ACCOUNT_DELETION_EXECUTION_LEASE_LOST")
                             await self.delete_storage_object(str(bucket or ""), object_path)
+                            if lease_lost.is_set():
+                                raise RuntimeError("ACCOUNT_DELETION_EXECUTION_LEASE_LOST")
                             completed = await self.rpc(
                                 "complete_account_deletion_storage_job",
                                 {"p_job_id": storage_job_id, "p_lease_token": storage_lease},
