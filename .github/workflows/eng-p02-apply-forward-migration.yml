@@ -132,28 +132,38 @@ jobs:
           }, indent=2))
           PY
 
-      - name: Check whether the exact target migration is already applied
+      - name: Capture remote migration ledger and target state
         shell: bash
         run: |
           set -euo pipefail
-          state="$(docker run --rm --network host \
+          mkdir -p recovery-evidence
+          docker run --rm --network host \
             -e DATABASE_URL="$DB_URL" \
             postgres:17-alpine \
-            sh -lc 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atc "select case when exists (select 1 from supabase_migrations.schema_migrations where version='\''20261123191500'\'') then '\''true'\'' else '\''false'\'' end"')"
-          test "$state" = "true" -o "$state" = "false"
+            sh -lc 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atc "select version from supabase_migrations.schema_migrations order by version"' \
+            > recovery-evidence/remote-migration-versions.txt
+          test -s recovery-evidence/remote-migration-versions.txt
+          if grep -Fxq "$TARGET_MIGRATION_VERSION" recovery-evidence/remote-migration-versions.txt; then
+            state="true"
+          else
+            state="false"
+          fi
           echo "TARGET_ALREADY_APPLIED=$state" >> "$GITHUB_ENV"
+          echo "Captured $(wc -l < recovery-evidence/remote-migration-versions.txt) applied remote migration versions."
           echo "Target migration already applied: $state"
 
-      - name: Build isolated Supabase migration workspace
+      - name: Build isolated workspace from applied remote history plus ENG-P02 target
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p migration-workspace/supabase/migrations
-          cp apps/api/supabase/config.toml migration-workspace/supabase/config.toml
-          cp apps/api/supabase/migrations/20261123191500_eng_p02_forward_repair_tenant_and_session_schema.sql \
-            migration-workspace/supabase/migrations/
-          test "$(find migration-workspace/supabase/migrations -maxdepth 1 -type f -name '*.sql' | wc -l)" -eq 1
-          test -f migration-workspace/supabase/migrations/20261123191500_eng_p02_forward_repair_tenant_and_session_schema.sql
+          python apps/api/scripts/build_migration_workspace.py \
+            --source-dir apps/api/supabase/migrations \
+            --remote-versions-file recovery-evidence/remote-migration-versions.txt \
+            --target-migration "apps/api/supabase/migrations/${TARGET_MIGRATION_VERSION}_${TARGET_MIGRATION_NAME}.sql" \
+            --workspace-dir migration-workspace
+          test -f migration-workspace/supabase/config.toml
+          test -f migration-workspace/supabase/migrations/${TARGET_MIGRATION_VERSION}_${TARGET_MIGRATION_NAME}.sql
+          cat migration-workspace/migration-workspace-manifest.json
 
       - uses: supabase/setup-cli@v1
         with:
@@ -232,9 +242,11 @@ jobs:
         with:
           name: eng-p02-forward-migration-production-evidence
           path: |
+            recovery-evidence/remote-migration-versions.txt
             recovery-evidence/migration-list-before.txt
             recovery-evidence/migration-dry-run.txt
             recovery-evidence/production-post-migration-verification.txt
             recovery-evidence/migration-list-after.txt
+            migration-workspace/migration-workspace-manifest.json
           if-no-files-found: error
           retention-days: 90
