@@ -147,7 +147,13 @@ begin
    order by case when lower(c.interest_key)=lower(p_interest_key) then 0 else 1 end
    limit 1;
   if v_interest_key is null then
-    raise exception 'interest_key_not_in_catalog' using errcode='22023';
+    -- Preserve preference updates for a user's pre-catalog legacy keys, but do
+    -- not permit creating new arbitrary keys outside the canonical ontology.
+    if exists(select 1 from public.user_interests ui where ui.user_id=p_actor_user_id and ui.interest_key=p_interest_key) then
+      v_interest_key := p_interest_key;
+    else
+      raise exception 'interest_key_not_in_catalog' using errcode='22023';
+    end if;
   end if;
   return query
   insert into public.user_interests(user_id,interest_key,preference)
@@ -185,7 +191,12 @@ begin
    order by case when lower(c.interest_key)=lower(p_interest_key) then 0 else 1 end
    limit 1;
   if v_interest_key is null then
-    raise exception 'interest_key_not_in_catalog' using errcode='22023';
+    -- Existing custom/legacy keys remain removable after the catalog cutover.
+    if exists(select 1 from public.user_interests ui where ui.user_id=p_actor_user_id and ui.interest_key=p_interest_key) then
+      v_interest_key := p_interest_key;
+    else
+      raise exception 'interest_key_not_found' using errcode='P0002';
+    end if;
   end if;
   return query delete from public.user_interests ui
    where ui.user_id=p_actor_user_id and ui.interest_key=v_interest_key
