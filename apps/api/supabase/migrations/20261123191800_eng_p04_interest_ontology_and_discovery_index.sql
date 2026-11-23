@@ -65,6 +65,10 @@ begin
     select 1 from public.user_settings s
      where s.user_id=p_user_id
        and coalesce(s.privacy_settings,'{}'::jsonb) @> '{"discoverable_by_username":true,"allow_interest_matching":true}'::jsonb
+       and exists (
+         select 1 from public.profiles p
+          where p.id=p_user_id and p.visibility='public' and p.account_status='active'
+       )
   ) then
     insert into private.user_interest_discovery_index(user_id,interest_key)
     select ui.user_id,ui.interest_key
