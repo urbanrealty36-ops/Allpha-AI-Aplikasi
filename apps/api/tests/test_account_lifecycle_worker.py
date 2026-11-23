@@ -467,3 +467,45 @@ def test_deletion_execution_worker_retries_storage_failure_without_running_row_d
         assert "execute_account_deletion_execution_job" not in names
 
     asyncio.run(scenario())
+
+
+
+def test_deletion_execution_worker_stops_when_execution_lease_is_lost(monkeypatch):
+    async def scenario():
+        worker = _worker()
+        worker.deletion_lease_heartbeat_seconds = 0.01
+        monkeypatch.setenv("ACCOUNT_DELETION_EXECUTION_ENABLED", "true")
+        calls = []
+        second_renewal = asyncio.Event()
+        renew_count = 0
+        execution_id = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+        execution_lease = "ffffffff-ffff-4fff-8fff-ffffffffffff"
+
+        async def rpc(name, payload):
+            nonlocal renew_count
+            calls.append((name, payload))
+            if name == "prepare_account_deletion_execution_batch":
+                return [{"processed_count": 1, "queued_count": 1, "blocked_count": 0}]
+            if name == "claim_account_deletion_execution_jobs":
+                return [{"id": execution_id, "lease_token": execution_lease, "attempts": 1}]
+            if name == "renew_account_deletion_execution_job_lease":
+                renew_count += 1
+                if renew_count == 1:
+                    return True
+                second_renewal.set()
+                return False
+            if name == "claim_account_deletion_storage_jobs":
+                await asyncio.wait_for(second_renewal.wait(), timeout=1)
+                return []
+            if name == "fail_account_deletion_execution_job":
+                return False
+            raise AssertionError(f"lease loss must stop execution before {name}")
+
+        worker.rpc = rpc
+        assert await worker.deletion_execution_batch() == 1
+        names = [name for name, _ in calls]
+        assert renew_count >= 2
+        assert "execute_account_deletion_execution_job" not in names
+        assert "fail_account_deletion_execution_job" in names
+
+    asyncio.run(scenario())
