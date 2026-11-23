@@ -229,6 +229,7 @@ assert.ok(app.includes('encodeURIComponent(selectedFeedContentId)') && app.inclu
 assert.ok(app.includes('initialStoryId && !selectedStory && !guestLoading') && app.includes('initialStoryId && <View style={s.socialRow}>'), "Guest and authenticated Story deep links must render truthful unavailable states");
 assert.ok(app.includes('if (!active) return;') && app.includes('setSelectedFeedItem(payload.item)') && app.includes('return () => { active = false; };'), "Feed deep-link requests must ignore stale results after route changes or unmount");
 assert.ok(app.includes('updateInterestPreference') && app.includes('"not_interested"'), "Native Social Graph must persist both interested and not-interested preferences");
+assert.ok(app.includes('/v1/social/recommendations?limit=12') && app.includes("followSocialRecommendation") && app.includes("mutual_followers_count"), "Native Social Graph must load privacy-aware recommendations and follow via the canonical relationship API");
 assert.ok(app.includes('result.outcome === "follow_active"') && app.includes('result.outcome === "follow_request_created"'), "Native Social Graph must show the server-derived follow outcome");
 for (const contract of ["/v1/social/relationships", "/v1/social/actor-agents", "/v1/social/discover-agents?q=", "/v1/social/activity?limit=", "actor_agent_id", "target_type: targetType", "socialTargetType", "socialActorAgentId", "target_node_type"]) {
   assert.ok(app.includes(contract), "Native Social Graph must use the typed Human-Agent relationship contract: " + contract);
