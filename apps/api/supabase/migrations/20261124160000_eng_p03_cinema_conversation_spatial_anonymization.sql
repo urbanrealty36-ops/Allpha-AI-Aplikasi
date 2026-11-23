@@ -122,3 +122,19 @@ update public.account_deletion_source_policies
        reason='Preserve Agent skill definitions when their parent Agent is transferred; the deletion executor blocks the entire transaction if any Agent lacks a validated successor.',
        updated_at=clock_timestamp()
  where active=true and source_key='agent_skills_owned';
+
+
+do $$
+declare
+  v_definition text;
+  v_old text := $old$and p.deletion_action='preserve');$old$;
+  v_new text := $new$and p.deletion_action in ('preserve','anonymize'));$new$;
+begin
+  v_definition:=pg_get_functiondef('public.claim_account_deletion_storage_jobs(uuid,uuid,integer,integer)'::regprocedure);
+  if position(v_new in v_definition)>0 then return; end if;
+  if position(v_old in v_definition)=0 then
+    raise exception 'account_deletion_storage_anonymize_patch_anchor_missing';
+  end if;
+  execute replace(v_definition,v_old,v_new);
+end;
+$$;
