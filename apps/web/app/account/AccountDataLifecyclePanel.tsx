@@ -75,6 +75,9 @@ export default function AccountDataLifecyclePanel({ apiBase, accessToken }: Prop
   const [message, setMessage] = useState("");
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
+  const [transferType, setTransferType] = useState<"agent" | "organization">("agent");
+  const [transferResourceId, setTransferResourceId] = useState("");
+  const [transferSuccessorId, setTransferSuccessorId] = useState("");
 
   const request = useCallback(async (path: string, init: RequestInit = {}) => {
     const headers = new Headers(init.headers);
@@ -151,6 +154,24 @@ export default function AccountDataLifecyclePanel({ apiBase, accessToken }: Prop
     } finally { setBusy(false); }
   }
 
+  async function createOwnershipTransfer(requestId: string) {
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const payload = await request("/v1/me/deletion-requests/" + encodeURIComponent(requestId) + "/ownership-transfers", {
+        method: "POST",
+        body: JSON.stringify({
+          resource_type: transferType,
+          resource_id: transferResourceId.trim(),
+          successor_user_id: transferSuccessorId.trim(),
+        }),
+      });
+      setMessage("Instruksi pengalihan " + payload.transfer.resource_type + " tersimpan. Pengalihan akan dijalankan secara atomik saat deletion executor memproses permintaan.");
+      setTransferResourceId(""); setTransferSuccessorId("");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Instruksi pengalihan kepemilikan gagal disimpan.");
+    } finally { setBusy(false); }
+  }
+
   async function cancelDeletion(requestId: string) {
     setBusy(true); setError(""); setMessage("");
     try {
@@ -215,6 +236,27 @@ export default function AccountDataLifecyclePanel({ apiBase, accessToken }: Prop
                 {item.status === "awaiting_policy" && <button type="button" className="button-quiet" disabled={busy} onClick={() => void cancelDeletion(item.id)}>Batalkan</button>}
               </article>
             ))}
+          </div>
+        )}
+        {openDeletion && (
+          <div className="settings-layout" aria-label="Pengalihan kepemilikan sebelum penghapusan akun">
+            <h4>Pengalihan kepemilikan Agent / Organisasi</h4>
+            <p className="muted">Masukkan ID resource yang benar-benar Anda miliki dan ID pengguna penerima. Backend memvalidasi kepemilikan, status akun penerima, dan keanggotaan organisasi sebelum instruksi disimpan.</p>
+            <label>Jenis resource
+              <select value={transferType} onChange={(event) => setTransferType(event.target.value as "agent" | "organization")}>
+                <option value="agent">AI Agent</option>
+                <option value="organization">Organisasi</option>
+              </select>
+            </label>
+            <label>Resource ID
+              <input value={transferResourceId} onChange={(event) => setTransferResourceId(event.target.value)} maxLength={36} placeholder="UUID Agent / Organisasi" />
+            </label>
+            <label>Successor User ID
+              <input value={transferSuccessorId} onChange={(event) => setTransferSuccessorId(event.target.value)} maxLength={36} placeholder="UUID pengguna penerima" />
+            </label>
+            <button type="button" className="button-quiet" disabled={busy || !openDeletion || !transferResourceId.trim() || !transferSuccessorId.trim()} onClick={() => void createOwnershipTransfer(openDeletion.id)}>
+              {busy ? "Menyimpan…" : "Simpan instruksi pengalihan"}
+            </button>
           </div>
         )}
         {openDeletion ? <p className="notice">Sudah ada permintaan aktif. Batalkan permintaan tersebut sebelum mengajukan ulang.</p> : (
