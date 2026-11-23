@@ -22,7 +22,7 @@ type SocialEdge = { id: string; target_user_id?: string; actor_user_id?: string;
 type SocialInterest = { interest_key: string; preference: "interested" | "not_interested"; created_at?: string; updated_at?: string };
 type DiscoveredSocialUser = { id: string; username: string; display_name?: string | null; avatar_url?: string | null; visibility: "public" | "private" };
 type SocialGraph = { outgoing: SocialEdge[]; incoming_followers?: SocialEdge[]; incoming_requests: SocialEdge[]; blocked_by: SocialEdge[]; interests: SocialInterest[]; summary?: { following: number; followers: number; pending_follow_requests: number; blocked: number; muted: number; interests: number; truncated: boolean }; };
-type ConsentRecord = { consent_type: "terms_of_service" | "privacy_policy" | string; policy_version: string; granted: boolean; recorded_at: string };
+type ConsentRecord = { id: string; consent_type: "terms_of_service" | "privacy_policy" | "product_updates" | string; policy_version: string; decision: "granted" | "declined" | "revoked"; source: string; idempotency_key: string; recorded_at: string };\ntype ConsentPolicyVersions = { terms_of_service: string | null; privacy_policy: string | null; product_updates: string | null };
 type AuthSession = { id: string; created_at: string | null; updated_at: string | null; refreshed_at: string | null; not_after: string | null; aal: string | null; user_agent: string | null; ip: string | null; is_current: boolean };
 type AuthSessionsResponse = { items: AuthSession[]; current_session_id: string };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
@@ -46,6 +46,7 @@ export default function HomePage() {
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [sessionsError, setSessionsError] = useState("");
   const [consentHistory, setConsentHistory] = useState<ConsentRecord[] | null>(null);
+  const [currentPolicyVersions, setCurrentPolicyVersions] = useState<ConsentPolicyVersions>({ terms_of_service: null, privacy_policy: null, product_updates: null });
   const [consentLoading, setConsentLoading] = useState(false);
   const [consentError, setConsentError] = useState("");
   const [socialGraph, setSocialGraph] = useState<SocialGraph | null>(null);
@@ -98,7 +99,7 @@ export default function HomePage() {
       setSession(data.session);
       sessionsAutoLoadToken.current = null;
       socialRequestSequence.current += 1; consentRequestSequence.current += 1; sessionsRequestSequence.current += 1;
-      setSocialGraph(null); setConsentHistory(null); setAuthSessions(null);
+      setSocialGraph(null); setConsentHistory(null); setCurrentPolicyVersions({ terms_of_service: null, privacy_policy: null, product_updates: null }); setAuthSessions(null);
       if (data.session) void loadIdentity(data.session); else {
         identityRequestSequence.current += 1;
         setProfile(null); setSettings(null); setLoading(false);
@@ -240,11 +241,48 @@ export default function HomePage() {
     try {
       const response = await fetch(apiBase + "/v1/me/consents", { headers: { Authorization: "Bearer " + token }, cache: "no-store" });
       if (!response.ok) throw new Error(await apiError(response));
-      const payload = await response.json() as { items?: ConsentRecord[] };
-      if (sequence === consentRequestSequence.current && session?.access_token === token) setConsentHistory(Array.isArray(payload.items) ? payload.items : []);
+      const payload = await response.json() as { items?: ConsentRecord[]; current_policy_versions?: Partial<ConsentPolicyVersions> };
+      if (sequence === consentRequestSequence.current && session?.access_token === token) {
+        setConsentHistory(Array.isArray(payload.items) ? payload.items : []);
+        setCurrentPolicyVersions({
+          terms_of_service: payload.current_policy_versions?.terms_of_service ?? null,
+          privacy_policy: payload.current_policy_versions?.privacy_policy ?? null,
+          product_updates: payload.current_policy_versions?.product_updates ?? null,
+        });
+      }
     } catch (cause) {
       if (sequence === consentRequestSequence.current && session?.access_token === token) setConsentError(cause instanceof Error ? cause.message : "Riwayat persetujuan tidak dapat dimuat.");
     } finally { if (sequence === consentRequestSequence.current) setConsentLoading(false); }
+  }
+
+  async function recordProductUpdatesConsent(granted: boolean) {
+    if (!session || !currentPolicyVersions.product_updates) {
+      setConsentError("Versi kebijakan pembaruan produk belum dikonfigurasi oleh server.");
+      return;
+    }
+    setSaving(true); setConsentError(""); setMessage("");
+    try {
+      const idempotencyKey = window.crypto?.randomUUID?.() || ("consent-" + Date.now() + "-" + Math.random().toString(36).slice(2, 12));
+      const response = await fetch(apiBase + "/v1/me/consents", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer " + session.access_token,
+          "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey,
+        },
+        body: JSON.stringify({
+          consent_type: "product_updates",
+          policy_version: currentPolicyVersions.product_updates,
+          granted,
+          source: "account_settings",
+        }),
+      });
+      if (!response.ok) throw new Error(await apiError(response));
+      setMessage(granted ? "Persetujuan pembaruan produk tercatat." : "Persetujuan pembaruan produk dicabut.");
+      await loadConsentHistory();
+    } catch (cause) {
+      setConsentError(cause instanceof Error ? cause.message : "Persetujuan tidak dapat diperbarui.");
+    } finally { setSaving(false); }
   }
 
   async function loadSocialGraph() {
@@ -442,8 +480,18 @@ export default function HomePage() {
       {sessionsLoading ? <p className="muted" role="status">Memuat sesi aktif…</p> : authSessions === null ? <p className="muted">Daftar sesi belum dimuat.</p> : authSessions.length === 0 ? <p className="muted">Tidak ada sesi aktif yang terdaftar.</p> : <div className="consent-history-list">{authSessions.map((item) => <article className="social-row" key={item.id}><div><strong>{item.is_current ? "Perangkat ini · Sesi saat ini" : item.user_agent || "Perangkat lain"}</strong><p className="muted">{item.user_agent || "Perangkat tidak teridentifikasi"}{item.ip ? " · " + item.ip : ""}</p><p className="muted">Terakhir diperbarui: {item.updated_at ? new Date(item.updated_at).toLocaleString(profile?.locale || "id-ID") : "Tidak tersedia"} · {item.aal || "AAL tidak tersedia"}</p><small className="muted">Session ID: <code>{item.id}</code></small></div>{item.is_current ? <span className="consent-state">Aktif sekarang</span> : <button type="button" className="button-quiet" disabled={saving} onClick={() => void revokeAuthSession(item.id)}>Cabut sesi</button>}</article>)}</div>}
       <p className="muted">Metadata perangkat berasal dari registri sesi Supabase Auth. Alamat IP hanya ditampilkan kepada pemilik akun.</p>
     </section> : tab === "consents" ? <section className="panel settings-panel social-panel" aria-labelledby="consent-history-title">
-      <div className="panel-heading"><span className="section-kicker">PRIVASI & TRANSPARANSI</span><h2 id="consent-history-title">Riwayat persetujuan</h2><p>Riwayat ini hanya menampilkan catatan yang sudah tersimpan melalui API Allpha. Persetujuan baru tidak dapat direkam sebelum versi resmi Terms of Service dan Privacy Policy ditetapkan.</p></div>
-      {consentLoading ? <p className="muted" role="status">Memuat riwayat persetujuan…</p> : consentError ? <div><p className="notice error" role="alert">{consentError}</p><button type="button" className="button-quiet" onClick={() => void loadConsentHistory()}>Coba lagi</button></div> : consentHistory === null ? <p className="muted">Riwayat belum dimuat.</p> : consentHistory.length === 0 ? <div className="social-row"><p className="muted">Belum ada catatan persetujuan pada akun ini.</p><button type="button" className="button-quiet" onClick={() => void loadConsentHistory()}>Muat ulang</button></div> : <div className="consent-history-list">{consentHistory.map((item, index) => <article className="social-row" key={item.consent_type + ":" + item.policy_version + ":" + item.recorded_at + ":" + index}><div><strong>{item.consent_type === "terms_of_service" ? "Terms of Service" : item.consent_type === "privacy_policy" ? "Privacy Policy" : item.consent_type}</strong><p className="muted">Versi tercatat: <code>{item.policy_version}</code></p><p className="muted">{item.granted ? "Diberikan" : "Tidak diberikan"} · {item.recorded_at ? new Date(item.recorded_at).toLocaleString("id-ID") : "Waktu tidak tersedia"}</p></div><span className="consent-state">{item.granted ? "Tercatat" : "Tidak diberikan"}</span></article>)}</div>}
+      <div className="panel-heading"><span className="section-kicker">PRIVASI & TRANSPARANSI</span><h2 id="consent-history-title">Riwayat & kontrol persetujuan</h2><p>Versi kebijakan berasal dari konfigurasi server yang disetujui. Keputusan dicatat sebagai event append-only; persetujuan pembaruan produk dapat dicabut.</p></div>
+      <section className="social-row" aria-label="Versi kebijakan aktif">
+        <div><strong>Terms of Service</strong><p className="muted">Versi aktif: <code>{currentPolicyVersions.terms_of_service || "Belum dikonfigurasi"}</code></p></div>
+        <div><strong>Privacy Policy</strong><p className="muted">Versi aktif: <code>{currentPolicyVersions.privacy_policy || "Belum dikonfigurasi"}</code></p></div>
+        <div><strong>Pembaruan produk</strong><p className="muted">Versi aktif: <code>{currentPolicyVersions.product_updates || "Belum dikonfigurasi"}</code></p></div>
+        {(() => {
+          const latestProductUpdate = consentHistory?.find((item) => item.consent_type === "product_updates");
+          const isGranted = latestProductUpdate?.decision === "granted";
+          return <button type="button" className={isGranted ? "button-quiet" : "button-primary"} disabled={saving || consentLoading || !currentPolicyVersions.product_updates} onClick={() => void recordProductUpdatesConsent(!isGranted)}>{isGranted ? "Cabut persetujuan pembaruan produk" : "Izinkan pembaruan produk"}</button>;
+        })()}
+      </section>
+      {consentLoading ? <p className="muted" role="status">Memuat riwayat persetujuan…</p> : consentError ? <div><p className="notice error" role="alert">{consentError}</p><button type="button" className="button-quiet" onClick={() => void loadConsentHistory()}>Coba lagi</button></div> : consentHistory === null ? <p className="muted">Riwayat belum dimuat.</p> : consentHistory.length === 0 ? <div className="social-row"><p className="muted">Belum ada catatan persetujuan pada akun ini.</p><button type="button" className="button-quiet" onClick={() => void loadConsentHistory()}>Muat ulang</button></div> : <div className="consent-history-list">{consentHistory.map((item) => <article className="social-row" key={item.id}><div><strong>{item.consent_type === "terms_of_service" ? "Terms of Service" : item.consent_type === "privacy_policy" ? "Privacy Policy" : "Pembaruan produk"}</strong><p className="muted">Versi tercatat: <code>{item.policy_version}</code> · {item.source}</p><p className="muted">{item.decision === "granted" ? "Diberikan" : item.decision === "revoked" ? "Dicabut" : "Tidak diberikan"} · {item.recorded_at ? new Date(item.recorded_at).toLocaleString("id-ID") : "Waktu tidak tersedia"}</p></div><span className="consent-state">{item.decision === "granted" ? "Aktif" : item.decision === "revoked" ? "Dicabut" : "Ditolak"}</span></article>)}</div>}
       <p className="muted">Tidak ada versi kebijakan atau catatan persetujuan contoh yang dibuat oleh aplikasi.</p>
     </section> : tab === "data" ? <AccountDataLifecyclePanel apiBase={apiBase} accessToken={session.access_token} /> : tab === "profile" ?
       <div className="content-grid"><form className="panel profile-form" onSubmit={saveProfile}>
