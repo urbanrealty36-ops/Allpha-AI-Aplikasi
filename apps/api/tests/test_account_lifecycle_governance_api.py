@@ -426,3 +426,76 @@ def test_dependency_rule_transfer_owner_is_limited_to_canonical_owner_foreign_ke
     assert result["item"]["resolution_action"] == "transfer_owner"
     assert calls[-1][3]["resolution_action"] == "transfer_owner"
     assert [item["outcome"] for item in audits] == ["attempted", "allowed"]
+
+
+def test_source_anonymize_action_is_allowlisted_to_spatial_theme_provenance(monkeypatch):
+    calls = []
+    audits = []
+
+    async def privileged(method, table, *, params=None, body=None, prefer=None):
+        calls.append((method, table, params, body))
+        if table == "rpc/list_account_deletion_source_registry":
+            return [{
+                "source_key": "spatial_theme_versions",
+                "table_name": "spatial_theme_versions",
+                "filter_kind": "owner_columns",
+                "owner_columns": ["created_by"],
+                "enabled": True,
+                "deletion_handler_available": False,
+            }]
+        return [{**body, "source_key": "spatial_theme_versions"}]
+
+    async def audit(request, **kwargs):
+        audits.append(kwargs)
+
+    monkeypatch.setattr(governance, "privileged_rest_request", privileged)
+    monkeypatch.setattr(governance, "write_operator_audit", audit)
+    payload = governance.SourcePolicyUpdate(
+        data_class="public_catalog",
+        deletion_action="anonymize",
+        dependency_order=201,
+        policy_version="v1",
+        reason="Preserve immutable public theme manifest and anonymize creator provenance",
+        active=True,
+    )
+    result = asyncio.run(governance.update_deletion_source_policy(
+        "spatial_theme_versions", payload, _request(), OPERATOR
+    ))
+
+    assert result["item"]["deletion_action"] == "anonymize"
+    assert calls[-1][3]["deletion_action"] == "anonymize"
+    assert [item["outcome"] for item in audits] == ["attempted", "allowed"]
+
+
+def test_source_anonymize_action_rejects_unregistered_source(monkeypatch):
+    async def privileged(method, table, *, params=None, body=None, prefer=None):
+        if table == "rpc/list_account_deletion_source_registry":
+            return [{
+                "source_key": "agent_skills_created",
+                "table_name": "agent_skills",
+                "filter_kind": "owner_columns",
+                "owner_columns": ["created_by"],
+                "enabled": True,
+                "deletion_handler_available": True,
+            }]
+        raise AssertionError("unallowlisted anonymize action must not write a policy")
+
+    async def audit(request, **kwargs):
+        return None
+
+    monkeypatch.setattr(governance, "privileged_rest_request", privileged)
+    monkeypatch.setattr(governance, "write_operator_audit", audit)
+    payload = governance.SourcePolicyUpdate(
+        data_class="agent_operational",
+        deletion_action="anonymize",
+        dependency_order=52,
+        policy_version="v1",
+        reason="Attempt to use an unregistered anonymization handler",
+        active=True,
+    )
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(governance.update_deletion_source_policy(
+            "agent_skills_created", payload, _request(), OPERATOR
+        ))
+    assert error.value.status_code == 409
+    assert error.value.detail["code"] == "ACCOUNT_DELETION_SOURCE_ANONYMIZE_HANDLER_UNAVAILABLE"
