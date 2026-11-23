@@ -933,16 +933,6 @@ async def get_my_interests(request: Request, user: dict[str, Any] = Depends(curr
     return {"items": rows}
 
 
-@app.get("/v1/interests/catalog", tags=["social"])
-async def get_interest_catalog(request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    rows = await user_db_request(
-        "GET", "interest_catalog", request.state.supabase_access_token,
-        params={"select": "interest_key,label,label_key,category,aliases,sort_order",
-                "active": "eq.true", "order": "sort_order.asc,interest_key.asc", "limit": "200"},
-    )
-    return {"items": rows}
-
-
 @app.put("/v1/me/interests", tags=["social"])
 async def upsert_my_interest(payload: InterestPreferenceCreate, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     rows = await service_db_request("set_my_interest_preference_for_actor", body={
