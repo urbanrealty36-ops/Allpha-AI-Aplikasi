@@ -8,6 +8,7 @@ def test_healthz_exposes_account_lifecycle_worker_runtime_state():
         started_at = "2026-11-23T00:00:00+00:00"
         last_poll_at = "2026-11-23T00:00:10+00:00"
         last_claimed_count = 2
+        last_cleanup_count = 1
         poll_count = 3
         last_error_code = None
 
@@ -23,6 +24,7 @@ def test_healthz_exposes_account_lifecycle_worker_runtime_state():
         "started_at": "2026-11-23T00:00:00+00:00",
         "last_poll_at": "2026-11-23T00:00:10+00:00",
         "last_claimed_count": 2,
+        "last_cleanup_count": 1,
         "poll_count": 3,
         "last_error_code": None,
     }
