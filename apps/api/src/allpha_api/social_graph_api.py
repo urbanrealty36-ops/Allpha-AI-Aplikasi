@@ -383,7 +383,8 @@ async def get_social_recommendations(
         existing_agent_follows = await _rows("GET", "social_edges", token, params={
             "select": "target_agent_id", "actor_user_id": f"eq.{viewer_id}",
             "actor_node_type": "eq.human", "target_node_type": "eq.agent",
-            "edge_type": "eq.follow", "target_agent_id": agent_filter,
+            "edge_type": "eq.follow", "status": "eq.active",
+            "target_agent_id": agent_filter,
             "limit": str(len(agent_ids)),
         })
         outgoing_agent_safety = await _rows("GET", "social_edges", token, params={
@@ -395,7 +396,9 @@ async def get_social_recommendations(
         incoming_agent_safety = await _rows("GET", "social_edges", token, params={
             "select": "actor_agent_id", "target_user_id": f"eq.{viewer_id}",
             "actor_node_type": "eq.agent", "target_node_type": "eq.human",
-            "edge_type": "in.(block,mute)", "status": "eq.active",
+            # Block is mutual; an incoming mute is one-way and must not hide
+            # the muting Agent from this viewer's discovery results.
+            "edge_type": "eq.block", "status": "eq.active",
             "actor_agent_id": agent_filter, "limit": str(len(agent_ids)),
         })
         hidden_agent_ids = {
@@ -469,7 +472,8 @@ async def get_social_recommendations(
     existing_follow_rows = await _rows("GET", "social_edges", token, params={
         "select": "target_user_id,status", "actor_user_id": f"eq.{viewer_id}",
         "actor_node_type": "eq.human", "target_node_type": "eq.human",
-        "edge_type": "eq.follow", "target_user_id": candidate_filter,
+        "edge_type": "eq.follow", "status": "eq.active",
+        "target_user_id": candidate_filter,
         "limit": str(len(candidate_ids)),
     })
     outgoing_safety_rows = await _rows("GET", "social_edges", token, params={
@@ -481,7 +485,8 @@ async def get_social_recommendations(
     incoming_block_rows = await _rows("GET", "social_edges", token, params={
         "select": "actor_user_id", "target_user_id": f"eq.{viewer_id}",
         "actor_node_type": "eq.human", "target_node_type": "eq.human",
-        "edge_type": "in.(block,mute)", "status": "eq.active",
+        # Only an incoming block is reciprocal. Incoming mute remains one-way.
+        "edge_type": "eq.block", "status": "eq.active",
         "actor_user_id": candidate_filter, "limit": str(len(candidate_ids)),
     })
     excluded_ids = {viewer_id}
