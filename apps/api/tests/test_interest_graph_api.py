@@ -69,6 +69,7 @@ def test_interest_signal_write_uses_service_rpc_and_authenticated_actor(monkeypa
         "p_actor_user_id": "interest-graph-owner", "p_interest_key": "spatial_3d",
         "p_signal_type": "passion", "p_strength": 1.0, "p_signal_source": "user_selected",
         "p_consent_version": "interest-graph-v1",
+        "p_agent_id": None,
     })]
 
 
