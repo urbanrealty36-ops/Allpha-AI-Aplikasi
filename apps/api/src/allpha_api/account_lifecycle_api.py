@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import re
 import uuid
+from urllib.parse import quote
 from typing import Any
 
 import httpx
@@ -42,6 +43,23 @@ def _publishable_key() -> str:
             detail={"code": "SUPABASE_NOT_CONFIGURED", "message": "Layanan akun belum dikonfigurasi."},
         )
     return value
+
+
+def _valid_export_storage_path(user_id: str, job_id: uuid.UUID, storage_path: Any) -> bool:
+    """Accept legacy and lease-scoped paths only within this user's export job."""
+    if not isinstance(storage_path, str):
+        return False
+    legacy_path = f"{user_id}/{job_id}.json.gz"
+    if storage_path == legacy_path:
+        return True
+    prefix = f"{user_id}/{job_id}/"
+    if not storage_path.startswith(prefix) or not storage_path.endswith(".json.gz"):
+        return False
+    lease_token = storage_path[len(prefix):-len(".json.gz")]
+    try:
+        return str(uuid.UUID(lease_token)) == lease_token
+    except (ValueError, TypeError, AttributeError):
+        return False
 
 
 def _service_key() -> str:
@@ -195,8 +213,10 @@ async def get_account_export_download(
             status_code=409,
             detail={"code": "ACCOUNT_EXPORT_NOT_READY", "message": "Ekspor akun belum siap diunduh."},
         )
-    expected_path = f"{user['id']}/{job_id}.json.gz"
-    if job.get("storage_bucket") != "account-exports" or job.get("storage_path") != expected_path:
+    expected_path = job.get("storage_path")
+    if job.get("storage_bucket") != "account-exports" or not _valid_export_storage_path(
+        str(user["id"]), job_id, expected_path
+    ):
         raise HTTPException(
             status_code=500,
             detail={"code": "ACCOUNT_EXPORT_STORAGE_SCOPE_INVALID", "message": "Lokasi berkas ekspor tidak valid."},
@@ -205,7 +225,7 @@ async def get_account_export_download(
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(15.0, connect=5.0)) as client:
             response = await client.post(
-                f"{_supabase_base()}/storage/v1/object/sign/account-exports/{expected_path}",
+                f"{_supabase_base()}/storage/v1/object/sign/account-exports/{quote(expected_path, safe='/')}",
                 headers={
                     "apikey": _service_key(),
                     "Authorization": f"Bearer {_service_key()}",
