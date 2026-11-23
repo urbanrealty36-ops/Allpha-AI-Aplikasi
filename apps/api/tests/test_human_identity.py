@@ -416,16 +416,16 @@ def test_social_edge_rejects_self_target(monkeypatch):
     assert response.json()["error"]["code"] == "SOCIAL_EDGE_SELF_TARGET"
 
 
-def test_interest_preference_is_bound_to_authenticated_user(monkeypatch):
+def test_interest_preference_uses_authenticated_actor_and_server_only_catalog_rpc(monkeypatch):
     from fastapi import Request
     from allpha_api.auth import current_user
 
     calls = []
 
-    async def fake_user_db_request(method, path, access_token, **kwargs):
-        calls.append((method, path, access_token, kwargs))
+    async def fake_service_db_request(function_name, *, body):
+        calls.append((function_name, body))
         return [{
-            "interest_key": "ai.social",
+            "interest_key": "technology",
             "preference": "not_interested",
             "created_at": "2026-10-14T00:00:00Z",
             "updated_at": "2026-10-14T00:00:00Z",
@@ -435,26 +435,143 @@ def test_interest_preference_is_bound_to_authenticated_user(monkeypatch):
         request.state.supabase_access_token = "interest-session-token"
         return {"id": "human-123"}
 
-    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    monkeypatch.setattr("allpha_api.main.service_db_request", fake_service_db_request)
     app.dependency_overrides[current_user] = fake_current_user
     try:
         response = client.put(
             "/v1/me/interests",
             headers={"Authorization": "Bearer test"},
-            json={"interest_key": "ai.social", "preference": "not_interested"},
+            json={"interest_key": "IT & Teknologi", "preference": "not_interested"},
         )
     finally:
         app.dependency_overrides.clear()
 
     assert response.status_code == 200
-    assert calls[0][0:3] == ("POST", "user_interests", "interest-session-token")
-    assert calls[0][3]["body"] == {
-        "user_id": "human-123",
-        "interest_key": "ai.social",
-        "preference": "not_interested",
-    }
-    assert calls[0][3]["prefer"] == "resolution=merge-duplicates,return=representation"
+    assert calls == [(
+        "set_my_interest_preference_for_actor",
+        {
+            "p_actor_user_id": "human-123",
+            "p_interest_key": "IT & Teknologi",
+            "p_preference": "not_interested",
+        },
+    )]
+    assert response.json()["item"]["interest_key"] == "technology"
 
+
+
+def test_interest_catalog_is_served_from_canonical_database(monkeypatch):
+    from fastapi import Request
+    from allpha_api.auth import current_user
+
+    calls = []
+
+    async def fake_user_db_request(method, path, access_token, **kwargs):
+        calls.append((method, path, access_token, kwargs))
+        return [{"interest_key": "health", "label": "Kesehatan", "label_key": "auth.interest.health", "category": "wellbeing"}]
+
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = "interest-session-token"
+        return {"id": "human-123"}
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = client.get("/v1/interests/catalog", headers={"Authorization": "Bearer test"})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert calls[0][0:3] == ("GET", "interest_catalog", "interest-session-token")
+    assert response.json()["items"][0]["interest_key"] == "health"
+
+
+def test_interest_delete_uses_server_only_actor_rpc(monkeypatch):
+    from fastapi import Request
+    from allpha_api.auth import current_user
+
+    calls = []
+
+    async def fake_service_db_request(function_name, *, body):
+        calls.append((function_name, body))
+        return [{"interest_key": "technology"}]
+
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = "interest-session-token"
+        return {"id": "human-123"}
+
+    monkeypatch.setattr("allpha_api.main.service_db_request", fake_service_db_request)
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = client.delete("/v1/me/interests/technology", headers={"Authorization": "Bearer test"})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert calls == [("delete_my_interest_for_actor", {
+        "p_actor_user_id": "human-123",
+        "p_interest_key": "technology",
+    })]
+
+
+def test_privacy_patch_preserves_existing_interest_matching_flag(monkeypatch):
+    from fastapi import Request
+    from allpha_api.auth import current_user
+
+    calls = []
+
+    async def fake_user_db_request(method, path, access_token, **kwargs):
+        calls.append((method, path, kwargs))
+        if method == "GET":
+            return [{"privacy_settings": {"discoverable_by_username": True, "allow_interest_matching": True}}]
+        return [{"user_id": "human-123", "privacy_settings": kwargs["body"]["privacy_settings"]}]
+
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = "settings-session-token"
+        return {"id": "human-123"}
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = client.patch(
+            "/v1/me/settings",
+            headers={"Authorization": "Bearer test"},
+            json={"privacy_settings": {"allow_interest_matching": False}},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    patch_call = next(call for call in calls if call[0] == "PATCH")
+    assert patch_call[2]["body"]["privacy_settings"] == {
+        "discoverable_by_username": True,
+        "allow_interest_matching": False,
+    }
+
+
+def test_interest_matching_requires_public_discovery_permission(monkeypatch):
+    from fastapi import Request
+    from allpha_api.auth import current_user
+
+    async def fake_user_db_request(method, path, access_token, **kwargs):
+        return [{"privacy_settings": {"discoverable_by_username": False, "allow_interest_matching": False}}]
+
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = "settings-session-token"
+        return {"id": "human-123"}
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = client.patch(
+            "/v1/me/settings",
+            headers={"Authorization": "Bearer test"},
+            json={"privacy_settings": {"allow_interest_matching": True}},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "INTEREST_MATCHING_REQUIRES_DISCOVERABILITY"
 
 
 def test_follow_request_accept_is_scoped_to_authenticated_target(monkeypatch):
