@@ -109,13 +109,14 @@ def test_create_organization_uses_authenticated_identity(monkeypatch):
 
     async def fake_service_db_request(function_name, *, body):
         calls.append((function_name, body))
-        return [{"id": "org-1", "name": "Test Org", "slug": "test-org", "owner_id": "user-123"}]
+        return [{"id": "org-1", "name": "Test Org", "slug": "test-org", "owner_id": "00000000-0000-4000-8000-000000000123"}]
 
     async def fake_current_user(request: Request):
         request.state.supabase_access_token = "test-token"
-        return {"id": "user-123", "email": "test@example.invalid"}
+        request.state.user_id = "00000000-0000-4000-8000-000000000123"
+        return {"id": "00000000-0000-4000-8000-000000000123", "email": "test@example.invalid"}
 
-    monkeypatch.setattr("allpha_api.main.service_db_request", fake_service_db_request)
+    monkeypatch.setattr("allpha_api.organization_service.service_db_request", fake_service_db_request)
     app.dependency_overrides[current_user] = fake_current_user
     try:
         response = client.post(
@@ -127,7 +128,7 @@ def test_create_organization_uses_authenticated_identity(monkeypatch):
         app.dependency_overrides.clear()
 
     assert response.status_code == 201
-    assert calls == [("create_organization_for_user", {"p_actor_user_id": "user-123", "p_name": "Test Org", "p_slug": "test-org"})]
+    assert calls == [("create_organization_for_user", {"p_actor_user_id": "00000000-0000-4000-8000-000000000123", "p_name": "Test Org", "p_slug": "test-org"})]
     assert "owner_id" not in response.request.content.decode()
 
 
@@ -220,8 +221,8 @@ def test_membership_lookup_with_manipulated_cross_tenant_id_returns_not_found(mo
 
     async def fake_current_user(request: Request):
         request.state.supabase_access_token = "tenant-b-token"
-        request.state.user_id = "tenant-b-user"
-        return {"id": "tenant-b-user", "email": "tenant-b@example.invalid"}
+        request.state.user_id = "00000000-0000-4000-8000-000000000222"
+        return {"id": "00000000-0000-4000-8000-000000000222", "email": "tenant-b@example.invalid"}
 
     monkeypatch.setattr("allpha_api.auth.user_db_request", fake_user_db_request)
     app.dependency_overrides[current_user] = fake_current_user
@@ -238,7 +239,7 @@ def test_membership_lookup_with_manipulated_cross_tenant_id_returns_not_found(mo
     assert len(calls) == 1
     assert calls[0][0:3] == ("GET", "organization_memberships", "tenant-b-token")
     assert calls[0][3]["params"]["organization_id"] == f"eq.{foreign_organization_id}"
-    assert calls[0][3]["params"]["user_id"] == "eq.tenant-b-user"
+    assert calls[0][3]["params"]["user_id"] == "eq.00000000-0000-4000-8000-000000000222"
 
 def test_profile_update_is_self_scoped_and_rejects_server_owned_fields(monkeypatch):
     calls = []
@@ -251,7 +252,7 @@ def test_profile_update_is_self_scoped_and_rejects_server_owned_fields(monkeypat
         request.state.supabase_access_token = "scoped-test-token"
         return {"id": "authenticated-user", "email": "user@example.invalid"}
 
-    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    monkeypatch.setattr("allpha_api.organization_service.user_db_request", fake_user_db_request)
     app.dependency_overrides[current_user] = fake_current_user
     try:
         response = client.patch(
@@ -387,7 +388,7 @@ def test_membership_lookup_for_authorized_user_uses_session_token_and_org_scope(
     organization_id = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
     membership = {
         "organization_id": organization_id,
-        "user_id": "tenant-a-user",
+        "user_id": "00000000-0000-4000-8000-000000000111",
         "role": "owner",
         "invited_by": "tenant-a-user",
         "created_at": "2026-10-14T00:00:00Z",
@@ -401,8 +402,8 @@ def test_membership_lookup_for_authorized_user_uses_session_token_and_org_scope(
 
     async def fake_current_user(request: Request):
         request.state.supabase_access_token = "tenant-a-session-token"
-        request.state.user_id = "tenant-a-user"
-        return {"id": "tenant-a-user", "email": "tenant-a@example.invalid"}
+        request.state.user_id = "00000000-0000-4000-8000-000000000111"
+        return {"id": "00000000-0000-4000-8000-000000000111", "email": "tenant-a@example.invalid"}
 
     monkeypatch.setattr("allpha_api.auth.user_db_request", fake_user_db_request)
     monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
@@ -425,7 +426,7 @@ def test_membership_lookup_for_authorized_user_uses_session_token_and_org_scope(
         "tenant-a-session-token",
     )
     assert kwargs["params"]["organization_id"] == f"eq.{organization_id}"
-    assert kwargs["params"]["user_id"] == "eq.tenant-a-user"
+    assert kwargs["params"]["user_id"] == "eq.00000000-0000-4000-8000-000000000111"
     assert calls[1][1] == "organization_memberships"
     assert calls[1][3]["params"]["select"] == "organization_id,user_id,role,invited_by,created_at"
     assert kwargs["params"]["select"] == "organization_id,user_id,role"
