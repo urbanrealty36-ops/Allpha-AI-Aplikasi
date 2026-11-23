@@ -170,19 +170,7 @@ jobs:
               | tee ../recovery-evidence/migration-dry-run.txt
           else
             supabase db push --dry-run --db-url "$DB_URL" | tee ../recovery-evidence/migration-dry-run.txt
-            python - <<'PY'
-            import re
-            from pathlib import Path
-
-            output = Path("../recovery-evidence/migration-dry-run.txt").read_text()
-            versions = set(re.findall(r"(?<!\d)20\d{12}(?!\d)", output))
-            expected = {"20261123191500"}
-            if versions != expected:
-                raise SystemExit(
-                    f"Refusing production apply: dry-run must contain only {sorted(expected)}, got {sorted(versions)}"
-                )
-            print("Dry-run contains exactly one pending migration: 20261123191500.")
-            PY
+            python -c 'import re,pathlib; output=pathlib.Path("../recovery-evidence/migration-dry-run.txt").read_text(); versions=set(re.findall(r"(?<!\\d)20\\d{12}(?!\\d)", output)); expected={"20261123191500"}; assert versions==expected, f"Refusing production apply: expected only {sorted(expected)}, got {sorted(versions)}"; print("Dry-run contains exactly one pending migration: 20261123191500.")'
           fi
 
       - name: Apply only the isolated ENG-P02 forward migration when pending
