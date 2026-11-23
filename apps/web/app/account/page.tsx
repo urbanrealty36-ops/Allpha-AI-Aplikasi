@@ -22,6 +22,7 @@ type SocialEdge = { id: string; target_user_id?: string; actor_user_id?: string;
 type SocialInterest = { interest_key: string; preference: "interested" | "not_interested"; created_at?: string; updated_at?: string };
 type InterestCatalogItem = { interest_key: string; label: string; label_key: string; category: string; aliases?: string[]; sensitivity?: "standard" | "sensitive"; sort_order: number };
 type InterestGraphSignal = { interest_key: string; agent_id?: string | null; signal_type: "passion" | "habit"; strength: number; signal_source: string; updated_at: string };
+type SocialActorAgent = { id: string; handle: string; display_name: string; status: "active"; ownership_role: "owner" | "operator" };
 type DiscoveredSocialUser = { id: string; username: string; display_name?: string | null; avatar_url?: string | null; visibility: "public" | "private" };
 type SocialGraph = { outgoing: SocialEdge[]; incoming_followers?: SocialEdge[]; incoming_requests: SocialEdge[]; blocked_by: SocialEdge[]; interests: SocialInterest[]; summary?: { following: number; followers: number; pending_follow_requests: number; blocked: number; muted: number; interests: number; truncated: boolean }; };
 type ConsentRecord = { id: string; consent_type: "terms_of_service" | "privacy_policy" | "product_updates" | string; policy_version: string; decision: "granted" | "declined" | "revoked"; source: string; idempotency_key: string; recorded_at: string };
@@ -63,6 +64,8 @@ export default function HomePage() {
   const [interestCatalog, setInterestCatalog] = useState<InterestCatalogItem[]>([]);
   const [interestPreference, setInterestPreference] = useState<"interested" | "not_interested">("interested");
   const [interestGraphSignals, setInterestGraphSignals] = useState<InterestGraphSignal[]>([]);
+  const [socialAgents, setSocialAgents] = useState<SocialActorAgent[]>([]);
+  const [signalAgentId, setSignalAgentId] = useState("");
   const [signalInterestKey, setSignalInterestKey] = useState("");
   const [signalType, setSignalType] = useState<"passion" | "habit">("passion");
   const [signalStrength, setSignalStrength] = useState(0.8);
@@ -311,9 +314,10 @@ export default function HomePage() {
       const graph = await response.json() as SocialGraph;
       if (sequence === socialRequestSequence.current && session?.access_token === token) setSocialGraph(graph);
       try {
-        const [catalogResponse, signalResponse] = await Promise.all([
+        const [catalogResponse, signalResponse, agentsResponse] = await Promise.all([
           fetch(apiBase + "/v1/interests/catalog", { headers: { Authorization: "Bearer " + token }, cache: "no-store" }),
           fetch(apiBase + "/v1/me/interest-signals", { headers: { Authorization: "Bearer " + token }, cache: "no-store" }),
+          fetch(apiBase + "/v1/social/actor-agents", { headers: { Authorization: "Bearer " + token }, cache: "no-store" }),
         ]);
         if (catalogResponse.ok) {
           const catalog = await catalogResponse.json() as { items?: InterestCatalogItem[] };
@@ -322,6 +326,10 @@ export default function HomePage() {
         if (signalResponse.ok) {
           const signals = await signalResponse.json() as { items?: InterestGraphSignal[] };
           if (sequence === socialRequestSequence.current && session?.access_token === token) setInterestGraphSignals(signals.items || []);
+        }
+        if (agentsResponse.ok) {
+          const agents = await agentsResponse.json() as { items?: SocialActorAgent[] };
+          if (sequence === socialRequestSequence.current && session?.access_token === token) setSocialAgents((agents.items || []).filter(agent => agent.status === "active" && agent.ownership_role === "owner"));
         }
       } catch { /* Catalog loading must not hide the caller's existing graph. */ }
     } catch (cause) {
@@ -424,10 +432,11 @@ export default function HomePage() {
           signal_type: signalType,
           strength: signalStrength,
           signal_source: "user_selected",
+          ...(signalAgentId ? { agent_id: signalAgentId } : {}),
         }),
       });
       setSignalInterestKey("");
-      setMessage(signalType === "passion" ? "Passion Graph disimpan." : "Habit Graph pilihan Anda disimpan.");
+      setMessage((signalType === "passion" ? "Passion Graph" : "Habit Graph") + (signalAgentId ? " Agent disimpan." : " Human disimpan."));
       await loadSocialGraph();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Passion/Habit Graph tidak dapat disimpan."); }
     finally { setSaving(false); }
@@ -537,15 +546,16 @@ export default function HomePage() {
           <div className="social-add-row">
             <label>Minat kanonis<select value={signalInterestKey} onChange={(event) => setSignalInterestKey(event.target.value)}><option value="">Pilih minat</option>{interestCatalog.map(item => <option key={item.interest_key} value={item.interest_key}>{item.label}</option>)}</select></label>
             <label>Jenis sinyal<select value={signalType} onChange={(event) => setSignalType(event.target.value as "passion" | "habit")}><option value="passion">Passion</option><option value="habit">Habit</option></select></label>
+            <label>Simpul Graph<select value={signalAgentId} onChange={(event) => setSignalAgentId(event.target.value)}><option value="">Human</option>{socialAgents.map(agent => <option key={agent.id} value={agent.id}>AI Agent · @{agent.handle}</option>)}</select></label>
             <label>Strength · {signalStrength.toFixed(1)}<input type="range" min="0" max="1" step="0.1" value={signalStrength} onChange={(event) => setSignalStrength(Number(event.target.value))}/></label>
             <button type="button" className="button-primary" disabled={saving || !signalInterestKey} onClick={() => void saveInterestGraphSignal()}>Simpan sinyal</button>
           </div>
           <div className="consent-history-list">
-            {interestGraphSignals.filter(signal => !signal.agent_id).map(signal => <article className="social-row" key={signal.signal_type + ":" + signal.interest_key}>
-              <div><strong>{signal.signal_type === "passion" ? "Passion" : "Habit"} · {interestCatalog.find(item => item.interest_key === signal.interest_key)?.label || signal.interest_key}</strong><p className="muted">Strength {signal.strength.toFixed(2)} · Sumber {signal.signal_source}</p></div>
+            {interestGraphSignals.map(signal => <article className="social-row" key={(signal.agent_id || "human") + ":" + signal.signal_type + ":" + signal.interest_key}>
+              <div><strong>{signal.signal_type === "passion" ? "Passion" : "Habit"} · {interestCatalog.find(item => item.interest_key === signal.interest_key)?.label || signal.interest_key}</strong><p className="muted">{signal.agent_id ? "AI Agent · @" + (socialAgents.find(agent => agent.id === signal.agent_id)?.handle || signal.agent_id) : "Human"} · Strength {signal.strength.toFixed(2)} · Sumber {signal.signal_source}</p></div>
               <button type="button" className="button-quiet" disabled={saving} onClick={() => void removeInterestGraphSignal(signal)}>Hapus</button>
             </article>)}
-            {!interestGraphSignals.some(signal => !signal.agent_id) && <p className="muted">Belum ada sinyal Passion/Habit yang tersimpan.</p>}
+            {!interestGraphSignals.length && <p className="muted">Belum ada sinyal Passion/Habit yang tersimpan.</p>}
           </div>
         </section>
         {socialGraph.blocked_by.length > 0 && <p className="muted">Akun yang memblokir Anda: {socialGraph.blocked_by.map((edge) => edge.actor_user_id).join(", ")}</p>}
