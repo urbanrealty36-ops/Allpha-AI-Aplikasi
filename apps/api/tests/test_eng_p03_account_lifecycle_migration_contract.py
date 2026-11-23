@@ -14,6 +14,8 @@ def test_account_lifecycle_migration_has_real_sql_statement_delimiters():
 
     # Literal backslash-n sequences inside SQL are not statement separators.
     assert "\\n" not in source
+    assert "\ndo $\n" not in source
+    assert "\n$;\n" not in source
     assert source.rstrip().endswith("$;")
     for function_name in (
         "complete_account_export_job",
