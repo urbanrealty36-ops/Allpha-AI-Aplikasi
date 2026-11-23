@@ -136,14 +136,6 @@ set role authenticated;
 select set_config('request.jwt.claim.sub','44444444-4444-4444-8444-444444444444',false);
 -- Keep the outsider RLS assertion diagnosable: distinguish stale JWT context,
 -- a permissive legacy policy, and an unexpected membership row.
-select current_user as effective_role, session_user as session_role,
-       auth.uid() as effective_auth_uid,
-       private.is_organization_member(current_setting('app.test_org_id')::uuid) as is_member,
-       private.is_organization_admin(current_setting('app.test_org_id')::uuid) as is_admin;
-select policyname, cmd, qual, roles
-  from pg_policies
- where schemaname='public' and tablename='organizations'
- order by policyname;
 -- Run the outsider reads as top-level statements under SET ROLE authenticated.
 -- A DO block executes with the block's effective execution identity and can
 -- obscure the role/RLS boundary in this harness; keep these probes in the
@@ -218,12 +210,6 @@ begin
  if (select count(*) from public.organizations where id=current_setting('app.test_org_id')::uuid)<>1 then raise exception 'tenant owner cannot read its organization'; end if;
  if (select count(*) from public.organization_memberships where organization_id=current_setting('app.test_org_id')::uuid)<>3 then raise exception 'tenant owner cannot read all organization memberships'; end if;
  if (select count(*) from public.audit_events where organization_id=current_setting('app.test_org_id')::uuid)=0 then raise exception 'tenant owner cannot read organization audit events'; end if;
-end $$;
-select set_config('request.jwt.claim.sub','44444444-4444-4444-8444-444444444444',false);
-do $$
-begin
- if (select count(*) from public.organizations where slug='eng-p02-repair-check')<>0 then raise exception 'cross-user organization read leaked'; end if;
- if (select count(*) from public.organization_memberships where user_id='11111111-1111-4111-8111-111111111111')<>0 then raise exception 'cross-user membership read leaked'; end if;
 end $$;
 """)
         print("PASS: forward repair migration applies twice; tenant member/admin/owner/outsider RLS reads, server-only organization/member commands, role hierarchy, audit and session revocation verified.")
