@@ -236,6 +236,16 @@ begin
     from private.account_export_sources
     where enabled
   loop
+    if v_source.filter_kind not in (
+      'owner_columns','owned_agents','owned_runtime_tasks','participant_conversations',
+      'conversation_messages','owned_content','content_activity','member_workspaces','member_communities'
+    ) then
+      raise exception 'account_export_filter_kind_unsupported:%',v_source.filter_kind;
+    end if;
+    if v_source.filter_kind = 'owner_columns'
+       and coalesce(pg_catalog.cardinality(v_source.owner_columns),0) = 0 then
+      raise exception 'account_export_owner_columns_empty:%',v_source.table_name;
+    end if;
     if pg_catalog.to_regclass(pg_catalog.format('public.%I',v_source.table_name)) is null then
       raise exception 'account_export_source_table_missing:%',v_source.table_name;
     end if;
@@ -278,6 +288,38 @@ begin
     raise exception 'account_export_relation_source_columns_missing';
   end if;
 end;
+$$;
+
+create or replace function private.redact_account_export_jsonb(
+  p_value jsonb,
+  p_redacted_keys text[]
+)
+returns jsonb
+language sql
+immutable
+set search_path = ''
+as $$
+  select case pg_catalog.jsonb_typeof(p_value)
+    when 'object' then (
+      select coalesce(
+        pg_catalog.jsonb_object_agg(
+          entry.key,
+          private.redact_account_export_jsonb(entry.value,p_redacted_keys)
+        ),
+        '{}'::jsonb
+      )
+      from pg_catalog.jsonb_each(p_value) as entry(key,value)
+      where not (entry.key = any(coalesce(p_redacted_keys,array[]::text[])))
+    )
+    when 'array' then (
+      select coalesce(
+        pg_catalog.jsonb_agg(private.redact_account_export_jsonb(element.value,p_redacted_keys)),
+        '[]'::jsonb
+      )
+      from pg_catalog.jsonb_array_elements(p_value) as element(value)
+    )
+    else p_value
+  end;
 $$;
 
 create or replace function private.build_account_export_snapshot(p_user_id uuid)
@@ -344,51 +386,51 @@ begin
         continue;
       end if;
       execute pg_catalog.format(
-        'select coalesce(jsonb_agg(to_jsonb(t) - $1), ''[]''::jsonb) from public.%I t where %s',
+        'select coalesce(jsonb_agg(private.redact_account_export_jsonb(to_jsonb(t), $1)), ''[]''::jsonb) from public.%I t where %s',
         v_source.table_name, v_predicate
       ) into v_rows using v_redacted, p_user_id;
     elsif v_source.filter_kind = 'owned_agents' then
       execute pg_catalog.format(
-        'select coalesce(jsonb_agg(to_jsonb(t) - $1), ''[]''::jsonb) from public.%I t where t.agent_id::text in (select ao.agent_id::text from public.agent_ownerships ao where ao.owner_user_id = $2)',
+        'select coalesce(jsonb_agg(private.redact_account_export_jsonb(to_jsonb(t), $1)), ''[]''::jsonb) from public.%I t where t.agent_id::text in (select ao.agent_id::text from public.agent_ownerships ao where ao.owner_user_id = $2)',
         v_source.table_name
       ) into v_rows using v_redacted, p_user_id;
     elsif v_source.filter_kind = 'owned_runtime_tasks' then
       execute pg_catalog.format(
-        'select coalesce(jsonb_agg(to_jsonb(t) - $1), ''[]''::jsonb) from public.%I t where t.task_id::text in (select task.id::text from public.agent_runtime_tasks task where task.owner_user_id = $2)',
+        'select coalesce(jsonb_agg(private.redact_account_export_jsonb(to_jsonb(t), $1)), ''[]''::jsonb) from public.%I t where t.task_id::text in (select task.id::text from public.agent_runtime_tasks task where task.owner_user_id = $2)',
         v_source.table_name
       ) into v_rows using v_redacted, p_user_id;
     elsif v_source.filter_kind = 'participant_conversations' then
       execute pg_catalog.format(
-        'select coalesce(jsonb_agg(to_jsonb(t) - $1), ''[]''::jsonb) from public.%I t where t.conversation_id::text in (select cp.conversation_id::text from public.conversation_participants cp where cp.user_id = $2)',
+        'select coalesce(jsonb_agg(private.redact_account_export_jsonb(to_jsonb(t), $1)), ''[]''::jsonb) from public.%I t where t.conversation_id::text in (select cp.conversation_id::text from public.conversation_participants cp where cp.user_id = $2)',
         v_source.table_name
       ) into v_rows using v_redacted, p_user_id;
     elsif v_source.filter_kind = 'conversation_messages' then
       execute pg_catalog.format(
-        'select coalesce(jsonb_agg(to_jsonb(t) - $1), ''[]''::jsonb) from public.%I t where t.sender_user_id::text = $2::text or t.conversation_id::text in (select cp.conversation_id::text from public.conversation_participants cp where cp.user_id = $2)',
+        'select coalesce(jsonb_agg(private.redact_account_export_jsonb(to_jsonb(t), $1)), ''[]''::jsonb) from public.%I t where t.sender_user_id::text = $2::text or t.conversation_id::text in (select cp.conversation_id::text from public.conversation_participants cp where cp.user_id = $2)',
         v_source.table_name
       ) into v_rows using v_redacted, p_user_id;
     elsif v_source.filter_kind = 'owned_content' then
       execute pg_catalog.format(
-        'select coalesce(jsonb_agg(to_jsonb(t) - $1), ''[]''::jsonb) from public.%I t where t.content_id::text in (select ci.id::text from public.content_items ci where ci.owner_id::text = $2::text)',
+        'select coalesce(jsonb_agg(private.redact_account_export_jsonb(to_jsonb(t), $1)), ''[]''::jsonb) from public.%I t where t.content_id::text in (select ci.id::text from public.content_items ci where ci.owner_id::text = $2::text)',
         v_source.table_name
       ) into v_rows using v_redacted, p_user_id;
     elsif v_source.filter_kind = 'content_activity' then
       execute pg_catalog.format(
-        'select coalesce(jsonb_agg(to_jsonb(t) - $1), ''[]''::jsonb) from public.%I t where t.actor_user_id::text = $2::text or t.content_id::text in (select ci.id::text from public.content_items ci where ci.owner_id::text = $2::text)',
+        'select coalesce(jsonb_agg(private.redact_account_export_jsonb(to_jsonb(t), $1)), ''[]''::jsonb) from public.%I t where t.actor_user_id::text = $2::text or t.content_id::text in (select ci.id::text from public.content_items ci where ci.owner_id::text = $2::text)',
         v_source.table_name
       ) into v_rows using v_redacted, p_user_id;
     elsif v_source.filter_kind = 'member_workspaces' then
       execute pg_catalog.format(
-        'select coalesce(jsonb_agg(to_jsonb(t) - $1), ''[]''::jsonb) from public.%I t where t.workspace_id::text in (select wm.workspace_id::text from public.workspace_memberships wm where wm.user_id = $2)',
+        'select coalesce(jsonb_agg(private.redact_account_export_jsonb(to_jsonb(t), $1)), ''[]''::jsonb) from public.%I t where t.workspace_id::text in (select wm.workspace_id::text from public.workspace_memberships wm where wm.user_id = $2)',
         v_source.table_name
       ) into v_rows using v_redacted, p_user_id;
     elsif v_source.filter_kind = 'member_communities' then
       execute pg_catalog.format(
-        'select coalesce(jsonb_agg(to_jsonb(t) - $1), ''[]''::jsonb) from public.%I t where t.community_id::text in (select cm.community_id::text from public.community_memberships cm where cm.user_id = $2)',
+        'select coalesce(jsonb_agg(private.redact_account_export_jsonb(to_jsonb(t), $1)), ''[]''::jsonb) from public.%I t where t.community_id::text in (select cm.community_id::text from public.community_memberships cm where cm.user_id = $2)',
         v_source.table_name
       ) into v_rows using v_redacted, p_user_id;
     else
-      continue;
+      raise exception 'account_export_filter_kind_unsupported:%',v_source.filter_kind;
     end if;
 
     v_rows := coalesce(v_rows, '[]'::jsonb);
@@ -411,6 +453,8 @@ begin
 end;
 $$;
 
+revoke all on function private.redact_account_export_jsonb(jsonb,text[]) from public, anon, authenticated;
+grant execute on function private.redact_account_export_jsonb(jsonb,text[]) to service_role;
 revoke all on function private.build_account_export_snapshot(uuid) from public, anon, authenticated;
 grant execute on function private.build_account_export_snapshot(uuid) to service_role;
 
