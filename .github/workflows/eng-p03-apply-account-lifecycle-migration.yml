@@ -63,6 +63,7 @@ jobs:
           assert "eng_p02_migration=PASS" in evidence["verification"]
           assert "consent_events_table=PASS" in evidence["p03_consent_migration_verification"]
           assert "consent_rpc_service_only=PASS" in evidence["p03_consent_migration_verification"]
+          assert "consent_rpc_behavior=PASS" in evidence["p03_consent_migration_verification"]
           assert "tenant_schema=PASS" in evidence["verification"]
           assert int(evidence["source_backup_run_id"]) > 45134887289, (
               "Refusing the previous backup artifact; wait for the latest pre-migration backup and restore run."
