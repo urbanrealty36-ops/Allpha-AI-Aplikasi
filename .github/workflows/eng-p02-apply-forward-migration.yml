@@ -169,39 +169,40 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker run --rm --network host \
+          docker run --rm -i --network host \
             -e DATABASE_URL="$DB_URL" \
             postgres:17-alpine \
-            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atc "
-              select case when exists (
-                select 1 from supabase_migrations.schema_migrations
-                 where version='20261123191500' and name='eng_p02_forward_repair_tenant_and_session_schema'
-              ) then 'migration_ledger=PASS' else 'migration_ledger=FAIL' end;
-              select case when to_regclass('public.organizations') is not null then 'organizations=PASS' else 'organizations=FAIL' end;
-              select case when to_regclass('public.organization_memberships') is not null then 'organization_memberships=PASS' else 'organization_memberships=FAIL' end;
-              select case when to_regclass('public.audit_events') is not null then 'audit_events=PASS' else 'audit_events=FAIL' end;
-              select case when bool_and(relrowsecurity) then 'tenant_rls=PASS' else 'tenant_rls=FAIL' end
-                from pg_class c join pg_namespace n on n.oid=c.relnamespace
-               where n.nspname='public' and c.relname in ('organizations','organization_memberships','audit_events');
-              select case when count(*)=3 then 'tenant_select_policies=PASS' else 'tenant_select_policies=FAIL' end
-                from pg_policies
-               where schemaname='public'
-                 and policyname in ('organizations_select_members','memberships_select_self_or_admin','audit_events_select_org_admins');
-              select case when has_table_privilege('authenticated','public.organizations','SELECT')
-                            and not has_table_privilege('authenticated','public.organizations','INSERT')
-                            and not has_table_privilege('authenticated','public.organizations','UPDATE')
-                            and not has_table_privilege('authenticated','public.organizations','DELETE')
-                       then 'organization_grants=PASS' else 'organization_grants=FAIL' end;
-              select case when has_function_privilege('service_role','public.create_organization_for_user(uuid,text,text)','EXECUTE')
-                            and not has_function_privilege('authenticated','public.create_organization_for_user(uuid,text,text)','EXECUTE')
-                       then 'organization_rpc_grants=PASS' else 'organization_rpc_grants=FAIL' end;
-              select case when has_function_privilege('authenticated','public.list_my_auth_sessions(uuid)','EXECUTE')
-                            and has_function_privilege('authenticated','public.revoke_my_other_auth_sessions(uuid)','EXECUTE')
-                       then 'session_rpc_grants=PASS' else 'session_rpc_grants=FAIL' end;
-              select case when to_regprocedure('private.is_organization_member(uuid)') is not null
-                            and to_regprocedure('private.is_organization_admin(uuid)') is not null
-                       then 'tenant_helpers=PASS' else 'tenant_helpers=FAIL' end;
-            " | tee recovery-evidence/production-post-migration-verification.txt
+            sh -lc 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -At' \
+            <<'SQL' | tee recovery-evidence/production-post-migration-verification.txt
+          select case when exists (
+            select 1 from supabase_migrations.schema_migrations
+             where version='20261123191500' and name='eng_p02_forward_repair_tenant_and_session_schema'
+          ) then 'migration_ledger=PASS' else 'migration_ledger=FAIL' end;
+          select case when to_regclass('public.organizations') is not null then 'organizations=PASS' else 'organizations=FAIL' end;
+          select case when to_regclass('public.organization_memberships') is not null then 'organization_memberships=PASS' else 'organization_memberships=FAIL' end;
+          select case when to_regclass('public.audit_events') is not null then 'audit_events=PASS' else 'audit_events=FAIL' end;
+          select case when bool_and(relrowsecurity) then 'tenant_rls=PASS' else 'tenant_rls=FAIL' end
+            from pg_class c join pg_namespace n on n.oid=c.relnamespace
+           where n.nspname='public' and c.relname in ('organizations','organization_memberships','audit_events');
+          select case when count(*)=3 then 'tenant_select_policies=PASS' else 'tenant_select_policies=FAIL' end
+            from pg_policies
+           where schemaname='public'
+             and policyname in ('organizations_select_members','memberships_select_self_or_admin','audit_events_select_org_admins');
+          select case when has_table_privilege('authenticated','public.organizations','SELECT')
+                        and not has_table_privilege('authenticated','public.organizations','INSERT')
+                        and not has_table_privilege('authenticated','public.organizations','UPDATE')
+                        and not has_table_privilege('authenticated','public.organizations','DELETE')
+                   then 'organization_grants=PASS' else 'organization_grants=FAIL' end;
+          select case when has_function_privilege('service_role','public.create_organization_for_user(uuid,text,text)','EXECUTE')
+                        and not has_function_privilege('authenticated','public.create_organization_for_user(uuid,text,text)','EXECUTE')
+                   then 'organization_rpc_grants=PASS' else 'organization_rpc_grants=FAIL' end;
+          select case when has_function_privilege('authenticated','public.list_my_auth_sessions(uuid)','EXECUTE')
+                        and has_function_privilege('authenticated','public.revoke_my_other_auth_sessions(uuid)','EXECUTE')
+                   then 'session_rpc_grants=PASS' else 'session_rpc_grants=FAIL' end;
+          select case when to_regprocedure('private.is_organization_member(uuid)') is not null
+                        and to_regprocedure('private.is_organization_admin(uuid)') is not null
+                   then 'tenant_helpers=PASS' else 'tenant_helpers=FAIL' end;
+          SQL
 
           for assertion in migration_ledger organizations organization_memberships audit_events tenant_rls tenant_select_policies organization_grants organization_rpc_grants session_rpc_grants tenant_helpers; do
             grep -q "^$assertion=PASS$" recovery-evidence/production-post-migration-verification.txt
