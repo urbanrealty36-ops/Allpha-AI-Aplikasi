@@ -33,6 +33,8 @@ def test_export_worker_renews_lease_while_snapshot_is_running():
             if name == "renew_account_export_job_lease":
                 renewals += 1
                 return True
+            if name == "update_account_export_job_progress":
+                return True
             if name == "build_my_account_export_snapshot":
                 snapshot_started.set()
                 await release_snapshot.wait()
@@ -83,6 +85,8 @@ def test_export_worker_does_not_publish_after_lease_is_lost():
                     return True
                 second_renewal.set()
                 return False
+            if name == "update_account_export_job_progress":
+                return True
             if name == "build_my_account_export_snapshot":
                 snapshot_started.set()
                 await release_snapshot.wait()
@@ -119,6 +123,8 @@ def test_export_worker_rejects_manifest_that_omits_a_data_source():
             calls.append(name)
             if name == "renew_account_export_job_lease":
                 return True
+            if name == "update_account_export_job_progress":
+                return True
             if name == "build_my_account_export_snapshot":
                 return {
                     "schema_version": "1.0",
@@ -153,6 +159,8 @@ def test_export_worker_removes_lease_scoped_artifact_after_explicit_completion_r
         async def rpc(name, payload):
             calls.append(name)
             if name == "renew_account_export_job_lease":
+                return True
+            if name == "update_account_export_job_progress":
                 return True
             if name == "build_my_account_export_snapshot":
                 return {"schema_version": "1.0", "source_count": 0, "manifest": [], "data": {}}
@@ -189,6 +197,8 @@ def test_export_worker_retains_artifact_when_completion_result_is_ambiguous():
         async def rpc(name, payload):
             calls.append(name)
             if name == "renew_account_export_job_lease":
+                return True
+            if name == "update_account_export_job_progress":
                 return True
             if name == "build_my_account_export_snapshot":
                 return {"schema_version": "1.0", "source_count": 0, "manifest": [], "data": {}}
