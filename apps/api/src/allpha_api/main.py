@@ -170,7 +170,8 @@ class NotificationPreferences(BaseModel):
 
 class PrivacyPreferences(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    discoverable_by_username: bool
+    discoverable_by_username: bool | None = None
+    allow_interest_matching: bool | None = None
 
 
 class UserSettingsUpdate(BaseModel):
@@ -230,7 +231,7 @@ class SocialEdgeCreate(BaseModel):
 
 class InterestPreferenceCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    interest_key: str = Field(min_length=1, max_length=80, pattern=r"^[a-z0-9][a-z0-9._-]{0,79}$")
+    interest_key: str = Field(min_length=1, max_length=80)
     preference: Literal["interested", "not_interested"] = "interested"
 
 
@@ -551,7 +552,18 @@ async def update_my_settings(payload: UserSettingsUpdate, request: Request, user
     if "notification_preferences" in changes and payload.notification_preferences:
         changes["notification_preferences"] = payload.notification_preferences.model_dump()
     if "privacy_settings" in changes and payload.privacy_settings:
-        changes["privacy_settings"] = payload.privacy_settings.model_dump()
+        requested_privacy = payload.privacy_settings.model_dump(exclude_unset=True, exclude_none=True)
+        if not requested_privacy:
+            raise HTTPException(status_code=422, detail={"code": "EMPTY_PRIVACY_UPDATE", "message": "Tidak ada pengaturan privasi yang diubah."})
+        current_rows = await user_db_request(
+            "GET", "user_settings", request.state.supabase_access_token,
+            params={"select": "privacy_settings", "user_id": f"eq.{user['id']}", "limit": "1"},
+        )
+        current_privacy = current_rows[0].get("privacy_settings") if current_rows and isinstance(current_rows[0].get("privacy_settings"), dict) else {}
+        merged_privacy = {**current_privacy, **requested_privacy}
+        if merged_privacy.get("allow_interest_matching") is True and merged_privacy.get("discoverable_by_username") is not True:
+            raise HTTPException(status_code=422, detail={"code": "INTEREST_MATCHING_REQUIRES_DISCOVERABILITY", "message": "Pencocokan minat hanya dapat diaktifkan jika profil juga dapat ditemukan."})
+        changes["privacy_settings"] = merged_privacy
     token = request.state.supabase_access_token
     rows = await user_db_request(
         "PATCH", "user_settings", token,
@@ -861,15 +873,24 @@ async def get_my_interests(request: Request, user: dict[str, Any] = Depends(curr
     return {"items": rows}
 
 
+@app.get("/v1/interests/catalog", tags=["social"])
+async def get_interest_catalog(request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    rows = await user_db_request(
+        "GET", "interest_catalog", request.state.supabase_access_token,
+        params={"select": "interest_key,label,label_key,category,aliases,sort_order",
+                "active": "eq.true", "order": "sort_order.asc,interest_key.asc", "limit": "200"},
+    )
+    return {"items": rows}
+
+
 @app.put("/v1/me/interests", tags=["social"])
 async def upsert_my_interest(payload: InterestPreferenceCreate, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    rows = await user_db_request(
-        "POST", "user_interests", request.state.supabase_access_token,
-        body={"user_id": user["id"], "interest_key": payload.interest_key, "preference": payload.preference},
-        params={"on_conflict": "user_id,interest_key", "select": "interest_key,preference,created_at,updated_at"},
-        prefer="resolution=merge-duplicates,return=representation",
-    )
-    if not rows:
+    rows = await service_db_request("set_my_interest_preference_for_actor", body={
+        "p_actor_user_id": str(user["id"]),
+        "p_interest_key": payload.interest_key,
+        "p_preference": payload.preference,
+    })
+    if not isinstance(rows, list) or len(rows) != 1:
         raise HTTPException(status_code=409, detail={"code": "INTEREST_NOT_RECORDED", "message": "Preferensi minat tidak dapat disimpan."})
     await _drain_social_graph_outbox(batch_size=1)
     return {"item": rows[0]}
@@ -877,15 +898,13 @@ async def upsert_my_interest(payload: InterestPreferenceCreate, request: Request
 
 @app.delete("/v1/me/interests/{interest_key}", tags=["social"])
 async def delete_my_interest(interest_key: str, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    if not re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,79}", interest_key):
+    if not interest_key or len(interest_key) > 80:
         raise HTTPException(status_code=422, detail={"code": "INVALID_INTEREST_KEY", "message": "Kunci minat tidak valid."})
-    rows = await user_db_request(
-        "DELETE", "user_interests", request.state.supabase_access_token,
-        params={"user_id": f"eq.{user['id']}", "interest_key": f"eq.{interest_key}",
-                "select": "interest_key"},
-        prefer="return=representation",
-    )
-    if not rows:
+    rows = await service_db_request("delete_my_interest_for_actor", body={
+        "p_actor_user_id": str(user["id"]),
+        "p_interest_key": interest_key,
+    })
+    if not isinstance(rows, list) or not rows:
         raise HTTPException(status_code=404, detail={"code": "INTEREST_NOT_FOUND", "message": "Preferensi minat tidak ditemukan."})
     await _drain_social_graph_outbox(batch_size=1)
     return {"removed": rows[0]}
