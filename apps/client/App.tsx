@@ -82,7 +82,7 @@ type RuntimeTask = { id: string; session_id: string; skill_id: string; tool_key?
 type KnowledgeSource = { id: string; filename: string; size_bytes: number; sha256: string; status: string; processing_stage: string; error_code?: string | null; created_at: string; latest_job?: { id: string; status: string; stage: string; attempt: number; progress: number; error_code?: string | null } | null };
 type KnowledgeRetrievalResult = { source_id: string; source_version: number; chunk_id: string; content: string; content_sha256: string; source_location: Record<string, unknown>; sensitivity: string; retrieval_method: "vector" | "keyword" | "hybrid"; score: number; provider_id?: string | null; model_id?: string | null; model_version?: string | null; index_generation?: string | null };
 type Profile = { id: string; username: string | null; display_name: string; avatar_url: string | null; bio: string; locale: "id-ID" | "en-US"; visibility: "public" | "private"; account_status?: "active" | "deactivation_requested"; created_at?: string };
-type Settings = { theme: "light" | "dark" | "system"; notification_preferences: { product_updates: boolean; security_alerts: boolean; social_activity: boolean }; privacy_settings: { discoverable_by_username: boolean }; updated_at?: string };
+type Settings = { theme: "light" | "dark" | "system"; notification_preferences: { product_updates: boolean; security_alerts: boolean; social_activity: boolean }; privacy_settings: { discoverable_by_username: boolean; allow_interest_matching: boolean }; updated_at?: string };
 type SocialEdge = { id: string; target_user_id?: string; actor_user_id?: string; actor_node_type?: "human" | "agent"; target_node_type?: "human" | "agent"; actor_agent_id?: string | null; target_agent_id?: string | null; edge_type: "follow" | "block" | "mute"; status?: string };
 type SocialInterest = { interest_key: string; preference: "interested" | "not_interested" };
 type InterestGraphSignal = { interest_key: string; signal_type: "passion" | "habit"; strength: number; signal_source: string; updated_at: string };
@@ -1385,7 +1385,7 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
     let active = true; setLoading(true); setError("");
     Promise.all([apiRequest("/v1/me"), apiRequest("/v1/me/settings")])
       .then(([identity, preferences]) => {
-        if (active) { setProfile(identity.profile || null); setSettings(preferences.settings || null); }
+        if (active) { setProfile(identity.profile || null); setSettings(preferences.settings ? { ...preferences.settings, privacy_settings: { discoverable_by_username: preferences.settings.privacy_settings?.discoverable_by_username === true, allow_interest_matching: preferences.settings.privacy_settings?.allow_interest_matching === true } } : null); }
       }).catch(e => { if (active) setError(e instanceof Error ? e.message : "Koneksi gagal."); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
@@ -2085,6 +2085,9 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
         {(["product_updates", "security_alerts", "social_activity"] as const).map((key) => <Button key={key} title={(settings.notification_preferences[key] ? "✓ " : "○ ") + ({ product_updates: "Pembaruan produk", security_alerts: "Peringatan keamanan", social_activity: "Aktivitas sosial" }[key])} secondary={!settings.notification_preferences[key]} onPress={() => setSettings({ ...settings, notification_preferences: { ...settings.notification_preferences, [key]: !settings.notification_preferences[key] } })}/>)}
         <Text style={s.kicker}>PRIVASI</Text><Text style={s.body}>Temukan profil melalui username</Text>
         <View style={{ flexDirection: "row", gap: 8 }}><Button title="Dapat ditemukan" secondary={!settings.privacy_settings.discoverable_by_username} onPress={() => setSettings({ ...settings, privacy_settings: { ...settings.privacy_settings, discoverable_by_username: true } })}/><Button title="Tidak ditemukan" secondary={settings.privacy_settings.discoverable_by_username} onPress={() => setSettings({ ...settings, privacy_settings: { ...settings.privacy_settings, discoverable_by_username: false } })}/></View>
+        <Text style={s.body}>Pencocokan minat untuk Discovery (opt-in)</Text>
+        <Text style={s.muted}>Jika aktif, minat yang Anda pilih dapat dipakai untuk menemukan pengguna lain yang juga mengizinkan pencocokan minat. Ini tidak mengubah visibilitas profil atau membuka data privat.</Text>
+        <View style={{ flexDirection: "row", gap: 8 }}><Button title="Izinkan pencocokan minat" secondary={!settings.privacy_settings.allow_interest_matching} onPress={() => setSettings({ ...settings, privacy_settings: { ...settings.privacy_settings, allow_interest_matching: true } })}/><Button title="Nonaktifkan" secondary={settings.privacy_settings.allow_interest_matching} onPress={() => setSettings({ ...settings, privacy_settings: { ...settings.privacy_settings, allow_interest_matching: false } })}/></View>
         <Button title={busy ? "Menyimpan…" : "Simpan pengaturan"} disabled={busy} onPress={() => void saveSettings()}/>
       </> : <Text style={s.muted}>Pengaturan belum tersedia.</Text> : tab === "sessions" ? <>
         <Text style={s.kicker}>ENG-P02 · KEAMANAN AKUN</Text><Text style={s.title}>Perangkat & sesi login</Text>
