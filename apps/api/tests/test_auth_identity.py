@@ -701,7 +701,7 @@ def test_interest_upsert_and_delete_are_scoped_to_authenticated_user(monkeypatch
         request.state.supabase_access_token = "interest-session-token"
         return {"id": "interest-owner", "email": "owner@example.invalid"}
 
-    monkeypatch.setattr("allpha_api.main.service_db_request", fake_service_db_request)
+    monkeypatch.setattr("allpha_api.interest_graph_api.service_db_request", fake_service_db_request)
     app.dependency_overrides[current_user] = fake_current_user
     try:
         put_response = client.put(
