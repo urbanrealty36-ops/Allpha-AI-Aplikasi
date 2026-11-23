@@ -67,4 +67,4 @@ def test_personalization_opt_out_purges_observed_signals_and_export_includes_his
 def test_signal_source_is_required_and_server_version_is_fixed():
     source = MIGRATION.read_text(encoding="utf-8").lower()
     assert "p_signal_source is null" in source
-    assert "p_consent_version is null or char_length(p_consent_version) not between 1 and 80" in source
+    assert "p_consent_version is distinct from 'interest-graph-v1'" in source
