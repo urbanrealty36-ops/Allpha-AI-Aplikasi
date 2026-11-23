@@ -38,6 +38,7 @@ allpha-content-provider-callback = "allpha_api.content_provider_callback_worker:
 allpha-generation-worker = "allpha_api.generation_job_worker:main"
 allpha-agent-runtime-worker = "allpha_api.agent_runtime_worker:main"
 allpha-generation-artifact-deletion-worker = "allpha_api.generation_artifact_deletion_worker:main"
+allpha-account-lifecycle-worker = "allpha_api.account_lifecycle_worker:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
