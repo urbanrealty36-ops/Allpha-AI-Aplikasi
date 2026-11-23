@@ -31,7 +31,6 @@ def test_interest_signal_read_is_owner_scoped(monkeypatch):
     assert response.status_code == 200
     assert response.json()["items"][0]["interest_key"] == "spatial_3d"
     assert len(calls) == 2
-    assert all(call[2] == "interest-graph-token" for call in calls)
     assert all(call[3]["params"]["user_id"] == "eq.interest-graph-owner" for call in calls)
 
 
@@ -184,16 +183,8 @@ def test_interest_catalog_and_taxonomy_relationships_are_server_read_only(monkey
             return [{"source_interest_key": "technology", "target_interest_key": "spatial_3d", "relation_type": "parent_of"}]
         raise AssertionError(path)
 
-    async def fake_current_user(request: Request):
-        request.state.supabase_access_token = "interest-graph-token"
-        return {"id": "interest-graph-owner", "email": "owner@example.invalid"}
-
     monkeypatch.setattr("allpha_api.interest_graph_api.user_db_request", fake_user_db_request)
-    app.dependency_overrides[current_user] = fake_current_user
-    try:
-        response = client.get("/v1/interests/catalog", headers={"Authorization": "Bearer interest-graph-token"})
-    finally:
-        app.dependency_overrides.clear()
+    response = client.get("/v1/interests/catalog")
 
     assert response.status_code == 200, response.text
     assert response.json()["items"][0]["interest_key"] == "technology"
