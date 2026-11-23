@@ -22,6 +22,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from allpha_api.auth import current_session_user, current_user, require_organization_membership, user_db_request, service_db_request
 from allpha_api.organization_service import OrganizationActor, organization_service
+from allpha_api.account_lifecycle_api import router as account_lifecycle_router
 from allpha_api.agent_runtime_api import router as agent_runtime_router
 from allpha_api.agent_task_schedule_api import router as agent_task_schedule_router
 from allpha_api.text_generation_adapters import build_text_generation_router_from_environment
@@ -1668,3 +1669,4 @@ app.include_router(live_router)
 app.include_router(stripe_billing_router)
 app.include_router(generation_jobs_router)
 app.include_router(memory_router)
+app.include_router(account_lifecycle_router)
