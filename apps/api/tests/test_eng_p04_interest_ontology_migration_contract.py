@@ -5,7 +5,7 @@ MIGRATION = (
     Path(__file__).parents[1]
     / "supabase"
     / "migrations"
-    / "20261123191800_eng_p04_interest_ontology_and_discovery_index.sql"
+    / "20261123191900_eng_p04_interest_ontology_and_discovery_index.sql"
 )
 
 
