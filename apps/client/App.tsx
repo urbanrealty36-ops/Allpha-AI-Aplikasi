@@ -526,7 +526,7 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
   const [reelsBusy, setReelsBusy] = useState(false);
   const [feedBusy, setFeedBusy] = useState(false);
   const [feedCursor, setFeedCursor] = useState<string | null>(null);
-  const [feedMode, setFeedMode] = useState<"for_you" | "recent">("for_you");
+  const [feedMode, setFeedMode] = useState<"for_you" | "recent" | "following">("for_you");
   const [feedPersonalization, setFeedPersonalization] = useState(true);
   const [discoveryQuery, setDiscoveryQuery] = useState("");
   const [messageConversations, setMessageConversations] = useState<NativeConversation[]>([]);
@@ -876,7 +876,7 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
     try {
       const params = new URLSearchParams({ mode: feedMode, limit: "10" });
       if (!reset && feedCursor) params.set("cursor", feedCursor);
-      const result = await apiRequest("/v1/feed?" + params.toString()) as { items?: NativeFeedItem[]; next_cursor?: string | null; mode?: "for_you" | "recent"; personalization_enabled?: boolean };
+      const result = await apiRequest("/v1/feed?" + params.toString()) as { items?: NativeFeedItem[]; next_cursor?: string | null; mode?: "for_you" | "recent" | "following"; personalization_enabled?: boolean };
       const receivedItems = result.items ?? [];
       setFeedItems(current => reset ? receivedItems : [...current, ...receivedItems]);
       if (receivedItems.length) void Promise.all(receivedItems.map((item, index) => recordNativeFeedSignal(item.id, "impression", reset ? index : feedItems.length + index)));
@@ -977,6 +977,42 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Preferensi feed gagal disimpan."); }
     finally { setFeedBusy(false); }
   }
+  async function selectNativeFeedMode(mode: "for_you" | "recent" | "following") {
+    if (mode !== "following") {
+      await saveNativeFeedPreferences(feedPersonalization, mode);
+      return;
+    }
+    setFeedBusy(true); setError(""); setMessage("");
+    try {
+      const result = await apiRequest("/v1/feed?mode=following&limit=10") as {
+        items?: NativeFeedItem[]; next_cursor?: string | null; mode?: "for_you" | "recent" | "following";
+        personalization_enabled?: boolean;
+      };
+      setFeedItems(result.items ?? []);
+      setFeedCursor(result.next_cursor ?? null);
+      setFeedMode("following");
+      if (typeof result.personalization_enabled === "boolean") setFeedPersonalization(result.personalization_enabled);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Feed Mengikuti tidak dapat dimuat.");
+    } finally { setFeedBusy(false); }
+  }
+
+  async function toggleNativeFeedPersonalization(enabled: boolean) {
+    setFeedBusy(true); setError(""); setMessage("");
+    try {
+      const rankingMode = feedMode === "recent" ? "recent" : "for_you";
+      await apiRequest("/v1/feed/preferences", {
+        method: "PUT",
+        body: JSON.stringify({ personalization_enabled: enabled, ranking_mode: rankingMode }),
+      });
+      setFeedPersonalization(enabled);
+      setMessage("Preferensi personalisasi disimpan.");
+      await loadNativeFeed(true);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Preferensi personalisasi gagal disimpan.");
+    } finally { setFeedBusy(false); }
+  }
+
   async function nativeFeedAction(item: NativeFeedItem, action: "like" | "save" | "report", reportReason: "spam" | "harassment" | "privacy" | "misinformation" | "other" = "other") {
     setFeedBusy(true); setError(""); setMessage("");
     try {
@@ -2203,9 +2239,10 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
         <Text style={s.kicker}>ENG-P14 · SOCIAL FEED</Text><Text style={s.title}>Feed sosial</Text>
         <Text style={s.muted}>Konten publik yang telah disetujui. Ranking menghormati relasi follow, block, mute, dan preferensi Anda.</Text>
         <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-          <Button title={feedMode === "for_you" ? "✓ Untuk Anda" : "Untuk Anda"} secondary={feedMode !== "for_you"} disabled={feedBusy} onPress={() => void saveNativeFeedPreferences(feedPersonalization, "for_you")}/>
-          <Button title={feedMode === "recent" ? "✓ Terbaru" : "Terbaru"} secondary={feedMode !== "recent"} disabled={feedBusy} onPress={() => void saveNativeFeedPreferences(feedPersonalization, "recent")}/>
-          <Button title={feedPersonalization ? "Personalisasi: aktif" : "Personalisasi: mati"} secondary={!feedPersonalization} disabled={feedBusy} onPress={() => void saveNativeFeedPreferences(!feedPersonalization, feedMode)}/>
+          <Button title={feedMode === "for_you" ? "✓ Untuk Anda" : "Untuk Anda"} secondary={feedMode !== "for_you"} disabled={feedBusy} onPress={() => void selectNativeFeedMode("for_you")}/>
+          <Button title={feedMode === "following" ? "✓ Mengikuti" : "Mengikuti"} secondary={feedMode !== "following"} disabled={feedBusy} onPress={() => void selectNativeFeedMode("following")}/>
+          <Button title={feedMode === "recent" ? "✓ Terbaru" : "Terbaru"} secondary={feedMode !== "recent"} disabled={feedBusy} onPress={() => void selectNativeFeedMode("recent")}/>
+          <Button title={feedPersonalization ? "Personalisasi: aktif" : "Personalisasi: mati"} secondary={!feedPersonalization} disabled={feedBusy} onPress={() => void toggleNativeFeedPersonalization(!feedPersonalization)}/>
           <Button title="Muat ulang" secondary disabled={feedBusy} onPress={() => void loadNativeFeed(true)}/>
         </View>
         {feedBusy && <View accessibilityRole="progressbar" style={{ paddingVertical: 10, alignItems: "center" }}><ActivityIndicator color="#A5B4FC"/><Text style={s.muted}>Memuat feed…</Text></View>}
