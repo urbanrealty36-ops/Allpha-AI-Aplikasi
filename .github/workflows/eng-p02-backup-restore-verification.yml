@@ -58,6 +58,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p restore-workspace/supabase
+          restore_db_port=$((54322 + BACKUP_RUN_ID % 1000))
           cat > restore-workspace/supabase/config.toml <<'TOML'
           project_id = "allpha-p02-restore-verification"
 
@@ -71,6 +72,8 @@ jobs:
           [db.migrations]
           schema_paths = []
           TOML
+          # Use a run-specific host port so overlapping recovery jobs cannot collide.
+          sed -i "s/^port = 54322$/port = $restore_db_port/" restore-workspace/supabase/config.toml
 
       - uses: supabase/setup-cli@v1
         with:
