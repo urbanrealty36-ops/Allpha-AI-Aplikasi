@@ -20,7 +20,7 @@ from fastapi.responses import JSONResponse
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from allpha_api.auth import current_session_user, current_user, user_db_request, service_db_request
+from allpha_api.auth import current_session_user, current_user, require_organization_membership, user_db_request, service_db_request
 from allpha_api.agent_runtime_api import router as agent_runtime_router
 from allpha_api.agent_task_schedule_api import router as agent_task_schedule_router
 from allpha_api.text_generation_adapters import build_text_generation_router_from_environment
@@ -855,7 +855,8 @@ async def create_organization(payload: OrganizationCreate, user: dict[str, Any] 
 
 
 @app.get("/v1/organizations/{organization_id}/memberships", tags=["organizations"])
-async def list_organization_memberships(organization_id: uuid.UUID, user: dict[str, Any] = Depends(current_user), request: Request = None) -> dict[str, Any]:
+async def list_organization_memberships(organization_id: uuid.UUID, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    await require_organization_membership(request, str(organization_id), str(user["id"]))
     rows = await user_db_request(
         "GET", "organization_memberships", request.state.supabase_access_token,
         params={"select": "organization_id,user_id,role,invited_by,created_at", "organization_id": f"eq.{organization_id}", "order": "created_at.asc", "limit": "500"},
@@ -871,7 +872,8 @@ async def list_organization_memberships(organization_id: uuid.UUID, user: dict[s
 
 
 @app.post("/v1/organizations/{organization_id}/memberships", status_code=201, tags=["organizations"])
-async def add_organization_membership(organization_id: uuid.UUID, payload: OrganizationMemberCreate, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+async def add_organization_membership(organization_id: uuid.UUID, payload: OrganizationMemberCreate, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    await require_organization_membership(request, str(organization_id), str(user["id"]), allowed_roles={"owner", "admin"})
     rows = await service_db_request(
         "add_organization_member_for_actor",
         body={"p_organization_id": str(organization_id), "p_actor_user_id": user["id"], "p_target_user_id": str(payload.user_id), "p_role": payload.role},
@@ -882,7 +884,8 @@ async def add_organization_membership(organization_id: uuid.UUID, payload: Organ
 
 
 @app.patch("/v1/organizations/{organization_id}/memberships/{member_user_id}", tags=["organizations"])
-async def update_organization_membership_role(organization_id: uuid.UUID, member_user_id: uuid.UUID, payload: OrganizationMemberRoleUpdate, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+async def update_organization_membership_role(organization_id: uuid.UUID, member_user_id: uuid.UUID, payload: OrganizationMemberRoleUpdate, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    await require_organization_membership(request, str(organization_id), str(user["id"]), allowed_roles={"owner"})
     rows = await service_db_request(
         "update_organization_member_role_for_actor",
         body={"p_organization_id": str(organization_id), "p_actor_user_id": user["id"], "p_target_user_id": str(member_user_id), "p_role": payload.role},
@@ -893,7 +896,8 @@ async def update_organization_membership_role(organization_id: uuid.UUID, member
 
 
 @app.delete("/v1/organizations/{organization_id}/memberships/{member_user_id}", tags=["organizations"])
-async def remove_organization_membership(organization_id: uuid.UUID, member_user_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+async def remove_organization_membership(organization_id: uuid.UUID, member_user_id: uuid.UUID, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    await require_organization_membership(request, str(organization_id), str(user["id"]), allowed_roles={"owner", "admin"})
     removed = await service_db_request(
         "remove_organization_member_for_actor",
         body={"p_organization_id": str(organization_id), "p_actor_user_id": user["id"], "p_target_user_id": str(member_user_id)},
