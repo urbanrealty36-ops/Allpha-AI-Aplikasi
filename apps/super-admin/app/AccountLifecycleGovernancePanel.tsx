@@ -276,10 +276,21 @@ export default function AccountLifecycleGovernancePanel({ apiBase, getAccessToke
         <div className="tableWrap"><table><thead><tr><th>Child table / constraint</th><th>FK</th><th>Database rule</th><th>Resolution</th><th>Reason</th><th>Active</th><th>Aksi</th></tr></thead><tbody>
           {dependencyRules.map(item => {
             const draft = dependencyDrafts[item.id];
-            const choices = item.child_table === "agent_ownerships" && item.fk_column === "owner_user_id"
-              || item.child_table === "organizations" && item.fk_column === "owner_id"
-              ? ["transfer_owner", "block"]
-              : item.delete_rule === "CASCADE" ? ["database_cascade", "block"]
+            const tombstoneConstraints = new Set([
+              "agent_consumer_grant_events_owner_user_id_fkey",
+              "billing_orders_owner_user_id_fkey",
+              "billing_receipts_owner_user_id_fkey",
+              "billing_subscriptions_owner_user_id_fkey",
+              "content_retention_holds_created_by_fkey",
+              "credit_ledger_accounts_owner_user_id_fkey",
+              "playback_entitlements_owner_user_id_fkey",
+            ]);
+            const choices = tombstoneConstraints.has(item.constraint_name)
+              ? ["preserve_tombstone", "block"]
+              : item.child_table === "agent_ownerships" && item.fk_column === "owner_user_id"
+                || item.child_table === "organizations" && item.fk_column === "owner_id"
+                ? ["transfer_owner", "block"]
+                : item.delete_rule === "CASCADE" ? ["database_cascade", "block"]
               : item.delete_rule === "SET NULL" ? ["database_set_null", "set_null", "block"]
               : item.fk_column && ["RESTRICT", "NO ACTION"].includes(item.delete_rule) ? ["delete_rows", "block"] : ["block"];
             return <tr key={item.id}>
