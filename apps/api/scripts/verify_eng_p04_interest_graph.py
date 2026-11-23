@@ -182,6 +182,16 @@ begin
   end;
 end $$;
 update public.feed_preferences set personalization_enabled=true where user_id='{OWNER}';
+do $
+begin
+  begin
+    perform * from public.set_user_interest_graph_signal_for_actor(
+      '{OWNER}','health','habit',0.5,'observed_interaction','interest-graph-v1',null
+    );
+    raise exception 'sensitive observed Habit signal unexpectedly succeeded with both consents';
+  exception when insufficient_privilege then null;
+  end;
+end $;
 select * from public.set_user_interest_graph_signal_for_actor(
  '{OWNER}','technology','habit',0.6,'observed_interaction','interest-graph-v1',null
 );
