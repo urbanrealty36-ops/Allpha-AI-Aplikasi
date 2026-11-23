@@ -1,5 +1,5 @@
 name: ENG-P02 Create Pre-Migration Database Backup
-# Capture a fresh production recovery point; the restore gate applies reviewed P03 migrations only to its disposable copy.
+# Capture a fresh production recovery point; restore gate validates named SQL blocks and applies reviewed P03 migrations only to its disposable copy.
 
 on:
   workflow_dispatch:
