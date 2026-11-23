@@ -237,7 +237,7 @@ jobs:
           set local role service_role;
           select set_config('request.jwt.claim.role','service_role',true);
           select set_config('request.jwt.claim.sub', :'restore_actor_id', true);
-          do $
+          do $consent_verifier$
           declare
             v_actor uuid := current_setting('request.jwt.claim.sub')::uuid;
             v_first uuid;
@@ -262,7 +262,7 @@ jobs:
               null;
             end;
           end;
-          $$;
+          $consent_verifier$;
           rollback;
           SQL
           echo "consent_rpc_behavior=PASS" | tee -a recovery-evidence/p03-consent-event-verification.txt
@@ -294,7 +294,7 @@ jobs:
           set local role service_role;
           select set_config('request.jwt.claim.role','service_role',true);
           select set_config('request.jwt.claim.sub', :'restore_actor_id', true);
-          do $
+          do $export_verifier$
           declare
             v_actor uuid := current_setting('request.jwt.claim.sub')::uuid;
             v_job uuid;
@@ -317,7 +317,7 @@ jobs:
               raise exception 'lease-scoped export completion was rejected';
             end if;
           end;
-          $;
+          $export_verifier$;
           rollback;
           SQL
           echo "lease_scoped_completion_behavior=PASS" | tee -a recovery-evidence/p03-export-lease-verification.txt
