@@ -38,7 +38,7 @@ jobs:
           test "$SUPABASE_PROJECT_ID" = "dvdziauyvuhcnqhrrvww"
           mkdir -p recovery-evidence
 
-      - name: Resolve the IPv4 session pooler from Supabase Management API
+      - name: Resolve the shared session pooler from Supabase Management API
         shell: bash
         run: |
           set -euo pipefail
@@ -49,32 +49,39 @@ jobs:
           python - <<'PY'
           import json, os
           from pathlib import Path
+          from urllib.parse import urlparse
 
           data = json.loads(Path("/tmp/pooler-config.json").read_text())
           if isinstance(data, dict):
               data = [data]
-          candidates = [
-              item for item in data
-              if str(item.get("pool_mode", "")).lower() == "session"
-              and int(item.get("db_port") or 0) == 5432
-          ]
+          sanitized = []
+          candidates = []
+          for item in data:
+              connection = item.get("connection_string") or item.get("connectionString") or ""
+              parsed = urlparse(connection) if connection else None
+              host = str(item.get("db_host") or (parsed.hostname if parsed else "") or "").strip()
+              port = int(item.get("db_port") or (parsed.port if parsed else 0) or 0)
+              user = str(item.get("db_user") or (parsed.username if parsed else "") or "").strip()
+              database = str(item.get("db_name") or ((parsed.path or "").lstrip("/") if parsed else "") or "").strip()
+              pool_mode = str(item.get("pool_mode") or "").lower()
+              sanitized.append({
+                  "identifier": item.get("identifier"),
+                  "database_type": item.get("database_type"),
+                  "pool_mode": pool_mode,
+                  "db_host": host,
+                  "db_port": port,
+                  "db_user": user,
+                  "db_name": database,
+              })
+              if host.endswith(".pooler.supabase.com") and port == 5432 and user and database:
+                  candidates.append((host, port, user, database, pool_mode))
+          print(json.dumps({"available_poolers": sanitized}, indent=2))
           if not candidates:
-              raise SystemExit("Supabase Management API did not return an IPv4 session pooler on port 5432.")
-          pooler = candidates[0]
-          values = {
-              "DB_HOST": str(pooler.get("db_host") or "").strip(),
-              "DB_PORT": str(pooler.get("db_port") or "").strip(),
-              "DB_USER": str(pooler.get("db_user") or "").strip(),
-              "DB_NAME": str(pooler.get("db_name") or "").strip(),
-          }
-          if not all(values.values()):
-              raise SystemExit("Supavisor session pooler response omitted required connection fields.")
-          if not values["DB_HOST"].endswith(".pooler.supabase.com"):
-              raise SystemExit("Resolved host is not a Supavisor shared pooler; refusing to fall back to the IPv6 direct endpoint.")
+              raise SystemExit("Management API returned no shared session pooler host on port 5432; inspect the sanitized available_poolers above. Refusing IPv6 direct or transaction-pooler fallback.")
+          host, port, user, database, mode = candidates[0]
           with open(os.environ["GITHUB_ENV"], "a") as env_file:
-              for key, value in values.items():
-                  env_file.write(f"{key}={value}\n")
-          print(json.dumps({"pool_mode": "session", "db_host": values["DB_HOST"], "db_port": values["DB_PORT"], "db_user": values["DB_USER"], "db_name": values["DB_NAME"]}, indent=2))
+              env_file.write(f"DB_HOST={host}\nDB_PORT={port}\nDB_USER={user}\nDB_NAME={database}\n")
+          print(json.dumps({"selected_connection_mode": "shared-session", "pool_mode": mode, "db_host": host, "db_port": port, "db_user": user, "db_name": database}, indent=2))
           PY
 
       - name: Create a full PostgreSQL 17 logical backup
