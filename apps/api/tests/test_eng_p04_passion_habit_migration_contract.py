@@ -92,3 +92,10 @@ def test_signal_delete_audit_preserves_source_and_consent_provenance():
     source = MIGRATION.read_text(encoding="utf-8").lower()
     assert "signal_source,consent_version" in source
     assert "select user_id,agent_id,interest_key,signal_type,'delete',signal_source,consent_version" in source
+
+
+def test_human_agent_signal_upsert_uses_nulls_not_distinct_named_constraint():
+    source = MIGRATION.read_text(encoding="utf-8").lower()
+    assert "constraint user_interest_graph_signals_subject_unique" in source
+    assert "unique nulls not distinct (user_id,agent_id,interest_key,signal_type)" in source
+    assert "on conflict on constraint user_interest_graph_signals_subject_unique do update" in source
