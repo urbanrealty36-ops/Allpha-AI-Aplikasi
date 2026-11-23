@@ -106,3 +106,38 @@ def test_export_worker_does_not_publish_after_lease_is_lost():
         assert "fail_account_export_job" in calls
 
     asyncio.run(scenario())
+
+
+def test_export_worker_rejects_manifest_that_omits_a_data_source():
+    async def scenario():
+        worker = _worker()
+        uploads = []
+        calls = []
+
+        async def rpc(name, payload):
+            calls.append(name)
+            if name == "renew_account_export_job_lease":
+                return True
+            if name == "build_my_account_export_snapshot":
+                return {
+                    "schema_version": "1.0",
+                    "source_count": 2,
+                    "manifest": [{"source": "profile", "row_count": 1}],
+                    "data": {"profile": [{"id": JOB["user_id"]}]},
+                }
+            if name == "fail_account_export_job":
+                return True
+            raise AssertionError(f"incomplete snapshot must not call {name}")
+
+        async def upload(path, payload):
+            uploads.append(path)
+
+        worker.rpc = rpc
+        worker.upload = upload
+        await worker.process(JOB)
+
+        assert uploads == []
+        assert "complete_account_export_job" not in calls
+        assert "fail_account_export_job" in calls
+
+    asyncio.run(scenario())
