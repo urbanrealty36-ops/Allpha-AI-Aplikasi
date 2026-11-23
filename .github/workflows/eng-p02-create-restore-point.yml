@@ -1,5 +1,5 @@
 name: ENG-P02 Create Pre-Migration Database Backup
-# Re-capture a fresh point-in-time logical backup before the isolated forward migration chain.
+# Re-capture a fresh point-in-time logical backup after the full restore workflow rebuild.
 
 on:
   workflow_dispatch:
