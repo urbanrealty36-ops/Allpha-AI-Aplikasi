@@ -68,10 +68,10 @@ begin
   if p_actor_user_id is null or not exists(select 1 from auth.users u where u.id=p_actor_user_id) then
     raise exception 'consent_actor_not_found' using errcode = 'P0002';
   end if;
-  if p_consent_type not in ('terms_of_service','privacy_policy','product_updates')
+  if p_consent_type is null or p_consent_type not in ('terms_of_service','privacy_policy','product_updates')
      or p_policy_version is null or char_length(p_policy_version) not between 1 and 40
-     or p_decision not in ('granted','declined','revoked')
-     or p_source not in ('onboarding','account_settings','policy_refresh')
+     or p_decision is null or p_decision not in ('granted','declined','revoked')
+     or p_source is null or p_source not in ('onboarding','account_settings','policy_refresh')
      or p_idempotency_key is null or char_length(p_idempotency_key) not between 8 and 128 then
     raise exception 'consent_event_input_invalid' using errcode = '22023';
   end if;
