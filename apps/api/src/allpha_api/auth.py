@@ -224,12 +224,20 @@ async def require_organization_membership(
             "limit": "1",
         },
     )
-    if not rows:
+    # PostgREST filters are expected to be exact, but authorization must not
+    # trust a response row solely because the query asked for this tenant.
+    # Re-bind both tenant and actor identities before accepting the role.
+    matching_rows = [
+        row for row in rows
+        if str(row.get("organization_id") or "") == str(organization_id)
+        and str(row.get("user_id") or "") == str(actor_user_id)
+    ]
+    if len(matching_rows) != 1:
         raise HTTPException(
             status_code=404,
             detail={"code": "ORGANIZATION_NOT_FOUND", "message": "Organisasi tidak ditemukan."},
         )
-    membership = rows[0]
+    membership = matching_rows[0]
     role = membership.get("role")
     if allowed_roles is not None and role not in allowed_roles:
         raise HTTPException(
