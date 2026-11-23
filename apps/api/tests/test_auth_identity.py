@@ -435,16 +435,17 @@ def test_membership_lookup_for_authorized_user_uses_session_token_and_org_scope(
 
 
 
-def test_record_consent_uses_authenticated_user_and_caller_session(monkeypatch):
+def test_record_consent_uses_authenticated_user_and_server_only_rpc(monkeypatch):
     monkeypatch.setenv("ALLPHA_POLICY_VERSION_PRIVACY_POLICY", "policy-test-v1")
     calls = []
 
-    async def fake_user_db_request(method, path, access_token, **kwargs):
-        calls.append((method, path, access_token, kwargs))
+    async def fake_service_db_request(function_name, *, body):
+        calls.append((function_name, body))
         return [{
+            "id": "consent-event-1",
             "consent_type": "privacy_policy",
             "policy_version": "policy-test-v1",
-            "granted": True,
+            "decision": "granted",
             "recorded_at": "2026-10-14T00:00:00Z",
         }]
 
@@ -452,12 +453,12 @@ def test_record_consent_uses_authenticated_user_and_caller_session(monkeypatch):
         request.state.supabase_access_token = "consent-session-token"
         return {"id": "authenticated-consent-user", "email": "consent@example.invalid"}
 
-    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    monkeypatch.setattr("allpha_api.main.service_db_request", fake_service_db_request)
     app.dependency_overrides[current_user] = fake_current_user
     try:
         response = client.post(
             "/v1/me/consents",
-            headers={"Authorization": "Bearer consent-session-token"},
+            headers={"Authorization": "Bearer consent-session-token", "Idempotency-Key": "consent-test-0001"},
             json={"consent_type": "privacy_policy", "policy_version": "policy-test-v1", "granted": True},
         )
     finally:
@@ -465,15 +466,17 @@ def test_record_consent_uses_authenticated_user_and_caller_session(monkeypatch):
 
     assert response.status_code == 201
     assert response.json()["consent"]["consent_type"] == "privacy_policy"
-    assert len(calls) == 1
-    method, path, token, kwargs = calls[0]
-    assert (method, path, token) == ("POST", "user_consents", "consent-session-token")
-    assert kwargs["body"] == {
-        "user_id": "authenticated-consent-user",
-        "consent_type": "privacy_policy",
-        "policy_version": "policy-test-v1",
-        "granted": True,
-    }
+    assert calls == [(
+        "record_account_consent_event_for_actor",
+        {
+            "p_actor_user_id": "authenticated-consent-user",
+            "p_consent_type": "privacy_policy",
+            "p_policy_version": "policy-test-v1",
+            "p_decision": "granted",
+            "p_source": "account_settings",
+            "p_idempotency_key": "consent-test-0001",
+        },
+    )]
 
 
 def test_record_consent_rejects_forged_identity_fields_before_database_write(monkeypatch):
@@ -523,7 +526,7 @@ def test_get_consents_is_scoped_to_authenticated_user(monkeypatch):
 
     async def fake_user_db_request(method, path, access_token, **kwargs):
         calls.append((method, path, access_token, kwargs))
-        return [{"consent_type": "terms_of_service", "policy_version": "terms-test-v1", "granted": True, "recorded_at": "2026-10-14T00:00:00Z"}]
+        return [{"id": "consent-event-2", "consent_type": "terms_of_service", "policy_version": "terms-test-v1", "decision": "granted", "source": "onboarding", "idempotency_key": "legacy-consent-0001", "recorded_at": "2026-10-14T00:00:00Z"}]
 
     async def fake_current_user(request: Request):
         request.state.supabase_access_token = "consent-read-token"
@@ -540,12 +543,12 @@ def test_get_consents_is_scoped_to_authenticated_user(monkeypatch):
     assert response.json()["items"][0]["consent_type"] == "terms_of_service"
     assert calls == [(
         "GET",
-        "user_consents",
+        "user_consent_events",
         "consent-read-token",
         {"params": {
-            "select": "consent_type,policy_version,granted,recorded_at",
+            "select": "id,consent_type,policy_version,decision,source,idempotency_key,recorded_at",
             "user_id": "eq.consent-owner",
-            "order": "recorded_at.desc",
+            "order": "recorded_at.desc,id.desc",
             "limit": "100",
         }},
     )]
