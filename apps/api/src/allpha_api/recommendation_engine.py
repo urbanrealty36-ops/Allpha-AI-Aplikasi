@@ -27,7 +27,7 @@ def normalize_weights(value: Any) -> dict[str, float]:
         raw = value.get(key)
         if isinstance(raw, (int, float)) and not isinstance(raw, bool):
             number = float(raw)
-            if isfinite(number) and 0 <= number <= 100:
+            if isfinite(number) and 0 <= number <= 10000:
                 weights[key] = number
     return weights
 
