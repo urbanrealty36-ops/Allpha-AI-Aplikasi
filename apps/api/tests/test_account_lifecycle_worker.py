@@ -384,6 +384,10 @@ def test_deletion_execution_worker_deletes_queued_storage_then_executes_database
         async def rpc(name, payload):
             nonlocal storage_batches
             calls.append((name, payload))
+            if name == "prepare_account_deletion_subscription_cancellations":
+                return 0
+            if name == "claim_account_deletion_subscription_cancellation_jobs":
+                return []
             if name == "prepare_account_deletion_execution_batch":
                 return [{"processed_count": 1, "queued_count": 1, "blocked_count": 0}]
             if name == "claim_account_deletion_execution_jobs":
@@ -437,6 +441,10 @@ def test_deletion_execution_worker_retries_storage_failure_without_running_row_d
 
         async def rpc(name, payload):
             calls.append((name, payload))
+            if name == "prepare_account_deletion_subscription_cancellations":
+                return 0
+            if name == "claim_account_deletion_subscription_cancellation_jobs":
+                return []
             if name == "prepare_account_deletion_execution_batch":
                 return [{"processed_count": 1, "queued_count": 1, "blocked_count": 0}]
             if name == "claim_account_deletion_execution_jobs":
@@ -484,6 +492,10 @@ def test_deletion_execution_worker_stops_when_execution_lease_is_lost(monkeypatc
         async def rpc(name, payload):
             nonlocal renew_count
             calls.append((name, payload))
+            if name == "prepare_account_deletion_subscription_cancellations":
+                return 0
+            if name == "claim_account_deletion_subscription_cancellation_jobs":
+                return []
             if name == "prepare_account_deletion_execution_batch":
                 return [{"processed_count": 1, "queued_count": 1, "blocked_count": 0}]
             if name == "claim_account_deletion_execution_jobs":
@@ -507,5 +519,83 @@ def test_deletion_execution_worker_stops_when_execution_lease_is_lost(monkeypatc
         assert renew_count >= 2
         assert "execute_account_deletion_execution_job" not in names
         assert "fail_account_deletion_execution_job" in names
+
+    asyncio.run(scenario())
+
+
+def test_deletion_subscription_cancellation_worker_uses_stable_provider_job_and_confirms_local_state():
+    async def scenario():
+        worker = _worker()
+        calls = []
+        cancelled = []
+
+        async def rpc(name, payload):
+            calls.append((name, payload))
+            if name == "prepare_account_deletion_subscription_cancellations":
+                return 1
+            if name == "claim_account_deletion_subscription_cancellation_jobs":
+                return [{
+                    "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                    "billing_subscription_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                    "stripe_subscription_id": "sub_123456789",
+                    "stripe_mode": "test",
+                    "idempotency_key": "account-deletion:cccccccc-cccc-4ccc-8ccc-cccccccccccc:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                    "attempts": 1,
+                    "lease_token": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+                }]
+            if name == "complete_account_deletion_subscription_cancellation_job":
+                return True
+            raise AssertionError(name)
+
+        async def cancel(subscription_id, idempotency_key, stripe_mode):
+            cancelled.append((subscription_id, idempotency_key, stripe_mode))
+            return "canceled"
+
+        worker.rpc = rpc
+        worker._cancel_stripe_subscription = cancel
+        assert await worker.deletion_subscription_cancellation_batch() == 1
+        assert cancelled == [(
+            "sub_123456789",
+            "account-deletion:cccccccc-cccc-4ccc-8ccc-cccccccccccc:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            "test",
+        )]
+        assert [name for name, _ in calls][-1] == "complete_account_deletion_subscription_cancellation_job"
+
+    asyncio.run(scenario())
+
+
+def test_deletion_subscription_cancellation_worker_retries_unknown_provider_outcome():
+    async def scenario():
+        worker = _worker()
+        calls = []
+
+        async def rpc(name, payload):
+            calls.append((name, payload))
+            if name == "prepare_account_deletion_subscription_cancellations":
+                return 1
+            if name == "claim_account_deletion_subscription_cancellation_jobs":
+                return [{
+                    "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                    "billing_subscription_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                    "stripe_subscription_id": "sub_123456789",
+                    "stripe_mode": "test",
+                    "idempotency_key": "account-deletion:cccccccc-cccc-4ccc-8ccc-cccccccccccc:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                    "attempts": 2,
+                    "lease_token": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+                }]
+            if name == "fail_account_deletion_subscription_cancellation_job":
+                return True
+            raise AssertionError(name)
+
+        async def cancel(subscription_id, idempotency_key, stripe_mode):
+            raise RuntimeError("provider outcome unknown")
+
+        worker.rpc = rpc
+        worker._cancel_stripe_subscription = cancel
+        assert await worker.deletion_subscription_cancellation_batch() == 1
+        failed = next(payload for name, payload in calls if name == "fail_account_deletion_subscription_cancellation_job")
+        assert failed["p_error_code"] == "RuntimeError"
+        assert failed["p_retry_seconds"] == 60
+        assert not any(name == "complete_account_deletion_subscription_cancellation_job" for name, _ in calls)
 
     asyncio.run(scenario())
