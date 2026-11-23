@@ -199,6 +199,39 @@ jobs:
           done
           echo "P03_MIGRATION_BLOB=$(git rev-parse HEAD:"$migration")" >> "$GITHUB_ENV"
 
+      - name: Apply ENG-P03 append-only consent migration to disposable restored database
+        shell: bash
+        run: |
+          set -euo pipefail
+          migration="apps/api/supabase/migrations/20261123191700_eng_p03_consent_event_history.sql"
+          test -s "$migration"
+          docker cp "$migration" "$SUPABASE_DB_CONTAINER:/tmp/eng-p03-consent-events.sql"
+          docker exec -u postgres "$SUPABASE_DB_CONTAINER" \
+            psql -U supabase_admin -d allpha_p02_restore_verification \
+              -v ON_ERROR_STOP=1 -f /tmp/eng-p03-consent-events.sql
+          docker exec -u postgres "$SUPABASE_DB_CONTAINER" \
+            psql -U supabase_admin -d allpha_p02_restore_verification -v ON_ERROR_STOP=1 -Atc "
+              select case when to_regclass('public.user_consent_events') is not null then 'consent_events_table=PASS' else 'consent_events_table=FAIL' end;
+              select case when exists(select 1 from private.account_export_sources where source_key='consent_events' and table_name='user_consent_events' and enabled) then 'consent_export_source=PASS' else 'consent_export_source=FAIL' end;
+              select case when (select relrowsecurity from pg_class where oid='public.user_consent_events'::regclass) then 'consent_events_rls=PASS' else 'consent_events_rls=FAIL' end;
+              select case when has_table_privilege('authenticated','public.user_consent_events','SELECT')
+                            and not has_table_privilege('authenticated','public.user_consent_events','INSERT')
+                            and not has_table_privilege('authenticated','public.user_consent_events','UPDATE')
+                            and not has_table_privilege('authenticated','public.user_consent_events','DELETE')
+                          then 'consent_events_client_read_only=PASS' else 'consent_events_client_read_only=FAIL' end;
+              select case when has_table_privilege('authenticated','public.user_consents','SELECT')
+                            and not has_table_privilege('authenticated','public.user_consents','INSERT')
+                          then 'legacy_consent_write_closed=PASS' else 'legacy_consent_write_closed=FAIL' end;
+              select case when has_function_privilege('service_role','public.record_account_consent_event_for_actor(uuid,text,text,text,text,text)','EXECUTE')
+                            and not has_function_privilege('authenticated','public.record_account_consent_event_for_actor(uuid,text,text,text,text,text)','EXECUTE')
+                            and not has_function_privilege('anon','public.record_account_consent_event_for_actor(uuid,text,text,text,text,text)','EXECUTE')
+                          then 'consent_rpc_service_only=PASS' else 'consent_rpc_service_only=FAIL' end;
+            " | tee recovery-evidence/p03-consent-event-verification.txt
+          for assertion in consent_events_table consent_export_source consent_events_rls consent_events_client_read_only legacy_consent_write_closed consent_rpc_service_only; do
+            grep -q "^$assertion=PASS$" recovery-evidence/p03-consent-event-verification.txt
+          done
+          echo "P03_CONSENT_MIGRATION_BLOB=$(git rev-parse HEAD:"$migration")" >> "$GITHUB_ENV"
+
       - name: Publish sanitized restore-test evidence
         shell: bash
         run: |
@@ -220,10 +253,13 @@ jobs:
               "production_migration_applied": False,
               "p03_disposable_migration_applied": True,
               "p03_migration_blob": os.environ["P03_MIGRATION_BLOB"],
+              "p03_consent_migration_applied": True,
+              "p03_consent_migration_blob": os.environ["P03_CONSENT_MIGRATION_BLOB"],
               "storage_objects_included": False,
               "verified_at_utc": datetime.now(timezone.utc).isoformat(),
               "verification": verification.read_text().splitlines(),
               "p03_migration_verification": p03_verification.read_text().splitlines(),
+              "p03_consent_migration_verification": Path("recovery-evidence/p03-consent-event-verification.txt").read_text().splitlines(),
           }
           Path("recovery-evidence/restore-verification.json").write_text(json.dumps(result, indent=2) + "\n")
           PY
@@ -236,6 +272,7 @@ jobs:
             recovery-evidence/restore-verification.json
             recovery-evidence/restore-verification.txt
             recovery-evidence/p03-disposable-migration-verification.txt
+            recovery-evidence/p03-consent-event-verification.txt
           if-no-files-found: error
           retention-days: 90
           overwrite: true
