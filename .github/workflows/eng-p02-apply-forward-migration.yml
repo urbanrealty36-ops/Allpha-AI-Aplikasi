@@ -56,7 +56,10 @@ jobs:
           assert evidence["production_database_touched"] is False
           assert evidence["production_migration_applied"] is False
           assert evidence["backup_sha256"] == "786e964f7f39bddb405d00fc5e88c330b8af82dbb165d47e71175c9f3e970df0"
-          print("Verified a successful disposable PostgreSQL 17 restore of the exact pre-migration backup.")
+          assert int(evidence["source_backup_run_id"]) > 45095637852, (
+              "Refusing the original stale backup artifact; a new pre-migration backup and restore run are required."
+          )
+          print("Verified a successful disposable PostgreSQL 17 restore of a fresh pre-migration backup.")
           PY
 
       - name: Verify the exact canonical migration source
