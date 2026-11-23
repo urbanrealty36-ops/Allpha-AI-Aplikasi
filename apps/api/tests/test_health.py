@@ -8,7 +8,9 @@ client = TestClient(app)
 def test_healthz_reports_process_liveness() -> None:
     response = client.get("/healthz")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "service": "allpha-api"}
+    assert response.json()["status"] == "ok"
+    assert response.json()["service"] == "allpha-api"
+    assert response.json()["workers"]["account_lifecycle"]["status"] in {"disabled", "running", "degraded"}
     assert response.headers.get("x-request-id")
 
 
