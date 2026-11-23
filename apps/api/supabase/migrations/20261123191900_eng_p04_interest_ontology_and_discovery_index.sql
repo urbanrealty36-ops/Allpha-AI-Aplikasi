@@ -180,7 +180,7 @@ begin
   if p_preference is null or p_preference not in ('interested','not_interested') then
     raise exception 'interest_preference_invalid' using errcode='22023';
   end if;
-  select c.interest_key,c.sensitivity into v_interest_key,v_interest_sensitivity
+  select c.interest_key into v_interest_key
     from public.interest_catalog c
    where c.active=true
      and (lower(c.interest_key)=lower(p_interest_key)
