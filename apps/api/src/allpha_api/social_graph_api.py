@@ -446,7 +446,7 @@ async def get_social_recommendations(
             if mutual_counts and interest_counts
             else "shared_interest_owners"
             if interest_counts
-            else "mutual_connection_owners"
+            else "mutual_connection_owners_and_shared_interests"
         )
         return {"items": items, "count": len(items), "strategy": strategy, "ranking_version": policy_version}
 
