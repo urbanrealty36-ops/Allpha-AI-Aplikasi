@@ -250,6 +250,8 @@ class AccountLifecycleWorker:
 
     async def cleanup_batch(self) -> int:
         """Expire only artifacts whose approved retention policy has elapsed."""
+        if os.getenv("ACCOUNT_EXPORT_CLEANUP_ENABLED", "false").strip().lower() not in {"1", "true", "yes"}:
+            return 0
         await self.rpc("enqueue_expired_account_export_artifacts", {})
         jobs = await self.rpc(
             "claim_account_export_artifact_cleanup_jobs",
