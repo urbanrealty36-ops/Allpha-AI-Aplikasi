@@ -47,6 +47,10 @@ def test_account_export_and_deletion_lifecycle_remain_owner_scoped_and_private()
     assert "for select to authenticated using (user_id = (select auth.uid()))" in normalized
     assert "values ('account-exports','account-exports',false)" in normalized
     assert "account_exports_bucket_must_remain_private" in normalized
+    assert "private.redact_account_export_jsonb" in normalized
+    assert "jsonb_each(p_value)" in normalized
+    assert "jsonb_array_elements(p_value)" in normalized
+    assert "account_export_filter_kind_unsupported" in normalized
     assert "p_storage_path = j.user_id::text || '/' || j.id::text || '.json.gz'" in normalized
 
 
