@@ -166,6 +166,11 @@ jobs:
               select case when to_regclass('private.account_export_sources') is not null and (select count(*) from private.account_export_sources where enabled) > 0 then 'export_source_registry=PASS' else 'export_source_registry=FAIL' end;
               select case when exists(select 1 from storage.buckets where id='account-exports' and public=false) then 'private_export_bucket=PASS' else 'private_export_bucket=FAIL' end;
               select case when (select count(*) from public.account_data_retention_policies where active) = 0 then 'deletion_policy_fail_closed=PASS' else 'deletion_policy_fail_closed=FAIL' end;
+              select case when private.redact_account_export_jsonb(
+                '{"api_key":"root","nested":{"refresh_token":"secret","visible":"ok"},"items":[{"password":"secret","id":1}]}'::jsonb,
+                array['api_key','refresh_token','password']::text[]
+              ) = '{"nested":{"visible":"ok"},"items":[{"id":1}]}'::jsonb
+                then 'recursive_secret_redaction=PASS' else 'recursive_secret_redaction=FAIL' end;
               select case when has_function_privilege('authenticated','public.request_my_account_export(text)','EXECUTE') then 'owner_export_rpc=PASS' else 'owner_export_rpc=FAIL' end;
               select case when has_function_privilege('service_role','public.claim_account_export_jobs(text,integer,integer)','EXECUTE')
                             and not has_function_privilege('authenticated','public.claim_account_export_jobs(text,integer,integer)','EXECUTE')
@@ -178,7 +183,7 @@ jobs:
                 from pg_class c join pg_namespace n on n.oid=c.relnamespace
                where n.nspname='public' and c.relname in ('account_export_jobs','account_deletion_requests','account_lifecycle_events','account_data_retention_policies','account_legal_holds');
             " | tee recovery-evidence/p03-disposable-migration-verification.txt
-          for assertion in account_export_jobs account_deletion_requests account_lifecycle_events retention_policies legal_holds export_source_registry private_export_bucket deletion_policy_fail_closed owner_export_rpc worker_rpc_grants deletion_rpc_grants account_lifecycle_rls; do
+          for assertion in account_export_jobs account_deletion_requests account_lifecycle_events retention_policies legal_holds export_source_registry private_export_bucket deletion_policy_fail_closed recursive_secret_redaction owner_export_rpc worker_rpc_grants deletion_rpc_grants account_lifecycle_rls; do
             grep -q "^$assertion=PASS$" recovery-evidence/p03-disposable-migration-verification.txt
           done
           echo "P03_MIGRATION_BLOB=$(git rev-parse HEAD:"$migration")" >> "$GITHUB_ENV"
