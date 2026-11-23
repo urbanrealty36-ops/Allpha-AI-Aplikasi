@@ -910,7 +910,7 @@ async def create_organization(payload: OrganizationCreate, user: dict[str, Any] 
         "create_organization_for_user",
         body={"p_actor_user_id": user["id"], "p_name": payload.name, "p_slug": payload.slug},
     )
-    if not rows:
+    if not rows or str(rows[0].get("owner_id") or "") != str(user["id"]):
         raise HTTPException(status_code=500, detail={"code": "CREATE_FAILED", "message": "Organisasi tidak dapat dibuat."})
     return {"organization": rows[0]}
 
@@ -943,7 +943,13 @@ async def add_organization_membership(organization_id: uuid.UUID, payload: Organ
         "add_organization_member_for_actor",
         body={"p_organization_id": str(organization_id), "p_actor_user_id": user["id"], "p_target_user_id": str(payload.user_id), "p_role": payload.role},
     )
-    if not rows:
+    if (
+        not rows
+        or str(rows[0].get("organization_id") or "") != str(organization_id)
+        or str(rows[0].get("user_id") or "") != str(payload.user_id)
+        or str(rows[0].get("role") or "") != payload.role
+        or str(rows[0].get("invited_by") or "") != str(user["id"])
+    ):
         raise HTTPException(status_code=500, detail={"code": "MEMBERSHIP_CREATE_FAILED", "message": "Keanggotaan tidak dapat dibuat."})
     return {"membership": rows[0]}
 
@@ -957,6 +963,12 @@ async def update_organization_membership_role(organization_id: uuid.UUID, member
     )
     if not rows:
         raise HTTPException(status_code=404, detail={"code": "ORGANIZATION_MEMBER_NOT_FOUND", "message": "Anggota organisasi tidak ditemukan."})
+    if (
+        str(rows[0].get("organization_id") or "") != str(organization_id)
+        or str(rows[0].get("user_id") or "") != str(member_user_id)
+        or str(rows[0].get("role") or "") != payload.role
+    ):
+        raise HTTPException(status_code=500, detail={"code": "ORGANIZATION_MEMBER_SCOPE_MISMATCH", "message": "Respons keanggotaan tidak sesuai dengan organisasi yang diminta."})
     return {"membership": rows[0]}
 
 
