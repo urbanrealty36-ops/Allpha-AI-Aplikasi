@@ -127,7 +127,8 @@ class AccountLifecycleWorker:
                 if isinstance(item, dict) and isinstance(item.get("source"), str)
             ] if isinstance(manifest, list) else []
             if (
-                not isinstance(data, dict)
+                not isinstance(manifest, list)
+                or not isinstance(data, dict)
                 or type(source_count) is not int
                 or source_count != len(manifest or [])
                 or len(source_keys) != len(manifest or [])
