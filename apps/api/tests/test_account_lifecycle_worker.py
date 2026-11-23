@@ -147,6 +147,7 @@ def test_export_worker_rejects_manifest_that_omits_a_data_source():
 def test_export_worker_removes_lease_scoped_artifact_after_explicit_completion_rejection():
     async def scenario():
         worker = _worker()
+        monkeypatch.setenv('ACCOUNT_EXPORT_CLEANUP_ENABLED', 'true')
         deleted = []
         calls = []
 
@@ -215,7 +216,7 @@ def test_export_worker_retains_artifact_when_completion_result_is_ambiguous():
     asyncio.run(scenario())
 
 
-def test_expired_export_cleanup_worker_deletes_artifact_then_confirms_database_state():
+def test_expired_export_cleanup_worker_deletes_artifact_then_confirms_database_state(monkeypatch):
     async def scenario():
         worker = _worker()
         deleted = []
@@ -250,9 +251,10 @@ def test_expired_export_cleanup_worker_deletes_artifact_then_confirms_database_s
     asyncio.run(scenario())
 
 
-def test_expired_export_cleanup_retries_when_storage_delete_fails():
+def test_expired_export_cleanup_retries_when_storage_delete_fails(monkeypatch):
     async def scenario():
         worker = _worker()
+        monkeypatch.setenv('ACCOUNT_EXPORT_CLEANUP_ENABLED', 'true')
         failed = []
 
         async def rpc(name, payload):
