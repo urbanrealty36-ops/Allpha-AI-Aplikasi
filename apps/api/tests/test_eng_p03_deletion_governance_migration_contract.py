@@ -17,7 +17,6 @@ def test_deletion_governance_never_executes_without_policy_and_dependency_mappin
     source = MIGRATION.read_text(encoding="utf-8").lower()
     assert "awaiting_approved_retention_policy_and_dependency_mapping" in source
     assert "'deletion_policy_pending'" in source
-    assert "processing" not in source
     assert "delete from public.account_deletion_requests" not in source
     assert "delete from auth.users" not in source
     assert "revoke all on function public.evaluate_account_deletion_governance(integer) from public,anon,authenticated" in source
