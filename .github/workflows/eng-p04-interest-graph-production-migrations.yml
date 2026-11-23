@@ -23,7 +23,7 @@ jobs:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
       SUPABASE_PROJECT_ID: dvdziauyvuhcnqhrrvww
-      EXPECTED_ONTOLOGY_BLOB: "fa6cb2b801ca4353621e07f60007e9ec6a3c4fb1"
+      EXPECTED_ONTOLOGY_BLOB: "a0393af6e3b5f49ce2c041967ec2bb3006c17e3c"
       EXPECTED_SIGNAL_BLOB: "0b4a4d0a1e86a07f6962837804d525eb3488de99"
     steps:
       - uses: actions/checkout@v4
@@ -87,20 +87,24 @@ jobs:
           docker run --rm --network host -e DATABASE_URL="$DB_URL" postgres:17-alpine \
             sh -lc 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atc "select version from supabase_migrations.schema_migrations order by version"' \
             > recovery-evidence/remote-before-ontology.txt
-          mkdir -p migration-workspace-ontology
-          python apps/api/scripts/build_migration_workspace.py \
-            --source-dir apps/api/supabase/migrations \
-            --remote-versions-file recovery-evidence/remote-before-ontology.txt \
-            --target-migration apps/api/supabase/migrations/20261123191900_eng_p04_interest_ontology_and_discovery_index.sql \
-            --workspace-dir migration-workspace-ontology
-          cd migration-workspace-ontology
-          supabase migration list --db-url "$DB_URL" | tee ../recovery-evidence/ontology-migration-list-before.txt
-          supabase db push --include-all --dry-run --db-url "$DB_URL" 2>&1 | tee ../recovery-evidence/ontology-dry-run.txt
-          grep -Fq "20261123191900_eng_p04_interest_ontology_and_discovery_index.sql" ../recovery-evidence/ontology-dry-run.txt
-          mapfile -t pending < <(grep -Eo '20[0-9]{12}' ../recovery-evidence/ontology-dry-run.txt | sort -u)
-          test "${#pending[@]}" -eq 1
-          test "${pending[0]}" = "20261123191900"
-          supabase db push --include-all --yes --db-url "$DB_URL"
+          if grep -qx "20261123191900" recovery-evidence/remote-before-ontology.txt; then
+            echo "Ontology migration already applied; verifying exact source history."
+          else
+            mkdir -p migration-workspace-ontology
+            python apps/api/scripts/build_migration_workspace.py \
+              --source-dir apps/api/supabase/migrations \
+              --remote-versions-file recovery-evidence/remote-before-ontology.txt \
+              --target-migration apps/api/supabase/migrations/20261123191900_eng_p04_interest_ontology_and_discovery_index.sql \
+              --workspace-dir migration-workspace-ontology
+            cd migration-workspace-ontology
+            supabase migration list --db-url "$DB_URL" | tee ../recovery-evidence/ontology-migration-list-before.txt
+            supabase db push --include-all --dry-run --db-url "$DB_URL" 2>&1 | tee ../recovery-evidence/ontology-dry-run.txt
+            grep -Fq "20261123191900_eng_p04_interest_ontology_and_discovery_index.sql" ../recovery-evidence/ontology-dry-run.txt
+            mapfile -t pending < <(grep -Eo '20[0-9]{12}' ../recovery-evidence/ontology-dry-run.txt | sort -u)
+            test "${#pending[@]}" -eq 1
+            test "${pending[0]}" = "20261123191900"
+            supabase db push --include-all --yes --db-url "$DB_URL"
+          fi
 
       - name: Apply Passion and Habit migration as the next isolated versioned target
         shell: bash
@@ -109,26 +113,30 @@ jobs:
           docker run --rm --network host -e DATABASE_URL="$DB_URL" postgres:17-alpine \
             sh -lc 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atc "select version from supabase_migrations.schema_migrations order by version"' \
             > recovery-evidence/remote-before-signals.txt
-          mkdir -p migration-workspace-signals
-          python apps/api/scripts/build_migration_workspace.py \
-            --source-dir apps/api/supabase/migrations \
-            --remote-versions-file recovery-evidence/remote-before-signals.txt \
-            --target-migration apps/api/supabase/migrations/20261123200000_eng_p04_passion_habit_recommendation_engine.sql \
-            --workspace-dir migration-workspace-signals
-          cd migration-workspace-signals
-          supabase migration list --db-url "$DB_URL" | tee ../recovery-evidence/signals-migration-list-before.txt
-          supabase db push --include-all --dry-run --db-url "$DB_URL" 2>&1 | tee ../recovery-evidence/signals-dry-run.txt
-          grep -Fq "20261123200000_eng_p04_passion_habit_recommendation_engine.sql" ../recovery-evidence/signals-dry-run.txt
-          mapfile -t pending < <(grep -Eo '20[0-9]{12}' ../recovery-evidence/signals-dry-run.txt | sort -u)
-          test "${#pending[@]}" -eq 1
-          test "${pending[0]}" = "20261123200000"
-          supabase db push --include-all --yes --db-url "$DB_URL"
+          if grep -qx "20261123200000" recovery-evidence/remote-before-signals.txt; then
+            echo "Passion/Habit migration already applied; verifying exact source history."
+          else
+            mkdir -p migration-workspace-signals
+            python apps/api/scripts/build_migration_workspace.py \
+              --source-dir apps/api/supabase/migrations \
+              --remote-versions-file recovery-evidence/remote-before-signals.txt \
+              --target-migration apps/api/supabase/migrations/20261123200000_eng_p04_passion_habit_recommendation_engine.sql \
+              --workspace-dir migration-workspace-signals
+            cd migration-workspace-signals
+            supabase migration list --db-url "$DB_URL" | tee ../recovery-evidence/signals-migration-list-before.txt
+            supabase db push --include-all --dry-run --db-url "$DB_URL" 2>&1 | tee ../recovery-evidence/signals-dry-run.txt
+            grep -Fq "20261123200000_eng_p04_passion_habit_recommendation_engine.sql" ../recovery-evidence/signals-dry-run.txt
+            mapfile -t pending < <(grep -Eo '20[0-9]{12}' ../recovery-evidence/signals-dry-run.txt | sort -u)
+            test "${#pending[@]}" -eq 1
+            test "${pending[0]}" = "20261123200000"
+            supabase db push --include-all --yes --db-url "$DB_URL"
+          fi
 
       - name: Verify production ontology, privacy, signals and recommendation policy
         shell: bash
         run: |
           set -euo pipefail
-          docker run --rm --network host -e DATABASE_URL="$DB_URL" postgres:17-alpine sh -lc 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -At' <<'SQL' | tee recovery-evidence/production-verification.txt
+          docker run --rm -i --network host -e DATABASE_URL="$DB_URL" postgres:17-alpine sh -lc 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -At' <<'SQL' | tee recovery-evidence/production-verification.txt
           select case when exists(select 1 from supabase_migrations.schema_migrations where version='20261123191900') then 'interest_ontology_migration=PASS' else 'interest_ontology_migration=FAIL' end;
           select case when exists(select 1 from supabase_migrations.schema_migrations where version='20261123200000') then 'passion_habit_migration=PASS' else 'passion_habit_migration=FAIL' end;
           select case when (select count(*) from public.interest_catalog where active and interest_key in ('ai_agents','social_network','ai_cinema','live_streaming'))=4 then 'ecosystem_interest_taxonomy=PASS' else 'ecosystem_interest_taxonomy=FAIL' end;
