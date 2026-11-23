@@ -12,6 +12,7 @@ on:
       - "apps/super-admin/app/AccountLifecycleGovernancePanel.tsx"
       - "apps/api/supabase/migrations/20261124120000_eng_p03_account_deletion_ownership_transfers.sql"
       - "apps/api/supabase/migrations/20261124140000_eng_p03_account_deletion_attribution_anonymization.sql"
+      - "apps/api/supabase/migrations/20261124160000_eng_p03_cinema_conversation_spatial_anonymization.sql"
       - "apps/api/tests/test_account_lifecycle_api.py"
       - "apps/api/tests/test_account_lifecycle_governance_api.py"
       - "apps/api/tests/test_eng_p03_account_deletion_disposition_migration_contract.py"
