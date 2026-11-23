@@ -9,6 +9,7 @@ import logging
 import os
 import signal
 import uuid
+from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import quote
 
@@ -34,6 +35,11 @@ class AccountLifecycleWorker:
             },
         )
         self.stopping = False
+        self.started_at = datetime.now(timezone.utc).isoformat()
+        self.last_poll_at: str | None = None
+        self.last_claimed_count = 0
+        self.poll_count = 0
+        self.last_error_code: str | None = None
         self.lease_heartbeat_seconds = max(5, min(600, int(os.getenv("ACCOUNT_EXPORT_LEASE_HEARTBEAT_SECONDS", str(_EXPORT_LEASE_HEARTBEAT_SECONDS)))))
 
     async def rpc(self, name: str, payload: dict[str, Any]) -> Any:
@@ -241,18 +247,29 @@ class AccountLifecycleWorker:
 
     async def run(self) -> None:
         poll_seconds = max(2, min(60, int(os.getenv("ACCOUNT_EXPORT_POLL_SECONDS", "10"))))
+        log.warning("account_lifecycle_worker_started worker_id=%s poll_seconds=%s", self.worker_id, poll_seconds)
         try:
             while not self.stopping:
                 try:
                     count = await self.batch()
+                    self.last_error_code = None
                 except asyncio.CancelledError:
                     raise
-                except Exception:
+                except Exception as exc:
+                    self.last_error_code = type(exc).__name__[:80]
                     log.exception("account_export_batch_failed")
                     count = 0
+                self.last_poll_at = datetime.now(timezone.utc).isoformat()
+                self.last_claimed_count = count
+                self.poll_count += 1
                 if count == 0:
                     await asyncio.sleep(poll_seconds)
         finally:
+            log.warning(
+                "account_lifecycle_worker_stopped worker_id=%s polls=%s",
+                self.worker_id,
+                self.poll_count,
+            )
             await self.client.aclose()
 
 
