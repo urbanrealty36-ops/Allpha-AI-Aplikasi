@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
     paths:
+      - ".github/workflows/eng-p03-p04-focused-regression.yml"
       - "apps/api/src/allpha_api/main.py"
       - "apps/api/src/allpha_api/account_lifecycle_api.py"
       - "apps/api/src/allpha_api/account_lifecycle_worker.py"
