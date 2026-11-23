@@ -7,14 +7,6 @@ from allpha_api.main import app
 client = TestClient(app)
 
 
-def _authenticated(monkeypatch):
-    async def fake_current_user(request: Request):
-        request.state.supabase_access_token = "interest-graph-token"
-        return {"id": "interest-graph-owner", "email": "owner@example.invalid"}
-
-    app.dependency_overrides[current_user] = fake_current_user
-    monkeypatch.setattr("allpha_api.interest_graph_api.service_db_request", None, raising=False)
-
 
 def test_interest_signal_read_is_owner_scoped(monkeypatch):
     calls = []
@@ -125,4 +117,4 @@ def test_interest_signal_reset_requires_explicit_integer_confirmation(monkeypatc
         app.dependency_overrides.clear()
 
     assert response.status_code == 409
-    assert response.json()["detail"]["code"] == "INTEREST_SIGNAL_RESET_UNCONFIRMED"
+    assert response.json()["error"]["code"] == "INTEREST_SIGNAL_RESET_UNCONFIRMED"
