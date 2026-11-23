@@ -77,6 +77,7 @@ const allScopes: OperatorScope[] = [
   "platform:operators.manage",
   "platform:content.moderate",
   "platform:billing.manage",
+  "platform:account_lifecycle.manage",
 ];
 
 function sessionFrom(payload: AuthPayload): AuthSession {
@@ -655,6 +656,7 @@ export default function OperationsPage() {
       <Link className="nav" href="/content-moderation">◈ &nbsp; Moderasi konten</Link>
       <Link className="nav" href="/cinema-governance">◈ &nbsp; AI Cinema · Rights & Lifecycle</Link>
       <Link className="nav" href="/billing-governance">◇ &nbsp; Billing & Stripe Governance</Link>
+      {operator?.scopes.includes("platform:account_lifecycle.manage") && <a className="nav" href="#account-lifecycle">◇ &nbsp; Account Lifecycle Governance</a>}
       <Link className="nav" href="/community-moderation">◈ &nbsp; Moderasi komunitas</Link>
       <a className="nav" href="#operator-access">◎ &nbsp; Operator access</a>
       {canManage && <a className="nav" href="#operator-grants">◇ &nbsp; Operator grants</a>}
