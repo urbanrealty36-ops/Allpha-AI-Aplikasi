@@ -234,9 +234,9 @@ jobs:
             from pg_class c join pg_namespace n on n.oid=c.relnamespace
            where n.nspname='public' and c.relname in ('account_export_jobs','account_deletion_requests','account_lifecycle_events','account_data_retention_policies','account_legal_holds');
           select case when private.redact_account_export_jsonb(
-                   '{"api_key":"root","nested":{"refresh_token":"secret","visible":"ok"},"items":[{"password":"secret","id":1}]}'::jsonb,
+                   jsonb_build_object('api_key','root','nested',jsonb_build_object('refresh_token','secret','visible','ok'),'items',jsonb_build_array(jsonb_build_object('password','secret','id',1))),
                    array['api_key','refresh_token','password']::text[]
-                 ) = '{"nested":{"visible":"ok"},"items":[{"id":1}]}'::jsonb
+                 ) = jsonb_build_object('nested',jsonb_build_object('visible','ok'),'items',jsonb_build_array(jsonb_build_object('id',1)))
                    then 'recursive_secret_redaction=PASS' else 'recursive_secret_redaction=FAIL' end;
           select case when has_function_privilege('service_role','private.redact_account_export_jsonb(jsonb,text[])','EXECUTE')
                         and not has_function_privilege('authenticated','private.redact_account_export_jsonb(jsonb,text[])','EXECUTE')
