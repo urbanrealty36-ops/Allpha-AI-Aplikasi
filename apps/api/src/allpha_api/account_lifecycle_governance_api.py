@@ -313,3 +313,149 @@ async def list_deletion_requests(
         params["status"] = f"eq.{status}"
     rows = await privileged_rest_request("GET", "account_deletion_requests", params=params)
     return {"items": rows or [], "limit": limit, "status": status}
+
+
+class SourcePolicyUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    data_class: Literal["owner_private", "agent_operational", "tenant_shared", "published_knowledge", "session_scoped", "public_catalog"]
+    deletion_action: Literal["delete_rows", "preserve", "block"]
+    dependency_order: int = Field(ge=0, le=10000)
+    policy_version: str = Field(min_length=1, max_length=40, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,39}$")
+    reason: str = Field(min_length=8, max_length=500)
+    active: bool = False
+
+
+class DependencyRuleUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    resolution_action: Literal["database_cascade", "database_set_null", "delete_rows", "block"]
+    reason: str = Field(min_length=8, max_length=500)
+    active: bool = True
+
+
+@router.get("/source-policies")
+async def list_deletion_source_policies(
+    operator: dict[str, Any] = Depends(require_operator_scope(MANAGE_SCOPE)),
+) -> dict[str, Any]:
+    rows = await privileged_rest_request("POST", "rpc/list_account_deletion_source_registry", body={})
+    if not isinstance(rows, list):
+        raise fail(503, "ACCOUNT_DELETION_SOURCE_REGISTRY_UNAVAILABLE", "Registry sumber penghapusan belum dapat dibaca.")
+    return {"items": rows, "count": len(rows)}
+
+
+@router.put("/source-policies/{source_key}")
+async def update_deletion_source_policy(
+    source_key: str,
+    payload: SourcePolicyUpdate,
+    request: Request,
+    operator: dict[str, Any] = Depends(require_operator_scope(MANAGE_SCOPE)),
+) -> dict[str, Any]:
+    if not re.fullmatch(r"[a-z][a-z0-9_]{1,79}", source_key):
+        raise fail(422, "ACCOUNT_DELETION_SOURCE_KEY_INVALID", "Kunci sumber tidak valid.")
+    registry = await privileged_rest_request("POST", "rpc/list_account_deletion_source_registry", body={})
+    source = next((item for item in registry or [] if item.get("source_key") == source_key), None)
+    if not source or source.get("enabled") is not True:
+        raise fail(404, "ACCOUNT_DELETION_SOURCE_NOT_FOUND", "Sumber ekspor/penghapusan aktif tidak ditemukan.")
+    if payload.deletion_action == "delete_rows" and (
+        source.get("filter_kind") != "owner_columns" or not source.get("owner_columns")
+    ):
+        raise fail(409, "ACCOUNT_DELETION_SOURCE_HANDLER_UNAVAILABLE",
+                   "Sumber ini belum memiliki handler owner-scoped yang aman; gunakan preserve atau block.")
+    body = {
+        "source_key": source_key,
+        "table_name": source["table_name"],
+        "filter_kind": source["filter_kind"],
+        "owner_columns": source["owner_columns"],
+        "dependency_order": payload.dependency_order,
+        "data_class": payload.data_class,
+        "deletion_action": payload.deletion_action,
+        "policy_version": payload.policy_version,
+        "reason": payload.reason,
+        "approved_by": str(operator["id"]),
+        "approved_at": datetime.now(timezone.utc).isoformat(),
+        "active": payload.active,
+    }
+    await _audit(
+        request, operator, action="account.deletion_source_policy.update", outcome="attempted",
+        resource_type="account_deletion_source_policy", resource_id=source_key,
+        metadata={"data_class": payload.data_class, "deletion_action": payload.deletion_action,
+                  "policy_version": payload.policy_version, "active": payload.active},
+    )
+    rows = await privileged_rest_request(
+        "POST", "account_deletion_source_policies", body=body,
+        prefer="resolution=merge-duplicates,return=representation",
+    )
+    if not isinstance(rows, list) or not rows or rows[0].get("source_key") != source_key:
+        raise fail(503, "ACCOUNT_DELETION_SOURCE_POLICY_SAVE_FAILED", "Pemetaan sumber belum berhasil disimpan.")
+    row = rows[0]
+    await _audit(
+        request, operator, action="account.deletion_source_policy.update", outcome="allowed",
+        resource_type="account_deletion_source_policy", resource_id=source_key,
+        metadata={"data_class": payload.data_class, "deletion_action": payload.deletion_action,
+                  "policy_version": payload.policy_version, "active": payload.active},
+    )
+    return {"item": row}
+
+
+@router.get("/dependency-rules")
+async def list_deletion_dependency_rules(
+    limit: int = 250,
+    operator: dict[str, Any] = Depends(require_operator_scope(MANAGE_SCOPE)),
+) -> dict[str, Any]:
+    if not 1 <= limit <= 500:
+        raise fail(422, "ACCOUNT_DELETION_DEPENDENCY_LIMIT_INVALID", "Limit harus 1-500.")
+    rows = await privileged_rest_request(
+        "GET", "account_deletion_dependency_rules",
+        params={"select": "id,child_schema,child_table,constraint_name,fk_column,delete_rule,resolution_action,reason,approved_by,approved_at,active,updated_at",
+                "order": "child_schema.asc,child_table.asc,constraint_name.asc", "limit": str(limit)},
+    )
+    return {"items": rows or [], "limit": limit}
+
+
+@router.patch("/dependency-rules/{rule_id}")
+async def update_deletion_dependency_rule(
+    rule_id: UUID,
+    payload: DependencyRuleUpdate,
+    request: Request,
+    operator: dict[str, Any] = Depends(require_operator_scope(MANAGE_SCOPE)),
+) -> dict[str, Any]:
+    existing = await privileged_rest_request(
+        "GET", "account_deletion_dependency_rules",
+        params={"select": "id,child_schema,child_table,constraint_name,fk_column,delete_rule,resolution_action",
+                "id": f"eq.{rule_id}", "active": "eq.true", "limit": "1"},
+    )
+    if not existing:
+        raise fail(404, "ACCOUNT_DELETION_DEPENDENCY_NOT_FOUND", "Aturan foreign key aktif tidak ditemukan.")
+    rule = existing[0]
+    action = payload.resolution_action
+    delete_rule = rule.get("delete_rule")
+    compatible = (
+        action == "block"
+        or (action == "database_cascade" and delete_rule == "CASCADE")
+        or (action == "database_set_null" and delete_rule == "SET NULL")
+        or (action == "delete_rows" and delete_rule in {"RESTRICT", "NO ACTION"} and bool(rule.get("fk_column")))
+    )
+    if not compatible:
+        raise fail(409, "ACCOUNT_DELETION_DEPENDENCY_ACTION_INCOMPATIBLE",
+                   "Aksi tidak cocok dengan aturan foreign key atau tidak memiliki handler kolom tunggal.")
+    await _audit(
+        request, operator, action="account.deletion_dependency.update", outcome="attempted",
+        resource_type="account_deletion_dependency_rule", resource_id=str(rule_id),
+        metadata={"delete_rule": delete_rule, "resolution_action": action, "active": payload.active},
+    )
+    rows = await privileged_rest_request(
+        "PATCH", "account_deletion_dependency_rules",
+        params={"id": f"eq.{rule_id}", "active": "eq.true"},
+        body={"resolution_action": action, "reason": payload.reason,
+              "approved_by": str(operator["id"]), "approved_at": datetime.now(timezone.utc).isoformat(),
+              "active": payload.active},
+        prefer="return=representation",
+    )
+    if not isinstance(rows, list) or not rows or rows[0].get("resolution_action") != action:
+        raise fail(409, "ACCOUNT_DELETION_DEPENDENCY_UPDATE_CONFLICT", "Aturan foreign key berubah atau tidak dapat disimpan.")
+    row = rows[0]
+    await _audit(
+        request, operator, action="account.deletion_dependency.update", outcome="allowed",
+        resource_type="account_deletion_dependency_rule", resource_id=str(rule_id),
+        metadata={"delete_rule": delete_rule, "resolution_action": action, "active": payload.active},
+    )
+    return {"item": row}
