@@ -6,7 +6,8 @@ invent retention periods, legal bases, or automatic deletion eligibility.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any
+import re
+from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -207,7 +208,7 @@ async def deactivate_retention_policy(
 
 @router.get("/legal-holds")
 async def list_legal_holds(
-    subject_ref: UUID | None = None,
+    subject_ref: str | None = None,
     limit: int = 100,
     operator: dict[str, Any] = Depends(require_operator_scope(MANAGE_SCOPE)),
 ) -> dict[str, Any]:
@@ -219,6 +220,8 @@ async def list_legal_holds(
         "limit": str(limit),
     }
     if subject_ref:
+        if not re.fullmatch(r"[a-f0-9]{64}", subject_ref):
+            raise fail(422, "ACCOUNT_LEGAL_HOLD_SUBJECT_INVALID", "Subject reference harus berupa SHA-256 hex 64 karakter.")
         params["subject_ref"] = f"eq.{subject_ref}"
     rows = await privileged_rest_request("GET", "account_legal_holds", params=params)
     return {"items": rows or [], "limit": limit}
@@ -298,7 +301,7 @@ async def list_deletion_requests(
 ) -> dict[str, Any]:
     if not 1 <= limit <= 100:
         raise fail(422, "ACCOUNT_DELETION_LIMIT_INVALID", "Limit harus 1-100.")
-    allowed_statuses = {"awaiting_policy", "scheduled", "processing", "blocked_legal_hold", "completed", "cancelled", "failed"}
+    allowed_statuses = {"awaiting_policy", "scheduled", "processing", "blocked_legal_hold", "blocked_dependency", "completed", "cancelled", "failed"}
     if status is not None and status not in allowed_statuses:
         raise fail(422, "ACCOUNT_DELETION_STATUS_INVALID", "Status permintaan tidak valid.")
     params = {
