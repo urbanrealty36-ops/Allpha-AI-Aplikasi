@@ -87,6 +87,7 @@ declare
   v_key text;
   v_sensitivity text;
   v_personalization_enabled boolean;
+  v_interest_matching_enabled boolean;
 begin
   if coalesce(auth.role(),'') <> 'service_role' then
     raise exception 'service_role_required' using errcode='42501';
@@ -112,10 +113,13 @@ begin
     raise exception 'interest_agent_ownership_required' using errcode='42501';
   end if;
   if p_signal_source='observed_interaction' then
-    select coalesce(fp.personalization_enabled,false) into v_personalization_enabled
-      from public.feed_preferences fp where fp.user_id=p_actor_user_id;
-    if coalesce(v_personalization_enabled,false) is not true then
-      raise exception 'personalization_consent_required' using errcode='42501';
+    select
+      coalesce((select fp.personalization_enabled from public.feed_preferences fp where fp.user_id=p_actor_user_id),false),
+      coalesce((select us.privacy_settings @> '{"allow_interest_matching":true}'::jsonb
+                  from public.user_settings us where us.user_id=p_actor_user_id),false)
+      into v_personalization_enabled,v_interest_matching_enabled;
+    if v_personalization_enabled is not true or v_interest_matching_enabled is not true then
+      raise exception 'interest_observation_consent_required' using errcode='42501';
     end if;
   end if;
   select c.interest_key,c.sensitivity into v_key,v_sensitivity
