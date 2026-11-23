@@ -267,6 +267,63 @@ jobs:
           echo "consent_rpc_behavior=PASS" | tee -a recovery-evidence/p03-consent-event-verification.txt
           echo "P03_CONSENT_MIGRATION_BLOB=$(git rev-parse HEAD:"$migration")" >> "$GITHUB_ENV"
 
+      - name: Apply ENG-P03 lease-scoped export artifact migration to disposable restored database
+        shell: bash
+        run: |
+          set -euo pipefail
+          migration="apps/api/supabase/migrations/20261123191800_eng_p03_lease_scoped_export_artifacts.sql"
+          test -s "$migration"
+          docker cp "$migration" "$SUPABASE_DB_CONTAINER:/tmp/eng-p03-export-lease.sql"
+          docker exec -u postgres "$SUPABASE_DB_CONTAINER" \
+            psql -U supabase_admin -d allpha_p02_restore_verification \
+              -v ON_ERROR_STOP=1 -f /tmp/eng-p03-export-lease.sql
+          docker exec -u postgres "$SUPABASE_DB_CONTAINER" \
+            psql -U supabase_admin -d allpha_p02_restore_verification -v ON_ERROR_STOP=1 -Atc "
+              select case when exists (
+                select 1 from supabase_migrations.schema_migrations where version='20261123191800'
+              ) then 'lease_scoped_migration_ledger=PASS' else 'lease_scoped_migration_ledger=FAIL' end;
+              select case when position('p_lease_token::text' in pg_get_functiondef(
+                'public.complete_account_export_job(uuid,uuid,text,text,bigint,jsonb)'::regprocedure
+              )) > 0 then 'lease_scoped_completion_rpc=PASS' else 'lease_scoped_completion_rpc=FAIL' end;
+            " | tee recovery-evidence/p03-export-lease-verification.txt
+          for assertion in lease_scoped_migration_ledger lease_scoped_completion_rpc; do
+            grep -q "^$assertion=PASS$" recovery-evidence/p03-export-lease-verification.txt
+          done
+          docker exec -i -u postgres "$SUPABASE_DB_CONTAINER" \
+            psql -U supabase_admin -d allpha_p02_restore_verification -v ON_ERROR_STOP=1 <<'SQL'
+          begin;
+          set local role service_role;
+          select set_config('request.jwt.claim.role','service_role',true);
+          do $
+          declare
+            v_actor uuid;
+            v_job uuid;
+            v_lease uuid := gen_random_uuid();
+            v_completed boolean;
+          begin
+            select id into v_actor from auth.users order by created_at limit 1;
+            if v_actor is null then raise exception 'restore verifier requires an existing auth actor'; end if;
+            insert into public.account_export_jobs(
+              user_id,idempotency_key,status,attempts,lease_token,lease_owner,lease_expires_at
+            ) values (
+              v_actor,'restore-lease-' || substr(gen_random_uuid()::text,1,16),
+              'running',1,v_lease,'restore-verifier',now() + interval '15 minutes'
+            ) returning id into v_job;
+            v_completed := public.complete_account_export_job(
+              v_job,v_lease,
+              v_actor::text || '/' || v_job::text || '/' || v_lease::text || '.json.gz',
+              repeat('a',64),1,'{}'::jsonb
+            );
+            if v_completed is distinct from true then
+              raise exception 'lease-scoped export completion was rejected';
+            end if;
+          end;
+          $;
+          rollback;
+          SQL
+          echo "lease_scoped_completion_behavior=PASS" | tee -a recovery-evidence/p03-export-lease-verification.txt
+          echo "P03_EXPORT_LEASE_MIGRATION_BLOB=$(git rev-parse HEAD:"$migration")" >> "$GITHUB_ENV"
+
       - name: Publish sanitized restore-test evidence
         shell: bash
         run: |
@@ -290,11 +347,14 @@ jobs:
               "p03_migration_blob": os.environ["P03_MIGRATION_BLOB"],
               "p03_consent_migration_applied": True,
               "p03_consent_migration_blob": os.environ["P03_CONSENT_MIGRATION_BLOB"],
+              "p03_export_lease_migration_applied": True,
+              "p03_export_lease_migration_blob": os.environ["P03_EXPORT_LEASE_MIGRATION_BLOB"],
               "storage_objects_included": False,
               "verified_at_utc": datetime.now(timezone.utc).isoformat(),
               "verification": verification.read_text().splitlines(),
               "p03_migration_verification": p03_verification.read_text().splitlines(),
               "p03_consent_migration_verification": Path("recovery-evidence/p03-consent-event-verification.txt").read_text().splitlines(),
+              "p03_export_lease_verification": Path("recovery-evidence/p03-export-lease-verification.txt").read_text().splitlines(),
           }
           Path("recovery-evidence/restore-verification.json").write_text(json.dumps(result, indent=2) + "\n")
           PY
@@ -308,6 +368,7 @@ jobs:
             recovery-evidence/restore-verification.txt
             recovery-evidence/p03-disposable-migration-verification.txt
             recovery-evidence/p03-consent-event-verification.txt
+            recovery-evidence/p03-export-lease-verification.txt
           if-no-files-found: error
           retention-days: 90
           overwrite: true
