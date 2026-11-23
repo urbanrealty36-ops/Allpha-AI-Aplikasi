@@ -143,7 +143,7 @@ begin
   if p_preference is null or p_preference not in ('interested','not_interested') then
     raise exception 'interest_preference_invalid' using errcode='22023';
   end if;
-  select c.interest_key into v_interest_key
+  select c.interest_key,c.sensitivity into v_interest_key,v_interest_sensitivity
     from public.interest_catalog c
    where c.active=true
      and (lower(c.interest_key)=lower(p_interest_key)
@@ -347,6 +347,7 @@ set search_path = ''
 as $set_interest_signal$
 declare
   v_interest_key text;
+  v_interest_sensitivity text;
   v_signal public.user_interest_graph_signals%rowtype;
 begin
   if coalesce(auth.role(),'') <> 'service_role' then
@@ -386,6 +387,9 @@ begin
    limit 1;
   if v_interest_key is null then
     raise exception 'interest_key_not_in_catalog' using errcode='22023';
+  end if;
+  if p_signal_source='observed_interaction' and v_interest_sensitivity='sensitive' then
+    raise exception 'interest_sensitive_inference_prohibited' using errcode='42501';
   end if;
 
   insert into public.user_interest_graph_signals as s(
@@ -495,3 +499,42 @@ revoke all on function public.clear_user_interest_graph_signals_for_actor(uuid) 
 grant execute on function public.set_user_interest_graph_signal_for_actor(uuid,text,text,numeric,text,text,uuid) to service_role;
 grant execute on function public.delete_user_interest_graph_signal_for_actor(uuid,text,text,uuid) to service_role;
 grant execute on function public.clear_user_interest_graph_signals_for_actor(uuid) to service_role;
+
+
+-- Ontology sensitivity is explicit: observed behavior must never infer a
+-- sensitive interest. User-selected/explicit-feedback preferences remain
+-- under direct user control.
+alter table public.interest_catalog
+  add column if not exists sensitivity text not null default 'standard'
+  check (sensitivity in ('standard','sensitive'));
+update public.interest_catalog set sensitivity='sensitive',updated_at=now()
+ where interest_key='health' and sensitivity<>'sensitive';
+
+create table if not exists public.interest_taxonomy_edges (
+  source_interest_key text not null references public.interest_catalog(interest_key) on delete cascade,
+  target_interest_key text not null references public.interest_catalog(interest_key) on delete cascade,
+  relation_type text not null check (relation_type in ('parent_of','related_to')),
+  weight numeric(4,3) not null default 1 check (weight between 0 and 1),
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  primary key(source_interest_key,target_interest_key,relation_type),
+  check(source_interest_key<>target_interest_key)
+);
+alter table public.interest_taxonomy_edges enable row level security;
+drop policy if exists interest_taxonomy_edges_read_active on public.interest_taxonomy_edges;
+create policy interest_taxonomy_edges_read_active on public.interest_taxonomy_edges
+for select to anon,authenticated using(active=true);
+revoke all privileges on public.interest_taxonomy_edges from public,anon,authenticated;
+grant select on public.interest_taxonomy_edges to anon,authenticated;
+grant select,insert,update,delete on public.interest_taxonomy_edges to service_role;
+insert into public.interest_taxonomy_edges(source_interest_key,target_interest_key,relation_type,weight)
+values
+  ('technology','spatial_3d','parent_of',1),
+  ('technology','gaming_metaverse','parent_of',1),
+  ('content_creator','design_ui_ux','related_to',0.8),
+  ('business_finance','technology','related_to',0.6),
+  ('education_research','technology','related_to',0.6),
+  ('gaming_metaverse','spatial_3d','related_to',0.8)
+on conflict (source_interest_key,target_interest_key,relation_type) do update
+set weight=excluded.weight,active=true;
+
