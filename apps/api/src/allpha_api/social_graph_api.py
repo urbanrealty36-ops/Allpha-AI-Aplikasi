@@ -213,6 +213,7 @@ async def discover_agents(
 async def get_social_recommendations(
     request: Request,
     limit: int = Query(default=12, ge=1, le=50),
+    node_type: str = Query(default="human", pattern="^(human|agent)$"),
     user: dict[str, Any] = Depends(current_user),
 ) -> dict[str, Any]:
     """Recommend public, discoverable Human profiles through privacy-safe mutual connections."""
@@ -291,6 +292,75 @@ async def get_social_recommendations(
     if not mutual_counts:
         return {"items": [], "count": 0, "strategy": "mutual_connections"}
 
+    if node_type == "agent":
+        owner_ids = sorted(mutual_counts)
+        agent_rows = await _server_db("GET", "ai_agents", params={
+            "select": "id,created_by,handle,display_name,avatar_url,description,visibility,status",
+            "created_by": "in.(" + ",".join(owner_ids) + ")",
+            "visibility": "eq.public", "status": "eq.active",
+            "order": "display_name.asc", "limit": str(min(200, limit * 4)),
+        })
+        if not agent_rows:
+            return {"items": [], "count": 0, "strategy": "mutual_connection_owners"}
+        agent_ids = sorted({str(row["id"]) for row in agent_rows if row.get("id")})
+        ownerships = await _server_db("GET", "agent_ownerships", params={
+            "select": "agent_id,owner_user_id", "agent_id": "in.(" + ",".join(agent_ids) + ")",
+            "owner_user_id": "in.(" + ",".join(owner_ids) + ")",
+            "ownership_role": "eq.owner", "status": "eq.active",
+            "limit": str(min(500, len(agent_ids) * 2)),
+        })
+        valid_ownerships = {
+            (str(row["agent_id"]), str(row["owner_user_id"]))
+            for row in (ownerships or []) if row.get("agent_id") and row.get("owner_user_id")
+        }
+        agent_filter = "in.(" + ",".join(agent_ids) + ")"
+        existing_agent_follows = await _rows("GET", "social_edges", token, params={
+            "select": "target_agent_id", "actor_user_id": f"eq.{viewer_id}",
+            "actor_node_type": "eq.human", "target_node_type": "eq.agent",
+            "edge_type": "eq.follow", "target_agent_id": agent_filter,
+            "limit": str(len(agent_ids)),
+        })
+        outgoing_agent_safety = await _rows("GET", "social_edges", token, params={
+            "select": "target_agent_id", "actor_user_id": f"eq.{viewer_id}",
+            "actor_node_type": "eq.human", "target_node_type": "eq.agent",
+            "edge_type": "in.(block,mute)", "status": "eq.active",
+            "target_agent_id": agent_filter, "limit": str(len(agent_ids)),
+        })
+        incoming_agent_safety = await _rows("GET", "social_edges", token, params={
+            "select": "actor_agent_id", "target_user_id": f"eq.{viewer_id}",
+            "actor_node_type": "eq.agent", "target_node_type": "eq.human",
+            "edge_type": "in.(block,mute)", "status": "eq.active",
+            "actor_agent_id": agent_filter, "limit": str(len(agent_ids)),
+        })
+        hidden_agent_ids = {
+            str(row["target_agent_id"]) for row in (existing_agent_follows or []) if row.get("target_agent_id")
+        }
+        hidden_agent_ids.update(
+            str(row["target_agent_id"]) for row in (outgoing_agent_safety or []) if row.get("target_agent_id")
+        )
+        hidden_agent_ids.update(
+            str(row["actor_agent_id"]) for row in (incoming_agent_safety or []) if row.get("actor_agent_id")
+        )
+        eligible_agents = [
+            row for row in agent_rows
+            if row.get("visibility") == "public" and row.get("status") == "active"
+            and (str(row.get("id")), str(row.get("created_by"))) in valid_ownerships
+            and str(row.get("id")) not in hidden_agent_ids
+        ]
+        eligible_agents.sort(key=lambda row: (
+            -mutual_counts.get(str(row.get("created_by")), 0),
+            str(row.get("display_name") or "").casefold(),
+            str(row.get("id") or ""),
+        ))
+        items = [{
+            "id": str(row["id"]), "handle": row.get("handle"),
+            "display_name": row.get("display_name"), "avatar_url": row.get("avatar_url"),
+            "description": row.get("description"),
+            "mutual_followers_count": mutual_counts.get(str(row.get("created_by")), 0),
+            "reason": "owned_by_mutual_connection",
+        } for row in eligible_agents[:limit]]
+        return {"items": items, "count": len(items), "strategy": "mutual_connection_owners"}
+
     ranked_ids = sorted(mutual_counts, key=lambda candidate_id: (-mutual_counts[candidate_id], candidate_id))
     candidate_ids = ranked_ids[: min(200, limit * 4)]
     candidate_filter = "in.(" + ",".join(candidate_ids) + ")"
@@ -312,7 +382,7 @@ async def get_social_recommendations(
     incoming_block_rows = await _rows("GET", "social_edges", token, params={
         "select": "actor_user_id", "target_user_id": f"eq.{viewer_id}",
         "actor_node_type": "eq.human", "target_node_type": "eq.human",
-        "edge_type": "eq.block", "status": "eq.active",
+        "edge_type": "in.(block,mute)", "status": "eq.active",
         "actor_user_id": candidate_filter, "limit": str(len(candidate_ids)),
     })
     excluded_ids = {viewer_id}

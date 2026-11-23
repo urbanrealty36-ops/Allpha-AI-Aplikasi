@@ -1,4 +1,5 @@
 name: ENG-P02 Create Pre-Migration Restore Point
+# Re-run after tenant verifier correction; creates/verifies a managed restore point and applies no DDL.
 
 on:
   workflow_dispatch:

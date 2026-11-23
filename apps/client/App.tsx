@@ -91,6 +91,7 @@ type NativeMessage = { id: string; body: string; sender_type: string; sender_use
 type SocialGraph = { outgoing: SocialEdge[]; incoming_followers?: SocialEdge[]; incoming_requests: SocialEdge[]; blocked_by: SocialEdge[]; interests: SocialInterest[]; summary?: { following: number; followers: number; pending_follow_requests: number; blocked: number; muted: number; interests: number; truncated: boolean } };
 type DiscoveredSocialUser = { id: string; username: string; display_name: string; avatar_url?: string | null; bio?: string; visibility: "public" | "private"; is_ai: boolean };
 type SocialRecommendation = { id: string; username: string | null; display_name: string | null; avatar_url: string | null; bio: string | null; mutual_followers_count: number; reason: "mutual_connections" };
+type SocialAgentRecommendation = { id: string; handle: string; display_name: string | null; avatar_url: string | null; description: string | null; mutual_followers_count: number; reason: "owned_by_mutual_connection" };
 type ConsentRecord = { consent_type: "terms_of_service" | "privacy_policy" | string; policy_version: string; granted: boolean; recorded_at: string };
 type AuthSessionRecord = { id: string; created_at: string | null; updated_at: string | null; refreshed_at: string | null; not_after: string | null; aal: string | null; user_agent: string | null; ip: string | null; is_current: boolean };
 const apiBase = (process.env.EXPO_PUBLIC_API_BASE_URL || (__DEV__ ? (Platform.OS === "android" ? "http://10.0.2.2:8000" : "http://localhost:8000") : "https://api.allpha.web.id")).replace(/\/$/, "");
@@ -635,6 +636,8 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
   const [socialGraph, setSocialGraph] = useState<SocialGraph | null>(null);
   const [socialActivity, setSocialActivity] = useState<SocialActivityItem[]>([]);
   const [socialRecommendations, setSocialRecommendations] = useState<SocialRecommendation[]>([]);
+  const [socialAgentRecommendations, setSocialAgentRecommendations] = useState<SocialAgentRecommendation[]>([]);
+  const [socialAgentRecommendationsError, setSocialAgentRecommendationsError] = useState("");
   const [socialRecommendationsError, setSocialRecommendationsError] = useState("");
   const [socialLoading, setSocialLoading] = useState(false);
   const [targetUserId, setTargetUserId] = useState("");
@@ -1440,11 +1443,19 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
       setSocialGraph(graph);
       setSocialActivity(activity.items || []);
       try {
-        const recommendations = await apiRequest("/v1/social/recommendations?limit=12") as { items?: SocialRecommendation[] };
+        const recommendations = await apiRequest("/v1/social/recommendations?node_type=human&limit=12") as { items?: SocialRecommendation[] };
         setSocialRecommendations(Array.isArray(recommendations.items) ? recommendations.items : []);
       } catch (cause) {
         setSocialRecommendations([]);
         setSocialRecommendationsError(cause instanceof Error ? cause.message : "Rekomendasi koneksi tidak dapat dimuat.");
+      }
+      try {
+        const recommendations = await apiRequest("/v1/social/recommendations?node_type=agent&limit=12") as { items?: SocialAgentRecommendation[] };
+        setSocialAgentRecommendations(Array.isArray(recommendations.items) ? recommendations.items : []);
+        setSocialAgentRecommendationsError("");
+      } catch (cause) {
+        setSocialAgentRecommendations([]);
+        setSocialAgentRecommendationsError(cause instanceof Error ? cause.message : "Rekomendasi AI Agent tidak dapat dimuat.");
       }
     }
     catch (e) { setError(e instanceof Error ? e.message : "Social Graph tidak dapat dimuat."); }
@@ -1493,12 +1504,12 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
     } catch (e) { setError(e instanceof Error ? e.message : "Relasi sosial gagal disimpan."); }
     finally { setBusy(false); }
   }
-  async function followSocialRecommendation(item: SocialRecommendation) {
+  async function followSocialRecommendation(item: SocialRecommendation | SocialAgentRecommendation, targetType: "human" | "agent") {
     setBusy(true); setError(""); setMessage("");
     try {
       const result = await apiRequest("/v1/social/relationships", {
         method: "POST",
-        body: JSON.stringify({ target_type: "human", target_id: item.id, edge_type: "follow" }),
+        body: JSON.stringify({ target_type: targetType, target_id: item.id, edge_type: "follow" }),
       }) as { outcome?: string; idempotent_replay?: boolean };
       await loadSocialGraph();
       const outcomeMessage = result.outcome === "follow_active" ? "Anda sekarang mengikuti identitas ini." : result.outcome === "follow_request_created" ? "Permintaan mengikuti menunggu persetujuan." : "Relasi sosial tersimpan.";
@@ -2227,8 +2238,12 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
         {!socialDiscoveryBusy && !socialDiscoveryError && socialDiscoveryQuery.trim().length >= 3 && socialDiscoveryUsers.length === 0 && <Text style={s.muted}>Tidak ada akun yang dapat ditemukan untuk username tersebut.</Text>}
         <Text style={s.kicker}>REKOMENDASI KONEKSI</Text>
         {!!socialRecommendationsError && <Text accessibilityRole="alert" style={s.error}>Rekomendasi tidak tersedia: {socialRecommendationsError}</Text>}
-        {socialRecommendations.map(item => <View key={item.id} style={s.socialRow}><View style={{ flex: 1 }}><Text style={s.body}>{item.display_name || item.username || "Pengguna"}</Text><Text style={s.muted}>{item.username ? "@" + item.username + " · " : ""}{item.mutual_followers_count} koneksi bersama</Text></View><Button title="Ikuti" disabled={busy} onPress={() => void followSocialRecommendation(item)}/></View>)}
+        {socialRecommendations.map(item => <View key={item.id} style={s.socialRow}><View style={{ flex: 1 }}><Text style={s.body}>{item.display_name || item.username || "Pengguna"}</Text><Text style={s.muted}>{item.username ? "@" + item.username + " · " : ""}{item.mutual_followers_count} koneksi bersama</Text></View><Button title="Ikuti" disabled={busy} onPress={() => void followSocialRecommendation(item, "human")}/></View>)}
         {!socialRecommendationsError && socialRecommendations.length === 0 && <Text style={s.muted}>Belum ada rekomendasi koneksi publik yang memenuhi pengaturan privasi.</Text>}
+        <Text style={s.kicker}>REKOMENDASI AI AGENT</Text>
+        {!!socialAgentRecommendationsError && <Text accessibilityRole="alert" style={s.error}>Rekomendasi AI Agent tidak tersedia: {socialAgentRecommendationsError}</Text>}
+        {socialAgentRecommendations.map(item => <View key={item.id} style={s.socialRow}><View style={{ flex: 1 }}><Text style={s.body}>{item.display_name || item.handle}</Text><Text style={s.muted}>@{item.handle} · {item.mutual_followers_count} koneksi pemilik</Text></View><Button title="Ikuti Agent" disabled={busy} onPress={() => void followSocialRecommendation(item, "agent")}/></View>)}
+        {!socialAgentRecommendationsError && socialAgentRecommendations.length === 0 && <Text style={s.muted}>Belum ada AI Agent publik yang memenuhi pengaturan privasi.</Text>}
         <Text style={s.kicker}>TARGET MANUAL · {socialTargetType === "agent" ? "AI AGENT" : "HUMAN"}</Text>
         <TextInput accessibilityLabel="ID node target untuk relasi" value={targetUserId} onChangeText={setTargetUserId} autoCapitalize="none" style={field} placeholder={socialTargetType === "agent" ? "UUID AI Agent aktif dan publik" : "UUID akun Human"} placeholderTextColor="#8B94AC"/>
         <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}><Button title="Blokir" secondary disabled={busy || !targetUserId.trim() || Boolean(socialActorAgentId && socialActorAgents.find(agent => agent.id === socialActorAgentId)?.ownership_role !== "owner")} onPress={() => void addSocialEdge("block")}/><Button title="Bisukan" secondary disabled={busy || !targetUserId.trim()} onPress={() => void addSocialEdge("mute")}/></View>

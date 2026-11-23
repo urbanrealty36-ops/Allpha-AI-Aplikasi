@@ -1,4 +1,5 @@
 name: ENG-P02 Supabase Recovery Preflight
+# Re-run after tenant verifier correction; GET-only backup and recovery evidence capture.
 
 on:
   workflow_dispatch:

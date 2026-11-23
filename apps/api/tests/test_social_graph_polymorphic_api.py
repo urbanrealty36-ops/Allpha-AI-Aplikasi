@@ -261,6 +261,7 @@ CANDIDATE_BLOCKED = "00000000-0000-4000-8000-000000000413"
 CANDIDATE_ALREADY_FOLLOWED = "00000000-0000-4000-8000-000000000414"
 CANDIDATE_BLOCKED_BY = "00000000-0000-4000-8000-000000000415"
 CANDIDATE_PRIVATE = "00000000-0000-4000-8000-000000000416"
+CANDIDATE_MUTED_BY = "00000000-0000-4000-8000-000000000417"
 
 
 def test_recommendations_rank_public_mutual_connections_and_respect_privacy_and_blocks(monkeypatch):
@@ -274,8 +275,8 @@ def test_recommendations_rank_public_mutual_connections_and_respect_privacy_and_
             return [{"target_user_id": CANDIDATE_ALREADY_FOLLOWED, "status": "active"}]
         if params.get("actor_user_id") == f"eq.{OWNER}" and params.get("edge_type") == "in.(block,mute)":
             return [{"target_user_id": CANDIDATE_BLOCKED, "edge_type": "block"}]
-        if params.get("target_user_id") == f"eq.{OWNER}" and params.get("edge_type") == "eq.block":
-            return [{"actor_user_id": CANDIDATE_BLOCKED_BY}]
+        if params.get("target_user_id") == f"eq.{OWNER}" and params.get("edge_type") == "in.(block,mute)":
+            return [{"actor_user_id": CANDIDATE_BLOCKED_BY}, {"actor_user_id": CANDIDATE_MUTED_BY}]
         return []
 
     async def fake_server_db(method, table, *, params=None, body=None, prefer=None):
@@ -306,6 +307,7 @@ def test_recommendations_rank_public_mutual_connections_and_respect_privacy_and_
                 {"actor_user_id": CANDIDATE_ALREADY_FOLLOWED, "target_user_id": FOLLOWEE_B},
                 {"actor_user_id": CANDIDATE_BLOCKED_BY, "target_user_id": FOLLOWEE_A},
                 {"actor_user_id": CANDIDATE_PRIVATE, "target_user_id": FOLLOWEE_A},
+                {"actor_user_id": CANDIDATE_MUTED_BY, "target_user_id": FOLLOWEE_A},
             ]
         if table == "user_settings":
             return [
@@ -317,6 +319,7 @@ def test_recommendations_rank_public_mutual_connections_and_respect_privacy_and_
                 {"user_id": CANDIDATE_ALREADY_FOLLOWED, "privacy_settings": {"discoverable_by_username": True, "profile_visibility": "public"}},
                 {"user_id": CANDIDATE_BLOCKED_BY, "privacy_settings": {"discoverable_by_username": True, "profile_visibility": "public"}},
                 {"user_id": CANDIDATE_PRIVATE, "privacy_settings": {"discoverable_by_username": True, "profile_visibility": "private"}},
+                {"user_id": CANDIDATE_MUTED_BY, "privacy_settings": {"discoverable_by_username": True, "profile_visibility": "public"}},
             ]
         raise AssertionError((method, table, params, body))
 
@@ -335,3 +338,80 @@ def test_recommendations_rank_public_mutual_connections_and_respect_privacy_and_
     assert body["items"][0]["id"] == CANDIDATE_A
     assert body["items"][0]["mutual_followers_count"] == 2
     assert body["items"][0]["reason"] == "mutual_connections"
+
+
+AGENT_RECOMMENDATION_A = "00000000-0000-4000-8000-000000000501"
+AGENT_RECOMMENDATION_BLOCKED = "00000000-0000-4000-8000-000000000502"
+AGENT_RECOMMENDATION_FOLLOWED = "00000000-0000-4000-8000-000000000503"
+AGENT_RECOMMENDATION_INBOUND = "00000000-0000-4000-8000-000000000504"
+AGENT_RECOMMENDATION_PRIVATE = "00000000-0000-4000-8000-000000000505"
+AGENT_RECOMMENDATION_INVALID_OWNER = "00000000-0000-4000-8000-000000000506"
+
+
+def test_agent_recommendations_require_public_active_owned_agents_and_respect_block_mute(monkeypatch):
+    async def fake_rows(method, path, token, *, params=None, body=None, prefer=None):
+        params = params or {}
+        if path != "social_edges" or method != "GET":
+            return []
+        if params.get("actor_user_id") == f"eq.{OWNER}" and params.get("edge_type") == "eq.follow" and params.get("target_node_type") == "eq.human":
+            return [{"target_user_id": FOLLOWEE_A}, {"target_user_id": FOLLOWEE_B}]
+        if params.get("actor_user_id") == f"eq.{OWNER}" and params.get("edge_type") == "eq.follow" and params.get("target_node_type") == "eq.agent":
+            return [{"target_agent_id": AGENT_RECOMMENDATION_FOLLOWED}]
+        if params.get("actor_user_id") == f"eq.{OWNER}" and params.get("edge_type") == "in.(block,mute)" and params.get("target_node_type") == "eq.agent":
+            return [{"target_agent_id": AGENT_RECOMMENDATION_BLOCKED}]
+        if params.get("target_user_id") == f"eq.{OWNER}" and params.get("edge_type") == "in.(block,mute)" and params.get("actor_node_type") == "eq.agent":
+            return [{"actor_agent_id": AGENT_RECOMMENDATION_INBOUND}]
+        return []
+
+    async def fake_server_db(method, table, *, params=None, body=None, prefer=None):
+        params = params or {}
+        if table == "profiles":
+            ids = params.get("id", "").removeprefix("in.(").removesuffix(")")
+            requested = set(ids.split(",")) if ids else set()
+            known = {FOLLOWEE_A, FOLLOWEE_B, CANDIDATE_A, CANDIDATE_B, CANDIDATE_BLOCKED, CANDIDATE_ALREADY_FOLLOWED, CANDIDATE_BLOCKED_BY, CANDIDATE_PRIVATE, CANDIDATE_MUTED_BY}
+            return [{"id": identity, "visibility": "public", "account_status": "active"} for identity in requested & known]
+        if table == "user_settings":
+            ids = params.get("user_id", "").removeprefix("in.(").removesuffix(")")
+            requested = set(ids.split(",")) if ids else set()
+            return [{"user_id": identity, "privacy_settings": {"discoverable_by_username": True, "profile_visibility": "public"}} for identity in requested]
+        if table == "social_edges":
+            return [
+                {"actor_user_id": CANDIDATE_A, "target_user_id": FOLLOWEE_A},
+                {"actor_user_id": CANDIDATE_A, "target_user_id": FOLLOWEE_B},
+                {"actor_user_id": CANDIDATE_BLOCKED, "target_user_id": FOLLOWEE_A},
+                {"actor_user_id": CANDIDATE_ALREADY_FOLLOWED, "target_user_id": FOLLOWEE_B},
+                {"actor_user_id": CANDIDATE_BLOCKED_BY, "target_user_id": FOLLOWEE_A},
+            ]
+        if table == "ai_agents":
+            return [
+                {"id": AGENT_RECOMMENDATION_A, "created_by": CANDIDATE_A, "handle": "mutual-agent", "display_name": "Mutual Agent", "visibility": "public", "status": "active"},
+                {"id": AGENT_RECOMMENDATION_BLOCKED, "created_by": CANDIDATE_BLOCKED, "handle": "blocked-agent", "display_name": "Blocked Agent", "visibility": "public", "status": "active"},
+                {"id": AGENT_RECOMMENDATION_FOLLOWED, "created_by": CANDIDATE_A, "handle": "followed-agent", "display_name": "Followed Agent", "visibility": "public", "status": "active"},
+                {"id": AGENT_RECOMMENDATION_INBOUND, "created_by": CANDIDATE_A, "handle": "inbound-agent", "display_name": "Inbound Agent", "visibility": "public", "status": "active"},
+                {"id": AGENT_RECOMMENDATION_PRIVATE, "created_by": CANDIDATE_A, "handle": "private-agent", "display_name": "Private Agent", "visibility": "private", "status": "active"},
+                {"id": AGENT_RECOMMENDATION_INVALID_OWNER, "created_by": CANDIDATE_A, "handle": "invalid-agent", "display_name": "Invalid Owner Agent", "visibility": "public", "status": "active"},
+            ]
+        if table == "agent_ownerships":
+            return [
+                {"agent_id": AGENT_RECOMMENDATION_A, "owner_user_id": CANDIDATE_A},
+                {"agent_id": AGENT_RECOMMENDATION_BLOCKED, "owner_user_id": CANDIDATE_BLOCKED},
+                {"agent_id": AGENT_RECOMMENDATION_FOLLOWED, "owner_user_id": CANDIDATE_A},
+                {"agent_id": AGENT_RECOMMENDATION_INBOUND, "owner_user_id": CANDIDATE_A},
+            ]
+        raise AssertionError((method, table, params, body))
+
+    monkeypatch.setattr(social_graph_api, "_rows", fake_rows)
+    monkeypatch.setattr(social_graph_api, "_server_db", fake_server_db)
+    app.dependency_overrides[current_user] = _user
+    try:
+        response = TestClient(app).get("/v1/social/recommendations?node_type=agent&limit=10")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["strategy"] == "mutual_connection_owners"
+    assert body["count"] == 1
+    assert body["items"][0]["id"] == AGENT_RECOMMENDATION_A
+    assert body["items"][0]["mutual_followers_count"] == 2
+    assert body["items"][0]["reason"] == "owned_by_mutual_connection"

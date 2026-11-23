@@ -20,6 +20,16 @@ type Recommendation = {
   reason: "mutual_connections";
 };
 
+type AgentRecommendation = {
+  id: string;
+  handle: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  description: string | null;
+  mutual_followers_count: number;
+  reason: "owned_by_mutual_connection";
+};
+
 type Props = { apiBase: string; accessToken: string };
 
 async function apiRequest<T>(apiBase: string, accessToken: string, path: string, init: RequestInit = {}): Promise<T> {
@@ -45,6 +55,8 @@ function labelForInterest(key: string): string {
 export default function SocialGraphPanel({ apiBase, accessToken }: Props) {
   const [interests, setInterests] = useState<Interest[]>([]);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+  const [agentRecommendations, setAgentRecommendations] = useState<AgentRecommendation[]>([]);
+  const [agentRecommendationError, setAgentRecommendationError] = useState("");
   const [draft, setDraft] = useState("");
   const [preference, setPreference] = useState<Interest["preference"]>("interested");
   const [loading, setLoading] = useState(true);
@@ -58,10 +70,18 @@ export default function SocialGraphPanel({ apiBase, accessToken }: Props) {
     try {
       const [interestData, recommendationData] = await Promise.all([
         apiRequest<{ items: Interest[] }>(apiBase, accessToken, "/v1/me/interests"),
-        apiRequest<{ items: Recommendation[] }>(apiBase, accessToken, "/v1/social/recommendations?limit=12"),
+        apiRequest<{ items: Recommendation[] }>(apiBase, accessToken, "/v1/social/recommendations?node_type=human&limit=12"),
       ]);
       setInterests(interestData.items || []);
       setRecommendations(recommendationData.items || []);
+      try {
+        const agentData = await apiRequest<{ items: AgentRecommendation[] }>(apiBase, accessToken, "/v1/social/recommendations?node_type=agent&limit=12");
+        setAgentRecommendations(agentData.items || []);
+        setAgentRecommendationError("");
+      } catch (cause) {
+        setAgentRecommendations([]);
+        setAgentRecommendationError(cause instanceof Error ? cause.message : "Rekomendasi AI Agent belum tersedia.");
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Social Graph belum dapat dimuat.");
     } finally {
@@ -110,17 +130,19 @@ export default function SocialGraphPanel({ apiBase, accessToken }: Props) {
     }
   }
 
-  async function followRecommendation(item: Recommendation) {
+  async function followRecommendation(item: Recommendation | AgentRecommendation, targetType: "human" | "agent") {
     setBusy(true);
     setError("");
     setNotice("");
     try {
       await apiRequest(apiBase, accessToken, "/v1/social/relationships", {
         method: "POST",
-        body: JSON.stringify({ target_type: "human", target_id: item.id, edge_type: "follow" }),
+        body: JSON.stringify({ target_type: targetType, target_id: item.id, edge_type: "follow" }),
       });
-      setNotice("Relasi mengikuti " + (item.display_name || item.username || "pengguna") + " tersimpan.");
-      setRecommendations((current) => current.filter((candidate) => candidate.id !== item.id));
+      const identityLabel = item.display_name || ("username" in item ? item.username : item.handle) || "identitas";
+      setNotice("Relasi mengikuti " + identityLabel + " tersimpan.");
+      if (targetType === "human") setRecommendations((current) => current.filter((candidate) => candidate.id !== item.id));
+      else setAgentRecommendations((current) => current.filter((candidate) => candidate.id !== item.id));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Relasi gagal disimpan.");
     } finally {
@@ -178,11 +200,29 @@ export default function SocialGraphPanel({ apiBase, accessToken }: Props) {
                       <p className="truncate text-sm font-bold text-slate-900">{item.display_name || item.username || "Pengguna"}</p>
                       <p className="truncate text-xs text-slate-500">{item.username ? "@" + item.username + " · " : ""}{item.mutual_followers_count} koneksi bersama</p>
                     </div>
-                    <button type="button" disabled={busy} onClick={() => void followRecommendation(item)} className="shrink-0 rounded-full border-2 border-slate-900 bg-sky-100 px-3 py-2 text-xs font-black disabled:opacity-50">Ikuti</button>
+                    <button type="button" disabled={busy} onClick={() => void followRecommendation(item, "human")} className="shrink-0 rounded-full border-2 border-slate-900 bg-sky-100 px-3 py-2 text-xs font-black disabled:opacity-50">Ikuti</button>
                   </li>
                 ))}
               </ul>
             )}
+          <div className="mt-6">
+            <h3 className="text-base font-black text-slate-950">Rekomendasi AI Agent</h3>
+            <p className="mt-1 text-xs text-slate-500">Agent publik dengan pemilik dari koneksi bersama yang dapat ditemukan.</p>
+            {agentRecommendationError && <p role="alert" className="mt-3 text-sm text-rose-700">{agentRecommendationError}</p>}
+            {loading ? <p className="mt-4 text-sm text-slate-500">Mencari AI Agent…</p> : agentRecommendations.length === 0 ? <p className="mt-4 rounded-xl bg-slate-50 p-4 text-sm text-slate-500">Belum ada AI Agent publik yang memenuhi pengaturan privasi.</p> : (
+              <ul className="mt-3 space-y-2">
+                {agentRecommendations.map((item) => (
+                  <li key={item.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 p-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-bold text-slate-900">{item.display_name || item.handle}</p>
+                      <p className="truncate text-xs text-slate-500">@{item.handle} · {item.mutual_followers_count} koneksi pemilik</p>
+                    </div>
+                    <button type="button" disabled={busy} onClick={() => void followRecommendation(item, "agent")} className="shrink-0 rounded-full border-2 border-slate-900 bg-violet-100 px-3 py-2 text-xs font-black disabled:opacity-50">Ikuti Agent</button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           </div>
         </div>
       </div>
