@@ -842,3 +842,12 @@ This is an evidence refresh inside the existing fixed plan. It does not create a
 - **Coverage:** API/DB CHANGE; Web NOT AFFECTED (no direct access allowed); Native NOT AFFECTED (no direct access allowed); Super Admin NOT AFFECTED (operator access remains through authorized APIs).
 - **Checks:** a focused migration-contract test was added and included in `.github/workflows/eng-p03-p04-focused-regression.yml`. Production schema and grants must be checked after migration; the CI run must be observed before recording it as passed.
 - **Phase status:** ENG-P03 and ENG-P04 remain `in_progress`. This security hardening does not implement the missing dependency-aware deletion executor, retention policy decisions, or complete Feed/Discovery journey scope. Real-account tests and EAS signed build remain `DEFERRED / NOT VERIFIED`.
+
+
+## 40.9 ENG-P03/P04 private registry RLS implementation evidence — 2026-11-23
+
+- **Main commit:** `5d8f9700460b91e2aa4b394c7aa13d44f24b09e8` adds the private-registry RLS migration, migration-contract test, focused workflow coverage and this phase evidence.
+- **Production migration:** Supabase `apply_migration` returned success; the ledger records version `20261123140636`, name `eng_p03_p04_private_registry_rls`. Both `private.account_export_sources.relrowsecurity` and `private.user_interest_discovery_index.relrowsecurity` now read `true`, with `relforcerowsecurity=false` so trusted owner-executed routines retain their existing access path. No `anon` or `authenticated` table grants remain; the pre-existing service-role privileges on the interest projection are preserved.
+- **Automated verification:** focused workflow run `45190647980` completed `success`; its API regression job executed all listed ENG-P03/P04 tests, including the new private-registry migration contract. Pytest output reached 100% with no failures.
+- **Migration naming alignment:** repository migration filename is aligned to the actual Supabase ledger version `20261123140636` to prevent local/remote migration-history drift.
+- **Phase status:** ENG-P03 and ENG-P04 remain `in_progress`. This closes the two private-registry RLS gaps only; it does not close the deletion executor/dependency mapping/retention-policy gates or the remaining Feed/Discovery internal implementation scope. Real-account and EAS remain `DEFERRED / NOT VERIFIED`.

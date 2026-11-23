@@ -4,7 +4,7 @@ MIGRATION = (
     Path(__file__).parents[1]
     / "supabase"
     / "migrations"
-    / "20261123210000_eng_p03_p04_private_registry_rls.sql"
+    / "20261123140636_eng_p03_p04_private_registry_rls.sql"
 )
 
 

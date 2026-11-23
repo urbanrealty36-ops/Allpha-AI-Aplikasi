@@ -22,7 +22,7 @@ on:
       - "apps/api/tests/test_account_lifecycle_worker_lifespan.py"
       - "apps/api/tests/test_eng_p03_interest_graph_export_migration_contract.py"
       - "apps/api/supabase/migrations/20261123124933_eng_p03_export_interest_graph_sources.sql"
-      - "apps/api/supabase/migrations/20261123210000_eng_p03_p04_private_registry_rls.sql"
+      - "apps/api/supabase/migrations/20261123140636_eng_p03_p04_private_registry_rls.sql"
       - "apps/api/tests/test_eng_p03_p04_private_registry_rls_migration_contract.py"
       - "apps/api/tests/test_social_graph_polymorphic_api.py"
       - "apps/api/tests/test_social_feed_api.py"
