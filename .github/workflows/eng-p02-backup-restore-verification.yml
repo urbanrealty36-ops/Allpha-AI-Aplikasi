@@ -21,7 +21,6 @@ jobs:
     timeout-minutes: 45
     env:
       BACKUP_RUN_ID: ${{ github.event.workflow_run.id }}
-      LOCAL_DB_PASSWORD: postgres
     steps:
       - uses: actions/checkout@v4
 
