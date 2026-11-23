@@ -6,6 +6,7 @@ import subprocess,sys,time,uuid
 ROOT=Path(__file__).resolve().parents[3]
 MIGRATION=ROOT/"apps/api/supabase/migrations/20261123192200_eng_p03_deletion_legal_hold_governance_worker.sql"
 SOURCE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123153243_eng_p03_account_deletion_specialized_source_handlers.sql"
+OWNER_SCOPE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123153456_eng_p03_agent_skill_deletion_owner_scope.sql"
 CANONICAL_REGISTRY_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123154208_eng_p03_canonical_source_handler_registry.sql"
 FK_GUARD_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123154656_eng_p03_dependency_fk_parent_guard.sql"
 CONTAINER="allpha-p03-deletion-"+uuid.uuid4().hex[:8]
@@ -193,6 +194,7 @@ insert into private.account_export_sources(source_key,table_name,filter_kind) va
         psql(f"create function public.list_account_deletion_source_registry() returns boolean language sql as {dollar_quote} select true {dollar_quote};")
         source_sql=SOURCE_MIGRATION.read_text(encoding="utf-8").split("\ndo " + chr(36) + chr(36),1)[0]
         psql(source_sql)
+        psql(OWNER_SCOPE_MIGRATION.read_text(encoding="utf-8"))
         psql(CANONICAL_REGISTRY_MIGRATION.read_text(encoding="utf-8"))
         psql(f"""
 create function public.execute_account_deletion_execution_job(uuid,uuid)
