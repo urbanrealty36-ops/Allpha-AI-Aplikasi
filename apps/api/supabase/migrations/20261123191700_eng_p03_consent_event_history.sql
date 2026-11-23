@@ -61,6 +61,7 @@ as $consent_event$
 declare
   v_event public.user_consent_events%rowtype;
   v_previous_decision text;
+  v_previous_policy_version text;
 begin
   if coalesce(auth.role(),'') <> 'service_role' then
     raise exception 'service_role_required' using errcode = '42501';
@@ -79,13 +80,14 @@ begin
     raise exception 'required_policy_withdrawal_not_supported' using errcode = '42501';
   end if;
 
-  select e.decision into v_previous_decision
+  select e.decision,e.policy_version into v_previous_decision,v_previous_policy_version
     from public.user_consent_events e
    where e.user_id=p_actor_user_id and e.consent_type=p_consent_type
    order by e.recorded_at desc,e.id desc
    limit 1;
   if p_consent_type<>'product_updates'
      and v_previous_decision='granted'
+     and v_previous_policy_version=p_policy_version
      and p_decision='declined' then
     raise exception 'required_policy_withdrawal_requires_account_lifecycle' using errcode = '42501';
   end if;
