@@ -1,0 +1,52 @@
+name: ENG-P03 P04 Focused Lifecycle and Social Graph Regression
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/api/src/allpha_api/main.py"
+      - "apps/api/src/allpha_api/social_graph_api.py"
+      - "apps/api/src/allpha_api/interest_graph_api.py"
+      - "apps/api/src/allpha_api/recommendation_engine.py"
+      - "apps/api/tests/test_account_lifecycle_worker_lifespan.py"
+      - "apps/api/tests/test_social_graph_polymorphic_api.py"
+      - "apps/api/tests/test_interest_graph_api.py"
+      - "apps/api/tests/test_recommendation_engine.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eng-p03-p04-focused-regression
+  cancel-in-progress: false
+
+jobs:
+  api-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: apps/api/pyproject.toml
+
+      - name: Install canonical API test dependencies
+        run: python -m pip install -e "./apps/api[dev]"
+
+      - name: Run focused ENG-P03 and ENG-P04 regression suite
+        working-directory: apps/api
+        run: |
+          python -m pytest \
+            tests/test_account_lifecycle_worker_lifespan.py \
+            tests/test_interest_graph_api.py \
+            tests/test_recommendation_engine.py \
+            tests/test_social_graph_polymorphic_api.py \
+            tests/test_eng_p04_interest_ontology_migration_contract.py \
+            tests/test_eng_p04_privacy_migration_contract.py \
+            -q
