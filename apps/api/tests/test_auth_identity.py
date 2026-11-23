@@ -222,7 +222,7 @@ def test_membership_lookup_with_manipulated_cross_tenant_id_returns_not_found(mo
         request.state.supabase_access_token = "tenant-b-token"
         return {"id": "tenant-b-user", "email": "tenant-b@example.invalid"}
 
-    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    monkeypatch.setattr("allpha_api.auth.user_db_request", fake_user_db_request)
     app.dependency_overrides[current_user] = fake_current_user
     try:
         response = client.get(
