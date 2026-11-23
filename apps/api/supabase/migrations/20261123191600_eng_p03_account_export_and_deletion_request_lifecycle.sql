@@ -105,6 +105,58 @@ create table if not exists public.account_legal_holds (
 create index if not exists account_legal_holds_subject_active_idx
   on public.account_legal_holds(subject_ref) where active;
 
+create or replace function public.set_account_retention_policy_active(
+  p_policy_id uuid,
+  p_actor_user_id uuid,
+  p_active boolean
+)
+returns public.account_data_retention_policies
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_policy public.account_data_retention_policies;
+begin
+  if p_policy_id is null or p_actor_user_id is null or p_active is null
+     or not exists (
+       select 1
+         from public.platform_operator_grants g
+        where g.user_id = p_actor_user_id
+          and g.status = 'active'
+          and 'platform:account_lifecycle.manage' = any(g.scopes)
+          and (g.expires_at is null or g.expires_at > pg_catalog.now())
+     ) then
+    raise exception 'account lifecycle operator scope required'
+      using errcode = '42501';
+  end if;
+
+  select * into v_policy
+    from public.account_data_retention_policies
+   where id = p_policy_id
+   for update;
+  if not found then
+    raise exception 'account retention policy not found' using errcode = 'P0002';
+  end if;
+
+  if p_active then
+    perform 1
+      from public.account_data_retention_policies
+     where data_class = v_policy.data_class and active
+     for update;
+    update public.account_data_retention_policies
+       set active = false, updated_at = pg_catalog.now()
+     where data_class = v_policy.data_class and active and id <> p_policy_id;
+  end if;
+
+  update public.account_data_retention_policies
+     set active = p_active, updated_at = pg_catalog.now()
+   where id = p_policy_id
+   returning * into v_policy;
+  return v_policy;
+end;
+$$;
+
 create schema if not exists private;
 create table if not exists private.account_export_sources (
   source_key text primary key,
@@ -799,6 +851,8 @@ grant select, insert, update, delete on public.account_export_jobs,
 
 revoke all on function public.request_my_account_export(text) from public, anon;
 grant execute on function public.request_my_account_export(text) to authenticated;
+revoke all on function public.set_account_retention_policy_active(uuid,uuid,boolean) from public, anon, authenticated;
+grant execute on function public.set_account_retention_policy_active(uuid,uuid,boolean) to service_role;
 revoke all on function public.claim_account_export_jobs(text,integer,integer) from public, anon, authenticated;
 grant execute on function public.claim_account_export_jobs(text,integer,integer) to service_role;
 revoke all on function public.renew_account_export_job_lease(uuid,uuid,integer) from public, anon, authenticated;
