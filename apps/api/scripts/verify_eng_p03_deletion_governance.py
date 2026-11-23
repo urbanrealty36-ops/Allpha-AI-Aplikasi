@@ -7,6 +7,7 @@ ROOT=Path(__file__).resolve().parents[3]
 MIGRATION=ROOT/"apps/api/supabase/migrations/20261123192200_eng_p03_deletion_legal_hold_governance_worker.sql"
 SOURCE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123153243_eng_p03_account_deletion_specialized_source_handlers.sql"
 CANONICAL_REGISTRY_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123154208_eng_p03_canonical_source_handler_registry.sql"
+FK_GUARD_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123154656_eng_p03_dependency_fk_parent_guard.sql"
 CONTAINER="allpha-p03-deletion-"+uuid.uuid4().hex[:8]
 A="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 B="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
@@ -191,6 +192,38 @@ insert into private.account_export_sources(source_key,table_name,filter_kind) va
         source_sql=SOURCE_MIGRATION.read_text(encoding="utf-8").split("\ndo " + chr(36) + chr(36),1)[0]
         psql(source_sql)
         psql(CANONICAL_REGISTRY_MIGRATION.read_text(encoding="utf-8"))
+        psql("""
+create function public.execute_account_deletion_execution_job(uuid,uuid)
+returns boolean language plpgsql as $
+declare v_rule record; v_step record; v_sql text; v_job record; v_rows bigint;
+begin
+    if true then
+        if v_rule.fk_column is null then raise exception 'composite_foreign_key_requires_manual_handler'; end if;
+        if v_step.action='delete_rows' then
+          v_sql:=format('DELETE FROM %I.%I WHERE %I::text = $1',v_rule.child_schema,v_rule.child_table,v_rule.fk_column);
+        else
+          v_sql:=format('UPDATE %I.%I SET %I=NULL WHERE %I::text = $1',
+            v_rule.child_schema,v_rule.child_table,v_rule.fk_column,v_rule.fk_column);
+        end if;
+        execute v_sql using v_job.user_id::text;
+        get diagnostics v_rows=row_count;
+    end if;
+    return false;
+end;
+$;
+""")
+        psql(FK_GUARD_MIGRATION.read_text(encoding="utf-8"))
+        psql("""
+do $
+begin
+ if position('account_deletion_fk_parent_not_auth_user' in pg_get_functiondef('public.execute_account_deletion_execution_job(uuid,uuid)'::regprocedure))=0 then
+   raise exception 'dependency FK parent guard was not installed';
+ end if;
+ if position('auth.users' in pg_get_functiondef('public.execute_account_deletion_execution_job(uuid,uuid)'::regprocedure))=0 then
+   raise exception 'dependency FK parent check is missing';
+ end if;
+end $;
+""")
         psql(f"""
 insert into public.agent_ownerships values
  ('{A}','{A}','owner','active'),('{B}','{B}','owner','active'),('{C}','{A}','operator','active'),
