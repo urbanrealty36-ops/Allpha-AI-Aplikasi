@@ -89,7 +89,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          db_container="$(docker ps --format '{{.Names}}' | grep '^supabase_db_allpha-p02-restore-verification      - name: Restore the full custom archive into the disposable database
+          db_container="$(docker ps --format '{{.Names}}' | grep '^supabase_db_allpha-p02-restore-verification' | head -n 1)"
+          test -n "$db_container"
+          role_state="$(docker exec -u postgres "$db_container" psql -U postgres -d postgres -Atc \
+            "select rolcanlogin::text || '|' || rolsuper::text from pg_roles where rolname='supabase_admin'")"
+          test "$role_state" = "true|true"
+          echo "SUPABASE_DB_CONTAINER=$db_container" >> "$GITHUB_ENV"
+          echo "Verified local Supabase privileged restore role (login + superuser); no production connection is used."
+
+      - name: Create a separate disposable restore database
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker exec -u postgres "$SUPABASE_DB_CONTAINER" \
+            createdb -U supabase_admin -O supabase_admin allpha_p02_restore_verification
+
+      - name: Restore the full custom archive into the disposable database
         shell: bash
         run: |
           set -euo pipefail
