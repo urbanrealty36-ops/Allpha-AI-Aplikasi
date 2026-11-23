@@ -26,6 +26,13 @@ class AccountDeletionRequestCreate(BaseModel):
     confirmation_phrase: Literal["HAPUS AKUN ALLPHA SAYA"]
 
 
+class AccountDeletionOwnershipTransferCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    resource_type: Literal["agent", "organization"]
+    resource_id: uuid.UUID
+    successor_user_id: uuid.UUID
+
+
 def _supabase_base() -> str:
     value = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
     if not value:
@@ -327,6 +334,35 @@ async def request_account_deletion(
             "eksekusi terpenuhi."
         ),
     }
+
+
+@router.post("/v1/me/deletion-requests/{request_id}/ownership-transfers", status_code=202)
+async def create_account_deletion_ownership_transfer(
+    request_id: uuid.UUID,
+    payload: AccountDeletionOwnershipTransferCreate,
+    request: Request,
+    user: dict[str, Any] = Depends(current_session_user),
+) -> dict[str, Any]:
+    transfer = await user_db_request(
+        "POST",
+        "rpc/set_my_account_deletion_ownership_transfer",
+        request.state.supabase_access_token,
+        body={
+            "p_request_id": str(request_id),
+            "p_resource_type": payload.resource_type,
+            "p_resource_id": str(payload.resource_id),
+            "p_successor_user_id": str(payload.successor_user_id),
+        },
+    )
+    if not isinstance(transfer, dict) or transfer.get("status") != "requested":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "ACCOUNT_DELETION_OWNERSHIP_TRANSFER_NOT_RECORDED",
+                "message": "Pengalihan kepemilikan belum dapat dicatat.",
+            },
+        )
+    return {"transfer": transfer, "execution": "pending_deletion_request"}
 
 
 @router.post("/v1/me/deletion-requests/{request_id}/cancel")
