@@ -55,7 +55,7 @@ create table if not exists public.recommendation_scoring_policies (
 );
 insert into public.recommendation_scoring_policies(policy_key,version,weights,active)
 values ('default','allpha-recommendation-v2',
-  '{"followed_creator":2.0,"explicit_interest":3.0,"passion":1.5,"habit":0.75,"engagement":0.2,"mutual_connection":2.0,"shared_interest":3.0}'::jsonb,
+  '{"followed_creator":1000.0,"explicit_interest":100.0,"passion":25.0,"habit":10.0,"engagement":1.0,"mutual_connection":2.0,"shared_interest":3.0}'::jsonb,
   true)
 on conflict(policy_key) do nothing;
 create unique index if not exists recommendation_scoring_one_active_policy
