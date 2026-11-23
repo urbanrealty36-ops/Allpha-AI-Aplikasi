@@ -163,7 +163,7 @@ def test_interest_signal_rejects_client_supplied_consent_version():
             headers={"Authorization": "Bearer interest-graph-token"},
             json={
                 "interest_key": "technology", "signal_type": "habit", "strength": 0.5,
-                "signal_source": "explicit_feedback", "consent_version": "client-forged-version",
+                "signal_source": "user_selected", "consent_version": "client-forged-version",
             },
         )
     finally:
@@ -300,3 +300,23 @@ def test_interest_preference_delete_uses_authenticated_actor(monkeypatch):
     assert calls == [("delete_my_interest_for_actor", {
         "p_actor_user_id": "interest-graph-owner", "p_interest_key": "technology",
     })]
+
+
+def test_client_cannot_forge_explicit_feedback_signal_source():
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = "interest-graph-token"
+        return {"id": "interest-graph-owner", "email": "owner@example.invalid"}
+
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = client.put(
+            "/v1/me/interest-signals",
+            headers={"Authorization": "Bearer interest-graph-token"},
+            json={
+                "interest_key": "technology", "signal_type": "passion", "strength": 0.8,
+                "signal_source": "explicit_feedback",
+            },
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 422
