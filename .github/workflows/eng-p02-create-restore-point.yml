@@ -7,6 +7,7 @@ on:
     branches: [main]
     paths:
       - .github/workflows/eng-p02-create-restore-point.yml
+      - .github/workflows/eng-p02-backup-restore-verification.yml
       - .github/workflows/eng-p03-apply-account-lifecycle-migration.yml
       - apps/api/supabase/migrations/20261123191600_eng_p03_account_export_and_deletion_request_lifecycle.sql
 
