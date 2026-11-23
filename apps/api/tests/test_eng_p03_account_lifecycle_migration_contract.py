@@ -63,3 +63,10 @@ def test_permanent_deletion_stays_blocked_until_retention_and_legal_hold_policy_
     assert "retention periods are intentionally not seeded" in normalized
     assert "account_retention_one_active_policy_per_class" in normalized
     assert "account_legal_holds_subject_active_idx" in normalized
+
+
+def test_consent_rpc_conflict_target_is_qualified_in_forward_repair():
+    source = MIGRATION.read_text(encoding="utf-8").lower()
+    assert "on conflict on constraint user_consent_events_user_id_idempotency_key_key do nothing" in source
+    assert "on conflict (user_id,idempotency_key) do nothing" not in source
+    assert "revoke all on function public.record_account_consent_event_for_actor" in source
