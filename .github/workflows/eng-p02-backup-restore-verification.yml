@@ -428,12 +428,15 @@ jobs:
               "p03_consent_idempotency_repair_verified": True,
               "p03_export_lease_migration_applied": True,
               "p03_export_lease_migration_blob": os.environ["P03_EXPORT_LEASE_MIGRATION_BLOB"],
+              "p03_export_expiry_migration_applied": True,
+              "p03_export_expiry_migration_blob": os.environ["P03_EXPORT_EXPIRY_MIGRATION_BLOB"],
               "storage_objects_included": False,
               "verified_at_utc": datetime.now(timezone.utc).isoformat(),
               "verification": verification.read_text().splitlines(),
               "p03_migration_verification": p03_verification.read_text().splitlines(),
               "p03_consent_migration_verification": Path("recovery-evidence/p03-consent-event-verification.txt").read_text().splitlines(),
               "p03_export_lease_verification": Path("recovery-evidence/p03-export-lease-verification.txt").read_text().splitlines(),
+              "p03_export_expiry_verification": Path("recovery-evidence/p03-export-expiry-verification.txt").read_text().splitlines(),
           }
           Path("recovery-evidence/restore-verification.json").write_text(json.dumps(result, indent=2) + "\n")
           PY
@@ -448,5 +451,6 @@ jobs:
             recovery-evidence/p03-disposable-migration-verification.txt
             recovery-evidence/p03-consent-event-verification.txt
             recovery-evidence/p03-export-lease-verification.txt
+            recovery-evidence/p03-export-expiry-verification.txt
           if-no-files-found: error
           retention-days: 90
