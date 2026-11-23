@@ -547,8 +547,8 @@ def test_deletion_subscription_cancellation_worker_uses_stable_provider_job_and_
                 return True
             raise AssertionError(name)
 
-        async def cancel(subscription_id, idempotency_key, stripe_mode):
-            cancelled.append((subscription_id, idempotency_key, stripe_mode))
+        async def cancel(subscription_id, idempotency_key, stripe_environment):
+            cancelled.append((subscription_id, idempotency_key, stripe_environment))
             return "canceled"
 
         worker.rpc = rpc
@@ -587,7 +587,7 @@ def test_deletion_subscription_cancellation_worker_retries_unknown_provider_outc
                 return True
             raise AssertionError(name)
 
-        async def cancel(subscription_id, idempotency_key, stripe_mode):
+        async def cancel(subscription_id, idempotency_key, stripe_environment):
             raise RuntimeError("provider outcome unknown")
 
         worker.rpc = rpc
