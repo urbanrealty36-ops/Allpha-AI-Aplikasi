@@ -225,7 +225,7 @@ on conflict (source_key) do nothing;
 
 -- Fail the migration if the export allowlist references an absent table or
 -- owner/relation column. A successful export must never silently omit a source.
-do $
+do $$
 declare
   v_source record;
   v_column text;
@@ -278,7 +278,7 @@ begin
     raise exception 'account_export_relation_source_columns_missing';
   end if;
 end;
-$;
+$$;
 
 create or replace function private.build_account_export_snapshot(p_user_id uuid)
 returns jsonb
