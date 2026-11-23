@@ -136,7 +136,7 @@ $$;
 alter table private.account_deletion_subscription_cancellation_jobs
   rename column stripe_mode to stripe_environment;
 alter table private.account_deletion_subscription_cancellation_jobs
-  rename constraint account_deletion_subscription_cancellation_jobs_stripe_mode_check
+  rename constraint account_deletion_subscription_cancellation_jo_stripe_mode_check
   to account_deletion_subscription_cancellation_jobs_stripe_environment_check;
 
 create or replace function public.prepare_account_deletion_subscription_cancellations()
