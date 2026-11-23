@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Linking, Pressable, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Linking, Pressable, Text, TextInput, View, type ViewStyle } from "react-native";
 
 type ExportJob = { id: string; status: string; requested_at: string; progress_percent?: number; progress_stage?: string; expires_at?: string | null; file_size_bytes?: number | null; error_code?: string | null };
 type DeletionRequest = { id: string; status: string; requested_at: string; policy_version?: string | null };
@@ -141,7 +141,7 @@ export function AccountDataLifecycleScreen({ apiBase, getAccessToken }: Props) {
             {item.status === "running" && <>
               <Text accessibilityLiveRegion="polite" style={{ color: "#AAB4CC" }}>{progressLabel(item.progress_stage)} · {item.progress_percent ?? 5}%</Text>
               <View accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: 100, now: item.progress_percent ?? 5 }} style={{ height: 6, borderRadius: 6, backgroundColor: "#303A52", overflow: "hidden" }}>
-                <View style={{ height: 6, width: `${Math.max(5, Math.min(100, item.progress_percent ?? 5))}%` as `${number}%`, backgroundColor: "#A5B4FC" }} />
+                <View style={{ height: 6, width: `${Math.max(5, Math.min(100, item.progress_percent ?? 5))}%` as unknown as ViewStyle["width"], backgroundColor: "#A5B4FC" }} />
               </View>
             </>}
             {!!item.error_code && <Text style={{ color: "#FF9AAB" }}>{item.error_code}</Text>}
