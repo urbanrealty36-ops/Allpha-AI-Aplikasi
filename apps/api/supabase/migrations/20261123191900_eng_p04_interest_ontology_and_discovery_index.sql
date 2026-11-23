@@ -247,3 +247,257 @@ grant execute on function public.find_interest_discovery_candidates(text[],integ
 revoke insert,update,delete on public.user_interests from anon,authenticated;
 grant select on public.user_interests to authenticated;
 grant select,insert,update,delete on public.user_interests to service_role;
+
+
+-- One canonical Interest Graph signal store. A signal may describe the
+-- authenticated Human or one of that Human's actively owned AI Agents.
+create table if not exists public.user_interest_graph_signals (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  agent_id uuid references public.ai_agents(id) on delete cascade,
+  interest_key text not null references public.interest_catalog(interest_key) on delete restrict,
+  signal_type text not null check (signal_type in ('passion','habit')),
+  strength numeric(4,3) not null check (strength between 0 and 1),
+  signal_source text not null check (signal_source in ('user_selected','explicit_feedback','observed_interaction')),
+  consent_version text not null check (consent_version = 'interest-graph-v1'),
+  consent_granted_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create unique index if not exists user_interest_graph_signals_subject_unique
+  on public.user_interest_graph_signals(
+    user_id, coalesce(agent_id,'00000000-0000-0000-0000-000000000000'::uuid),
+    interest_key,signal_type
+  );
+create index if not exists user_interest_graph_signals_owner_idx
+  on public.user_interest_graph_signals(user_id,signal_type,interest_key);
+create index if not exists user_interest_graph_signals_agent_idx
+  on public.user_interest_graph_signals(agent_id,signal_type,interest_key)
+  where agent_id is not null;
+
+create table if not exists public.user_interest_graph_signal_events (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  agent_id uuid references public.ai_agents(id) on delete cascade,
+  interest_key text,
+  signal_type text check (signal_type is null or signal_type in ('passion','habit')),
+  action text not null check (action in ('set','delete','reset')),
+  signal_source text check (signal_source is null or signal_source in ('user_selected','explicit_feedback','observed_interaction')),
+  consent_version text not null check (consent_version = 'interest-graph-v1'),
+  occurred_at timestamptz not null default now()
+);
+create index if not exists user_interest_graph_signal_events_owner_idx
+  on public.user_interest_graph_signal_events(user_id,occurred_at desc);
+
+alter table public.user_interest_graph_signals enable row level security;
+alter table public.user_interest_graph_signal_events enable row level security;
+drop policy if exists user_interest_graph_signals_select_self on public.user_interest_graph_signals;
+create policy user_interest_graph_signals_select_self on public.user_interest_graph_signals
+for select to authenticated using (user_id=(select auth.uid()));
+drop policy if exists user_interest_graph_signal_events_select_self on public.user_interest_graph_signal_events;
+create policy user_interest_graph_signal_events_select_self on public.user_interest_graph_signal_events
+for select to authenticated using (user_id=(select auth.uid()));
+revoke all privileges on public.user_interest_graph_signals,public.user_interest_graph_signal_events from public,anon,authenticated;
+grant select on public.user_interest_graph_signals,public.user_interest_graph_signal_events to authenticated;
+grant select,insert,update,delete on public.user_interest_graph_signals,public.user_interest_graph_signal_events to service_role;
+
+-- Include user-controlled Passion/Habit graph signals in the account export.
+insert into private.account_export_sources(source_key,table_name,filter_kind,owner_columns,sort_order)
+values
+  ('interest_graph_signals','user_interest_graph_signals','owner_columns',array['user_id'],44),
+  ('interest_graph_signal_events','user_interest_graph_signal_events','owner_columns',array['user_id'],45)
+on conflict (source_key) do nothing;
+
+create table if not exists public.recommendation_scoring_policies (
+  id uuid primary key default gen_random_uuid(),
+  policy_key text not null,
+  version text not null,
+  weights jsonb not null check (jsonb_typeof(weights)='object'),
+  active boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(policy_key,version)
+);
+create unique index if not exists recommendation_scoring_one_active_policy
+  on public.recommendation_scoring_policies(policy_key) where active;
+alter table public.recommendation_scoring_policies enable row level security;
+revoke all privileges on public.recommendation_scoring_policies from public,anon,authenticated;
+grant select,insert,update,delete on public.recommendation_scoring_policies to service_role;
+insert into public.recommendation_scoring_policies(policy_key,version,weights,active)
+values ('default','allpha-recommendation-v2',
+  '{"followed_creator":1000,"explicit_interest":100,"passion":25,"habit":10,"engagement":1,"mutual_connection":2,"shared_interest":3}'::jsonb,
+  true)
+on conflict (policy_key,version) do nothing;
+
+create or replace function public.set_user_interest_graph_signal_for_actor(
+  p_actor_user_id uuid,
+  p_interest_key text,
+  p_signal_type text,
+  p_strength numeric,
+  p_signal_source text,
+  p_consent_version text,
+  p_agent_id uuid default null
+)
+returns table(
+  user_id uuid,agent_id uuid,interest_key text,signal_type text,strength numeric,
+  signal_source text,consent_version text,consent_granted_at timestamptz,
+  created_at timestamptz,updated_at timestamptz
+)
+language plpgsql
+security definer
+set search_path = ''
+as $set_interest_signal$
+declare
+  v_interest_key text;
+  v_signal public.user_interest_graph_signals%rowtype;
+begin
+  if coalesce(auth.role(),'') <> 'service_role' then
+    raise exception 'service_role_required' using errcode='42501';
+  end if;
+  if p_actor_user_id is null or not exists(select 1 from auth.users u where u.id=p_actor_user_id) then
+    raise exception 'interest_actor_not_found' using errcode='P0002';
+  end if;
+  if p_signal_type not in ('passion','habit') or p_strength is null
+     or p_strength < 0 or p_strength > 1
+     or p_signal_source not in ('user_selected','explicit_feedback','observed_interaction')
+     or p_consent_version <> 'interest-graph-v1' then
+    raise exception 'interest_signal_input_invalid' using errcode='22023';
+  end if;
+  if p_agent_id is not null and not exists(
+    select 1 from public.agent_ownerships o
+    join public.ai_agents a on a.id=o.agent_id
+    where o.agent_id=p_agent_id and o.owner_user_id=p_actor_user_id
+      and o.ownership_role='owner' and o.status='active' and a.status='active'
+  ) then
+    raise exception 'interest_agent_ownership_required' using errcode='42501';
+  end if;
+  if p_signal_source='observed_interaction' and not exists(
+    select 1 from public.user_settings s
+    where s.user_id=p_actor_user_id
+      and coalesce(s.privacy_settings,'{}'::jsonb) @> '{"allow_interest_matching":true}'::jsonb
+  ) then
+    raise exception 'interest_observation_consent_required' using errcode='42501';
+  end if;
+  select c.interest_key into v_interest_key
+    from public.interest_catalog c
+   where c.active and (
+     lower(c.interest_key)=lower(p_interest_key)
+     or exists(select 1 from unnest(c.aliases) a where lower(a)=lower(p_interest_key))
+   )
+   order by case when lower(c.interest_key)=lower(p_interest_key) then 0 else 1 end
+   limit 1;
+  if v_interest_key is null then
+    raise exception 'interest_key_not_in_catalog' using errcode='22023';
+  end if;
+
+  insert into public.user_interest_graph_signals as s(
+    user_id,agent_id,interest_key,signal_type,strength,signal_source,consent_version,consent_granted_at
+  ) values (
+    p_actor_user_id,p_agent_id,v_interest_key,p_signal_type,p_strength,p_signal_source,
+    p_consent_version,now()
+  )
+  on conflict (
+    user_id,(coalesce(agent_id,'00000000-0000-0000-0000-000000000000'::uuid)),
+    interest_key,signal_type
+  ) do update set strength=excluded.strength,signal_source=excluded.signal_source,
+    consent_version=excluded.consent_version,consent_granted_at=excluded.consent_granted_at,
+    updated_at=now()
+  returning s.* into v_signal;
+
+  insert into public.user_interest_graph_signal_events(
+    user_id,agent_id,interest_key,signal_type,action,signal_source,consent_version
+  ) values (
+    p_actor_user_id,p_agent_id,v_interest_key,p_signal_type,'set',p_signal_source,p_consent_version
+  );
+  return query select v_signal.user_id,v_signal.agent_id,v_signal.interest_key,v_signal.signal_type,
+    v_signal.strength,v_signal.signal_source,v_signal.consent_version,v_signal.consent_granted_at,
+    v_signal.created_at,v_signal.updated_at;
+end;
+$set_interest_signal$;
+
+create or replace function public.delete_user_interest_graph_signal_for_actor(
+  p_actor_user_id uuid,p_interest_key text,p_signal_type text,p_agent_id uuid default null
+)
+returns table(interest_key text,signal_type text,agent_id uuid)
+language plpgsql
+security definer
+set search_path = ''
+as $delete_interest_signal$
+declare v_signal public.user_interest_graph_signals%rowtype;
+begin
+  if coalesce(auth.role(),'') <> 'service_role' then
+    raise exception 'service_role_required' using errcode='42501';
+  end if;
+  if p_actor_user_id is null or p_signal_type not in ('passion','habit') then
+    raise exception 'interest_signal_delete_invalid' using errcode='22023';
+  end if;
+  delete from public.user_interest_graph_signals s
+   where s.user_id=p_actor_user_id and s.interest_key=p_interest_key
+     and s.signal_type=p_signal_type and s.agent_id is not distinct from p_agent_id
+  returning s.* into v_signal;
+  if not found then return; end if;
+  insert into public.user_interest_graph_signal_events(
+    user_id,agent_id,interest_key,signal_type,action,signal_source,consent_version
+  ) values (
+    v_signal.user_id,v_signal.agent_id,v_signal.interest_key,v_signal.signal_type,'delete',
+    v_signal.signal_source,v_signal.consent_version
+  );
+  return query select v_signal.interest_key,v_signal.signal_type,v_signal.agent_id;
+end;
+$delete_interest_signal$;
+
+create or replace function public.clear_user_interest_graph_signals_for_actor(p_actor_user_id uuid)
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $clear_interest_signals$
+declare v_deleted integer;
+begin
+  if coalesce(auth.role(),'') <> 'service_role' then
+    raise exception 'service_role_required' using errcode='42501';
+  end if;
+  if p_actor_user_id is null then raise exception 'interest_actor_required' using errcode='22023'; end if;
+  with deleted as (
+    delete from public.user_interest_graph_signals s where s.user_id=p_actor_user_id
+    returning s.user_id,s.agent_id,s.interest_key,s.signal_type,s.signal_source,s.consent_version
+  )
+  insert into public.user_interest_graph_signal_events(
+    user_id,agent_id,interest_key,signal_type,action,signal_source,consent_version
+  )
+  select user_id,agent_id,interest_key,signal_type,'reset',signal_source,consent_version from deleted;
+  get diagnostics v_deleted = row_count;
+  return v_deleted;
+end;
+$clear_interest_signals$;
+
+create or replace function private.refresh_interest_index_from_user_settings()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $refresh_settings_trigger$
+begin
+  if not coalesce(new.privacy_settings,'{}'::jsonb) @> '{"allow_interest_matching":true}'::jsonb then
+    with deleted as (
+      delete from public.user_interest_graph_signals s
+       where s.user_id=new.user_id and s.agent_id is null
+         and s.signal_source='observed_interaction'
+      returning s.user_id,s.interest_key,s.signal_type,s.signal_source,s.consent_version
+    )
+    insert into public.user_interest_graph_signal_events(
+      user_id,interest_key,signal_type,action,signal_source,consent_version
+    )
+    select user_id,interest_key,signal_type,'delete',signal_source,consent_version from deleted;
+  end if;
+  perform private.refresh_user_interest_discovery_index(new.user_id);
+  return new;
+end;
+$refresh_settings_trigger$;
+
+revoke all on function public.set_user_interest_graph_signal_for_actor(uuid,text,text,numeric,text,text,uuid) from public,anon,authenticated;
+revoke all on function public.delete_user_interest_graph_signal_for_actor(uuid,text,text,uuid) from public,anon,authenticated;
+revoke all on function public.clear_user_interest_graph_signals_for_actor(uuid) from public,anon,authenticated;
+grant execute on function public.set_user_interest_graph_signal_for_actor(uuid,text,text,numeric,text,text,uuid) to service_role;
+grant execute on function public.delete_user_interest_graph_signal_for_actor(uuid,text,text,uuid) to service_role;
+grant execute on function public.clear_user_interest_graph_signals_for_actor(uuid) to service_role;
