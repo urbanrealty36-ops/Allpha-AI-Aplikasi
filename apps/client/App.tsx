@@ -85,7 +85,7 @@ type Profile = { id: string; username: string | null; display_name: string; avat
 type Settings = { theme: "light" | "dark" | "system"; notification_preferences: { product_updates: boolean; security_alerts: boolean; social_activity: boolean }; privacy_settings: { discoverable_by_username: boolean; allow_interest_matching: boolean }; updated_at?: string };
 type SocialEdge = { id: string; target_user_id?: string; actor_user_id?: string; actor_node_type?: "human" | "agent"; target_node_type?: "human" | "agent"; actor_agent_id?: string | null; target_agent_id?: string | null; edge_type: "follow" | "block" | "mute"; status?: string };
 type SocialInterest = { interest_key: string; preference: "interested" | "not_interested" };
-type InterestGraphSignal = { interest_key: string; signal_type: "passion" | "habit"; strength: number; signal_source: string; updated_at: string };
+type InterestGraphSignal = { interest_key: string; agent_id?: string | null; signal_type: "passion" | "habit"; strength: number; signal_source: string; updated_at: string };
 type SocialActivityItem = { id: string; event_type: string; actor_node_type: "human" | "agent"; target_node_type?: "human" | "agent"; actor_agent_id?: string | null; target_agent_id?: string | null; created_at: string };
 type SocialActorAgent = { id: string; handle: string; display_name: string; status: "active"; ownership_role: "owner" | "operator" };
 type NativeConversation = { id: string; title?: string | null; kind: "human" | "agent"; last_message?: { body: string; created_at: string; delivery_status: string } };
@@ -1561,7 +1561,7 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
     catch (e) { setError(e instanceof Error ? e.message : "Minat tidak dapat dihapus."); }
     finally { setBusy(false); }
   }
-  async function saveInterestGraphSignal(signalType: "passion" | "habit", key: string) {
+  async function saveInterestGraphSignal(signalType: "passion" | "habit", key: string, agentId?: string) {
     const interest = key.trim().toLowerCase();
     if (!interest) return;
     setBusy(true); setError(""); setMessage("");
@@ -1570,7 +1570,7 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
         method: "PUT",
         body: JSON.stringify({
           interest_key: interest, signal_type: signalType, strength: 1,
-          signal_source: "user_selected", consent_version: "interest-graph-v1",
+          signal_source: "user_selected", consent_version: "interest-graph-v1", ...(agentId ? { agent_id: agentId } : {}),
         }),
       });
       if (signalType === "passion") setPassionInterestKey("");
@@ -1583,7 +1583,7 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
   async function removeInterestGraphSignal(signal: InterestGraphSignal) {
     setBusy(true); setError(""); setMessage("");
     try {
-      await apiRequest("/v1/me/interest-signals/" + signal.signal_type + "/" + encodeURIComponent(signal.interest_key), { method: "DELETE" });
+      await apiRequest("/v1/me/interest-signals/" + signal.signal_type + "/" + encodeURIComponent(signal.interest_key) + (signal.agent_id ? "?agent_id=" + encodeURIComponent(signal.agent_id) : ""), { method: "DELETE" });
       setMessage("Sinyal " + signal.signal_type + " dihapus.");
       await loadSocialGraph();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Sinyal Graph tidak dapat dihapus."); }
@@ -2313,13 +2313,13 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
         <Text style={s.kicker}>PASSION GRAPH · PILIHAN EKSPLISIT</Text>
         <Text style={s.muted}>Minat mendalam hanya disimpan dari pilihan Anda; bukan hasil inferensi sensitif.</Text>
         <TextInput accessibilityLabel="Tambah Passion Graph" value={passionInterestKey} onChangeText={value => setPassionInterestKey(value.toLowerCase())} autoCapitalize="none" maxLength={80} style={field} placeholder="kunci minat kanonis" placeholderTextColor="#8B94AC"/>
-        <Button title="Simpan Passion" disabled={busy || !passionInterestKey.trim()} onPress={() => void saveInterestGraphSignal("passion", passionInterestKey)}/>
+        <Button title="Simpan Passion · Human" disabled={busy || !passionInterestKey.trim()} onPress={() => void saveInterestGraphSignal("passion", passionInterestKey)}/>{socialActorAgents.filter(agent => agent.status === "active" && agent.ownership_role === "owner").map(agent => <Button key={agent.id} title={"Passion · @" + agent.handle} secondary disabled={busy || !passionInterestKey.trim()} onPress={() => void saveInterestGraphSignal("passion", passionInterestKey, agent.id)}/>)}
         <Text style={s.kicker}>HABIT GRAPH · KONTROL PERSONALISASI</Text>
         <Text style={s.muted}>Tambahkan pola yang Anda pilih sendiri. Sinyal observasi hanya dapat dicatat jika personalisasi aktif dan berizin.</Text>
         <TextInput accessibilityLabel="Tambah Habit Graph" value={habitInterestKey} onChangeText={value => setHabitInterestKey(value.toLowerCase())} autoCapitalize="none" maxLength={80} style={field} placeholder="kunci minat kanonis" placeholderTextColor="#8B94AC"/>
-        <Button title="Simpan Habit" disabled={busy || !habitInterestKey.trim()} onPress={() => void saveInterestGraphSignal("habit", habitInterestKey)}/>
-        {interestGraphSignals.map(signal => <View key={signal.signal_type + ":" + signal.interest_key} style={s.socialRow}>
-          <View style={{flex:1}}><Text style={s.body}>{signal.signal_type === "passion" ? "Passion" : "Habit"} · {signal.interest_key}</Text><Text style={s.muted}>Sumber: {signal.signal_source} · Strength {signal.strength}</Text></View>
+        <Button title="Simpan Habit · Human" disabled={busy || !habitInterestKey.trim()} onPress={() => void saveInterestGraphSignal("habit", habitInterestKey)}/>{socialActorAgents.filter(agent => agent.status === "active" && agent.ownership_role === "owner").map(agent => <Button key={agent.id} title={"Habit · @" + agent.handle} secondary disabled={busy || !habitInterestKey.trim()} onPress={() => void saveInterestGraphSignal("habit", habitInterestKey, agent.id)}/>)}
+        {interestGraphSignals.map(signal => <View key={(signal.agent_id || "human") + ":" + signal.signal_type + ":" + signal.interest_key} style={s.socialRow}>
+          <View style={{flex:1}}><Text style={s.body}>{signal.signal_type === "passion" ? "Passion" : "Habit"} · {signal.interest_key} · {signal.agent_id ? "AI Agent " + (socialActorAgents.find(agent => agent.id === signal.agent_id)?.handle || signal.agent_id) : "Human"}</Text><Text style={s.muted}>Sumber: {signal.signal_source} · Strength {signal.strength}</Text></View>
           <Button title="Hapus" secondary disabled={busy} onPress={() => void removeInterestGraphSignal(signal)}/>
         </View>)}
         {socialGraph.blocked_by.length > 0 && <Text style={s.muted}>Akun yang memblokir Anda: {socialGraph.blocked_by.map(edge => edge.actor_user_id).join(", ")}</Text>}
