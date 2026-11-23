@@ -211,7 +211,7 @@ select private.delete_account_source_rows('community_posts_in_memberships','{A}'
 select private.delete_account_source_rows('workspace_documents_in_memberships','{A}');
 select private.delete_account_source_rows('workspace_annotations_in_memberships','{A}');
 reset role;
-do $
+do $$
 begin
  if (select count(*) from public.agent_skills)<>2 then raise exception 'agent skill deletion escaped active owner scope'; end if;
  if (select count(*) from public.agent_runtime_checkpoints)<>1 or (select count(*) from public.agent_runtime_effect_receipts)<>1 then raise exception 'runtime task child deletion scope incorrect'; end if;
@@ -225,7 +225,7 @@ begin
     or has_function_privilege('anon','private.delete_account_source_rows(text,uuid)','EXECUTE') then
    raise exception 'specialized deletion helper exposed to client roles';
  end if;
-end $;
+end $$;
 """)
         print("PASS: ENG-P03 legal hold governance and all nine specialized source handlers preserve other users' shared records.")
     finally:
