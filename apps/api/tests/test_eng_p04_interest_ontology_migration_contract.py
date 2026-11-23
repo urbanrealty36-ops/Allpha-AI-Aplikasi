@@ -84,3 +84,14 @@ def test_privacy_opt_out_removes_observed_signals_for_human_and_owned_agents():
     assert "s.user_id=new.user_id and s.signal_source='observed_interaction'" in source
     assert "returning s.user_id,s.agent_id,s.interest_key,s.signal_type" in source
     assert "select user_id,agent_id,interest_key,signal_type,'delete'" in source
+
+
+
+def test_interest_ontology_exposes_semantic_relationships_and_sensitive_inference_guard():
+    source = MIGRATION.read_text(encoding="utf-8").lower()
+    assert "create table if not exists public.interest_taxonomy_edges" in source
+    assert "('technology','spatial_3d','parent_of',1)" in source
+    assert "('technology','gaming_metaverse','parent_of',1)" in source
+    assert "sensitivity in ('standard','sensitive')" in source
+    assert "interest_sensitive_inference_prohibited" in source
+    assert "where interest_key='health' and sensitivity<>'sensitive'" in source
