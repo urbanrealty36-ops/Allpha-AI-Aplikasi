@@ -21,6 +21,7 @@ jobs:
     timeout-minutes: 45
     env:
       BACKUP_RUN_ID: ${{ github.event.workflow_run.id }}
+      EXPECTED_EXPORT_LEASE_MIGRATION_BLOB: dc1d3d7e6cc2ca715450e7955893371488998047
 
     steps:
       - uses: actions/checkout@v4
@@ -209,6 +210,13 @@ jobs:
           docker exec -u postgres "$SUPABASE_DB_CONTAINER" \
             psql -U supabase_admin -d allpha_p02_restore_verification \
               -v ON_ERROR_STOP=1 -f /tmp/eng-p03-consent-events.sql
+          lease_migration="apps/api/supabase/migrations/20261123191800_eng_p03_lease_scoped_export_artifacts.sql"
+          lease_migration_blob="$(git rev-parse HEAD:"$lease_migration")"
+          test "$lease_migration_blob" = "$EXPECTED_EXPORT_LEASE_MIGRATION_BLOB"
+          docker cp "$lease_migration" "$SUPABASE_DB_CONTAINER:/tmp/eng-p03-export-lease.sql"
+          docker exec -u postgres "$SUPABASE_DB_CONTAINER" \
+            psql -U supabase_admin -d allpha_p02_restore_verification \
+              -v ON_ERROR_STOP=1 -f /tmp/eng-p03-export-lease.sql
           docker exec -u postgres "$SUPABASE_DB_CONTAINER" \
             psql -U supabase_admin -d allpha_p02_restore_verification -v ON_ERROR_STOP=1 -Atc "
               select case when to_regclass('public.user_consent_events') is not null then 'consent_events_table=PASS' else 'consent_events_table=FAIL' end;
@@ -226,8 +234,11 @@ jobs:
                             and not has_function_privilege('authenticated','public.record_account_consent_event_for_actor(uuid,text,text,text,text,text)','EXECUTE')
                             and not has_function_privilege('anon','public.record_account_consent_event_for_actor(uuid,text,text,text,text,text)','EXECUTE')
                           then 'consent_rpc_service_only=PASS' else 'consent_rpc_service_only=FAIL' end;
+              select case when position('on conflict on constraint user_consent_events_user_id_idempotency_key_key do nothing' in lower(pg_get_functiondef(
+                'public.record_account_consent_event_for_actor(uuid,text,text,text,text,text)'::regprocedure
+              ))) > 0 then 'consent_idempotency_conflict_target=PASS' else 'consent_idempotency_conflict_target=FAIL' end;
             " | tee recovery-evidence/p03-consent-event-verification.txt
-          for assertion in consent_events_table consent_export_source consent_events_rls consent_events_client_read_only legacy_consent_write_closed consent_rpc_service_only; do
+          for assertion in consent_events_table consent_export_source consent_events_rls consent_events_client_read_only legacy_consent_write_closed consent_rpc_service_only consent_idempotency_conflict_target; do
             grep -q "^$assertion=PASS$" recovery-evidence/p03-consent-event-verification.txt
           done
           docker exec -i -u postgres "$SUPABASE_DB_CONTAINER" \
@@ -274,10 +285,6 @@ jobs:
           set -euo pipefail
           migration="apps/api/supabase/migrations/20261123191800_eng_p03_lease_scoped_export_artifacts.sql"
           test -s "$migration"
-          docker cp "$migration" "$SUPABASE_DB_CONTAINER:/tmp/eng-p03-export-lease.sql"
-          docker exec -u postgres "$SUPABASE_DB_CONTAINER" \
-            psql -U supabase_admin -d allpha_p02_restore_verification \
-              -v ON_ERROR_STOP=1 -f /tmp/eng-p03-export-lease.sql
           docker exec -u postgres "$SUPABASE_DB_CONTAINER" \
             psql -U supabase_admin -d allpha_p02_restore_verification -v ON_ERROR_STOP=1 -Atc "
               select case when position('p_lease_token::text' in pg_get_functiondef(
@@ -346,6 +353,7 @@ jobs:
               "p03_migration_blob": os.environ["P03_MIGRATION_BLOB"],
               "p03_consent_migration_applied": True,
               "p03_consent_migration_blob": os.environ["P03_CONSENT_MIGRATION_BLOB"],
+              "p03_consent_idempotency_repair_verified": True,
               "p03_export_lease_migration_applied": True,
               "p03_export_lease_migration_blob": os.environ["P03_EXPORT_LEASE_MIGRATION_BLOB"],
               "storage_objects_included": False,
