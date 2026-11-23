@@ -20,6 +20,7 @@ function label(status: string) {
     failed: "Gagal diproses", cancelled: "Dibatalkan", expired: "Kedaluwarsa",
     awaiting_policy: "Menunggu kebijakan retensi", scheduled: "Terjadwal",
     processing: "Sedang diproses", blocked_legal_hold: "Ditahan untuk kewajiban hukum",
+    blocked_dependency: "Menunggu penyelesaian dependensi data",
     completed: "Selesai",
   };
   return values[status] || status;
@@ -114,7 +115,7 @@ export function AccountDataLifecycleScreen({ apiBase, getAccessToken }: Props) {
     finally { setBusy(false); }
   }
 
-  const openDeletion = deletions.find(item => ["awaiting_policy", "scheduled", "processing", "blocked_legal_hold"].includes(item.status));
+  const openDeletion = deletions.find(item => ["awaiting_policy", "scheduled", "processing", "blocked_legal_hold", "blocked_dependency"].includes(item.status));
   const button = (title: string, onPress: () => void, disabled = false, danger = false) => (
     <Pressable accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled} onPress={onPress}
       style={{ alignSelf: "flex-start", borderRadius: 12, paddingVertical: 11, paddingHorizontal: 15, backgroundColor: danger ? "#7F1D35" : "#263A66", opacity: disabled ? 0.55 : 1 }}>
