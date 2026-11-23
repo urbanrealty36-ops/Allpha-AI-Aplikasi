@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 
 type ExportJob = {
   id: string;
@@ -60,14 +60,13 @@ export default function AccountDataLifecyclePanel({ apiBase, accessToken }: Prop
   const [confirmation, setConfirmation] = useState("");
 
   const request = useCallback(async (path: string, init: RequestInit = {}) => {
+    const headers = new Headers(init.headers);
+    headers.set("Authorization", "Bearer " + accessToken);
+    if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
     const response = await fetch(apiBase + path, {
       ...init,
       cache: "no-store",
-      headers: {
-        Authorization: "Bearer " + accessToken,
-        ...(init.body ? { "Content-Type": "application/json" } : {}),
-        ...init.headers,
-      },
+      headers,
     });
     if (!response.ok) throw new Error(await apiError(response));
     return response.status === 204 ? null : response.json();
@@ -119,7 +118,7 @@ export default function AccountDataLifecyclePanel({ apiBase, accessToken }: Prop
     }
   }
 
-  async function createDeletion(event: React.FormEvent<HTMLFormElement>) {
+  async function createDeletion(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true); setError(""); setMessage("");
     try {
