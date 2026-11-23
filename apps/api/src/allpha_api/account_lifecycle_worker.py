@@ -19,6 +19,8 @@ log = logging.getLogger("allpha.account_lifecycle_worker")
 _TRUE = {"1", "true", "yes"}
 _EXPORT_LEASE_SECONDS = 900
 _EXPORT_LEASE_HEARTBEAT_SECONDS = 240
+_DELETION_LEASE_SECONDS = 3600
+_DELETION_LEASE_HEARTBEAT_SECONDS = 900
 
 
 class AccountLifecycleWorker:
@@ -44,6 +46,7 @@ class AccountLifecycleWorker:
         self.poll_count = 0
         self.last_error_code: str | None = None
         self.lease_heartbeat_seconds = max(5, min(600, int(os.getenv("ACCOUNT_EXPORT_LEASE_HEARTBEAT_SECONDS", str(_EXPORT_LEASE_HEARTBEAT_SECONDS)))))
+        self.deletion_lease_heartbeat_seconds = max(30, min(1800, int(os.getenv("ACCOUNT_DELETION_LEASE_HEARTBEAT_SECONDS", str(_DELETION_LEASE_HEARTBEAT_SECONDS)))))
 
     async def rpc(self, name: str, payload: dict[str, Any]) -> Any:
         response = await self.client.post(
@@ -341,6 +344,37 @@ class AccountLifecycleWorker:
             return
         response.raise_for_status()
 
+    async def _maintain_deletion_lease(
+        self,
+        job_id: str,
+        lease_token: str,
+        stop: asyncio.Event,
+        lease_lost: asyncio.Event,
+    ) -> None:
+        while not stop.is_set():
+            try:
+                await asyncio.wait_for(stop.wait(), timeout=self.deletion_lease_heartbeat_seconds)
+                return
+            except asyncio.TimeoutError:
+                pass
+            try:
+                renewed = await self.rpc(
+                    "renew_account_deletion_execution_job_lease",
+                    {
+                        "p_job_id": job_id,
+                        "p_lease_token": lease_token,
+                        "p_lease_seconds": _DELETION_LEASE_SECONDS,
+                    },
+                )
+            except Exception:
+                log.exception("account_deletion_lease_heartbeat_failed execution_job_id=%s", job_id)
+                lease_lost.set()
+                return
+            if renewed is not True:
+                log.warning("account_deletion_lease_lost execution_job_id=%s", job_id)
+                lease_lost.set()
+                return
+
     async def deletion_execution_batch(self) -> int:
         """Prepare and execute only policy-complete, lease-fenced account deletions."""
         if os.getenv("ACCOUNT_DELETION_EXECUTION_ENABLED", "false").strip().lower() not in _TRUE:
@@ -358,7 +392,7 @@ class AccountLifecycleWorker:
             {
                 "p_worker_id": self.worker_id,
                 "p_limit": int(os.getenv("ACCOUNT_DELETION_EXECUTION_BATCH_SIZE", "2")),
-                "p_lease_seconds": 3600,
+                "p_lease_seconds": _DELETION_LEASE_SECONDS,
             },
         )
         if not isinstance(jobs, list) or not jobs:
@@ -373,7 +407,21 @@ class AccountLifecycleWorker:
             if not job_id or not lease_token:
                 raise RuntimeError("ACCOUNT_DELETION_EXECUTION_LEASE_INVALID")
             processed += 1
+            stop_heartbeat = asyncio.Event()
+            lease_lost = asyncio.Event()
+            heartbeat_task: asyncio.Task[None] | None = None
             try:
+                renewed = await self.rpc(
+                    "renew_account_deletion_execution_job_lease",
+                    {"p_job_id": job_id, "p_lease_token": lease_token,
+                     "p_lease_seconds": _DELETION_LEASE_SECONDS},
+                )
+                if renewed is not True:
+                    log.warning("account_deletion_lease_lost execution_job_id=%s", job_id)
+                    continue
+                heartbeat_task = asyncio.create_task(
+                    self._maintain_deletion_lease(job_id, lease_token, stop_heartbeat, lease_lost)
+                )
                 # Drain storage jobs in bounded batches. The DB claim RPC rechecks
                 # the execution lease and legal holds before issuing each batch.
                 while True:
@@ -386,6 +434,8 @@ class AccountLifecycleWorker:
                             "p_lease_seconds": 3600,
                         },
                     )
+                    if lease_lost.is_set():
+                        raise RuntimeError("ACCOUNT_DELETION_EXECUTION_LEASE_LOST")
                     if not isinstance(storage_jobs, list):
                         raise RuntimeError("ACCOUNT_DELETION_STORAGE_CLAIM_INVALID")
                     if not storage_jobs:
@@ -428,6 +478,8 @@ class AccountLifecycleWorker:
                                 )
                             raise
 
+                if lease_lost.is_set():
+                    raise RuntimeError("ACCOUNT_DELETION_EXECUTION_LEASE_LOST")
                 completed = await self.rpc(
                     "execute_account_deletion_execution_job",
                     {"p_job_id": job_id, "p_lease_token": lease_token},
@@ -458,6 +510,10 @@ class AccountLifecycleWorker:
                         "account_deletion_execution_failure_persist_failed execution_job_id=%s",
                         job_id,
                     )
+            finally:
+                stop_heartbeat.set()
+                if heartbeat_task is not None:
+                    await heartbeat_task
         return processed
 
     async def deletion_governance_batch(self) -> int:
