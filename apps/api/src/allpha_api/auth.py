@@ -185,6 +185,51 @@ async def user_db_request(
     return response.json()
 
 
+async def require_organization_membership(
+    request: Request,
+    organization_id: str,
+    actor_user_id: str,
+    *,
+    allowed_roles: set[str] | frozenset[str] | None = None,
+) -> dict[str, Any]:
+    """Resolve tenant membership from the caller's verified JWT, never client-supplied role data.
+
+    Mutating RPCs repeat role checks transactionally; this API guard provides a
+    fail-closed boundary before service-role execution and avoids revealing
+    whether an organization exists to a non-member.
+    """
+    access_token = getattr(request.state, "supabase_access_token", None)
+    if not access_token:
+        raise HTTPException(
+            status_code=401,
+            detail={"code": "AUTH_CONTEXT_MISSING", "message": "Konteks sesi terverifikasi tidak tersedia."},
+        )
+    rows = await user_db_request(
+        "GET",
+        "organization_memberships",
+        access_token,
+        params={
+            "select": "organization_id,user_id,role",
+            "organization_id": f"eq.{organization_id}",
+            "user_id": f"eq.{actor_user_id}",
+            "limit": "1",
+        },
+    )
+    if not rows:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "ORGANIZATION_NOT_FOUND", "message": "Organisasi tidak ditemukan."},
+        )
+    membership = rows[0]
+    role = membership.get("role")
+    if allowed_roles is not None and role not in allowed_roles:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "ORGANIZATION_FORBIDDEN", "message": "Hak akses organisasi tidak mencukupi."},
+        )
+    return membership
+
+
 async def service_db_request(function_name: str, *, body: dict[str, Any]) -> Any:
     """Invoke a server-only Supabase RPC using the backend service-role secret."""
     url = os.getenv("SUPABASE_URL", "").rstrip("/")
