@@ -16,6 +16,8 @@ import httpx
 
 log = logging.getLogger("allpha.account_lifecycle_worker")
 _TRUE = {"1", "true", "yes"}
+_EXPORT_LEASE_SECONDS = 900
+_EXPORT_LEASE_HEARTBEAT_SECONDS = 240
 
 
 class AccountLifecycleWorker:
@@ -32,6 +34,7 @@ class AccountLifecycleWorker:
             },
         )
         self.stopping = False
+        self.lease_heartbeat_seconds = max(5, min(600, int(os.getenv("ACCOUNT_EXPORT_LEASE_HEARTBEAT_SECONDS", str(_EXPORT_LEASE_HEARTBEAT_SECONDS)))))
 
     async def rpc(self, name: str, payload: dict[str, Any]) -> Any:
         response = await self.client.post(
@@ -54,23 +57,66 @@ class AccountLifecycleWorker:
         if response.status_code not in (200, 201):
             response.raise_for_status()
 
+    async def _maintain_lease(
+        self,
+        job_id: str,
+        lease_token: str,
+        stop: asyncio.Event,
+        lease_lost: asyncio.Event,
+    ) -> None:
+        while not stop.is_set():
+            try:
+                await asyncio.wait_for(stop.wait(), timeout=self.lease_heartbeat_seconds)
+                return
+            except asyncio.TimeoutError:
+                pass
+            try:
+                renewed = await self.rpc(
+                    "renew_account_export_job_lease",
+                    {
+                        "p_job_id": job_id,
+                        "p_lease_token": lease_token,
+                        "p_lease_seconds": _EXPORT_LEASE_SECONDS,
+                    },
+                )
+            except Exception:
+                log.exception("account_export_lease_heartbeat_failed job_id=%s", job_id)
+                lease_lost.set()
+                return
+            if renewed is not True:
+                log.warning("account_export_lease_lost job_id=%s", job_id)
+                lease_lost.set()
+                return
+
     async def process(self, job: dict[str, Any]) -> None:
         job_id = str(job["id"])
         user_id = str(job["user_id"])
         lease_token = str(job["lease_token"])
+        stop_heartbeat = asyncio.Event()
+        lease_lost = asyncio.Event()
+        heartbeat_task: asyncio.Task[None] | None = None
         try:
             renewed = await self.rpc(
                 "renew_account_export_job_lease",
-                {"p_job_id": job_id, "p_lease_token": lease_token, "p_lease_seconds": 900},
+                {
+                    "p_job_id": job_id,
+                    "p_lease_token": lease_token,
+                    "p_lease_seconds": _EXPORT_LEASE_SECONDS,
+                },
             )
             if renewed is not True:
                 log.warning("account_export_lease_lost job_id=%s", job_id)
                 return
+            heartbeat_task = asyncio.create_task(
+                self._maintain_lease(job_id, lease_token, stop_heartbeat, lease_lost)
+            )
 
             snapshot = await self.rpc(
                 "build_my_account_export_snapshot",
                 {"p_job_id": job_id, "p_lease_token": lease_token},
             )
+            if lease_lost.is_set():
+                raise RuntimeError("ACCOUNT_EXPORT_LEASE_LOST")
             if not isinstance(snapshot, dict) or snapshot.get("schema_version") != "1.0":
                 raise RuntimeError("ACCOUNT_EXPORT_SNAPSHOT_INVALID")
 
@@ -84,6 +130,8 @@ class AccountLifecycleWorker:
             digest = hashlib.sha256(compressed).hexdigest()
             object_path = f"{user_id}/{job_id}.json.gz"
             await self.upload(object_path, compressed)
+            if lease_lost.is_set():
+                raise RuntimeError("ACCOUNT_EXPORT_LEASE_LOST")
 
             completed = await self.rpc(
                 "complete_account_export_job",
@@ -125,6 +173,10 @@ class AccountLifecycleWorker:
                 )
             except Exception:
                 log.exception("account_export_failure_persist_failed job_id=%s", job_id)
+        finally:
+            stop_heartbeat.set()
+            if heartbeat_task is not None:
+                await heartbeat_task
 
     async def batch(self) -> int:
         jobs = await self.rpc(
