@@ -6,6 +6,7 @@ type ExportJob = {
   id: string;
   status: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "expired";
   requested_at: string;
+  expires_at?: string | null;
   completed_at?: string | null;
   error_code?: string | null;
   file_size_bytes?: number | null;
@@ -170,7 +171,7 @@ export default function AccountDataLifecyclePanel({ apiBase, accessToken }: Prop
               <article className="social-row" key={item.id}>
                 <div>
                   <strong>{statusLabel(item.status)}</strong>
-                  <p className="muted">Diminta: {new Date(item.requested_at).toLocaleString("id-ID")}</p>
+                  <p className="muted">Diminta: {new Date(item.requested_at).toLocaleString("id-ID")}{item.expires_at ? " · Kedaluwarsa " + new Date(item.expires_at).toLocaleString("id-ID") : ""}</p>
                   {item.file_size_bytes ? <small className="muted">Ukuran: {Math.ceil(item.file_size_bytes / 1024)} KB</small> : null}
                   {item.error_code ? <small className="notice error">{item.error_code}</small> : null}
                 </div>
