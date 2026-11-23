@@ -269,7 +269,7 @@ def test_source_policy_update_requires_registered_source_and_safe_handler(monkey
         calls.append((method, table, params, body, prefer))
         if table == "rpc/list_account_deletion_source_registry":
             return [{"source_key": "profile", "table_name": "profiles", "filter_kind": "owner_columns",
-                     "owner_columns": ["id"], "enabled": True}]
+                     "owner_columns": ["id"], "enabled": True, "deletion_handler_available": True}]
         if table == "account_deletion_source_policies":
             return [{**body, "source_key": "profile"}]
         return []
@@ -295,7 +295,7 @@ def test_source_policy_update_requires_registered_source_and_safe_handler(monkey
 def test_source_policy_rejects_delete_rows_without_owner_scoped_handler(monkeypatch):
     async def privileged(method, table, *, params=None, body=None, prefer=None):
         return [{"source_key": "unmapped_shared_messages", "table_name": "messages",
-                 "filter_kind": "participant_conversations", "owner_columns": [], "enabled": True}]
+                 "filter_kind": "participant_conversations", "owner_columns": [], "enabled": True, "deletion_handler_available": False}]
 
     async def audit(request, **kwargs):
         return None
@@ -363,7 +363,7 @@ def test_source_policy_allows_registered_specialized_owner_safe_handler(monkeypa
         calls.append((method, table, body))
         if table == "rpc/list_account_deletion_source_registry":
             return [{"source_key": "messages_in_conversations", "table_name": "messages",
-                     "filter_kind": "conversation_messages", "owner_columns": [], "enabled": True}]
+                     "filter_kind": "conversation_messages", "owner_columns": [], "enabled": True, "deletion_handler_available": True}]
         if table == "account_deletion_source_policies":
             return [{**body, "source_key": "messages_in_conversations"}]
         return []
