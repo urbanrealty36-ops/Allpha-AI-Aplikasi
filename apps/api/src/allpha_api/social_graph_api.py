@@ -227,57 +227,66 @@ async def get_social_recommendations(
         str(row["target_user_id"]) for row in active_follow_rows
         if row.get("target_user_id") and str(row["target_user_id"]) != viewer_id
     })
-    if not followed_ids:
-        return {"items": [], "count": 0, "strategy": "mutual_connections"}
+    viewer_interest_rows = await _rows("GET", "user_interests", token, params={
+        "select": "interest_key", "user_id": f"eq.{viewer_id}",
+        "preference": "eq.interested", "limit": "100",
+    })
+    viewer_interest_keys = sorted({
+        str(row["interest_key"]) for row in viewer_interest_rows
+        if row.get("interest_key")
+    })
+    if not followed_ids and (node_type == "agent" or not viewer_interest_keys):
+        return {"items": [], "count": 0, "strategy": "mutual_connections_and_shared_interests"}
 
-    followee_profiles = await _server_db("GET", "profiles", params={
-        "select": "id,visibility,account_status", "id": "in.(" + ",".join(followed_ids) + ")",
-        "visibility": "eq.public", "account_status": "eq.active", "limit": str(len(followed_ids)),
-    })
-    followee_settings = await _server_db("GET", "user_settings", params={
-        "select": "user_id,privacy_settings", "user_id": "in.(" + ",".join(followed_ids) + ")",
-        "limit": str(len(followed_ids)),
-    })
+    followee_profiles = []
+    followee_settings = []
+    if followed_ids:
+        followee_profiles = await _server_db("GET", "profiles", params={
+            "select": "id,visibility,account_status", "id": "in.(" + ",".join(followed_ids) + ")",
+            "visibility": "eq.public", "account_status": "eq.active", "limit": str(len(followed_ids)),
+        })
+        followee_settings = await _server_db("GET", "user_settings", params={
+            "select": "user_id,privacy_settings", "user_id": "in.(" + ",".join(followed_ids) + ")",
+            "limit": str(len(followed_ids)),
+        })
     discoverable_followees = {
         str(row["user_id"]) for row in (followee_settings or [])
         if isinstance(row.get("privacy_settings"), dict)
         and row["privacy_settings"].get("discoverable_by_username") is True
-        and row["privacy_settings"].get("profile_visibility") == "public"
     }
     visible_followees = {
         str(row["id"]) for row in (followee_profiles or [])
         if row.get("visibility") == "public" and row.get("account_status") == "active"
         and str(row["id"]) in discoverable_followees
     }
-    if not visible_followees:
-        return {"items": [], "count": 0, "strategy": "mutual_connections"}
 
-    graph_edges = await _server_db("GET", "social_edges", params={
-        "select": "actor_user_id,target_user_id",
-        "target_user_id": "in.(" + ",".join(sorted(visible_followees)) + ")",
-        "actor_node_type": "eq.human", "target_node_type": "eq.human",
-        "edge_type": "eq.follow", "status": "eq.active", "limit": "5000",
-    })
+    graph_edges = []
+    if visible_followees:
+        graph_edges = await _server_db("GET", "social_edges", params={
+            "select": "actor_user_id,target_user_id",
+            "target_user_id": "in.(" + ",".join(sorted(visible_followees)) + ")",
+            "actor_node_type": "eq.human", "target_node_type": "eq.human",
+            "edge_type": "eq.follow", "status": "eq.active", "limit": "5000",
+        })
     source_ids = sorted({
         str(row["actor_user_id"]) for row in (graph_edges or [])
         if row.get("actor_user_id") and str(row["actor_user_id"]) != viewer_id
     })
-    if not source_ids:
-        return {"items": [], "count": 0, "strategy": "mutual_connections"}
-
-    source_profiles = await _server_db("GET", "profiles", params={
-        "select": "id,visibility,account_status", "id": "in.(" + ",".join(source_ids[:500]) + ")",
-        "visibility": "eq.public", "account_status": "eq.active", "limit": str(min(500, len(source_ids))),
-    })
-    source_settings = await _server_db("GET", "user_settings", params={
-        "select": "user_id,privacy_settings", "user_id": "in.(" + ",".join(source_ids[:500]) + ")",
-        "limit": str(min(500, len(source_ids))),
-    })
+    source_profiles = []
+    source_settings = []
+    if source_ids:
+        source_profiles = await _server_db("GET", "profiles", params={
+            "select": "id,visibility,account_status", "id": "in.(" + ",".join(source_ids[:500]) + ")",
+            "visibility": "eq.public", "account_status": "eq.active", "limit": str(min(500, len(source_ids))),
+        })
+        source_settings = await _server_db("GET", "user_settings", params={
+            "select": "user_id,privacy_settings", "user_id": "in.(" + ",".join(source_ids[:500]) + ")",
+            "limit": str(min(500, len(source_ids))),
+        })
     discoverable_sources = {
         str(row["user_id"]) for row in (source_settings or [])
         if isinstance(row.get("privacy_settings"), dict)
         and row["privacy_settings"].get("discoverable_by_username") is True
-        and row["privacy_settings"].get("profile_visibility") == "public"
     }
     visible_sources = {
         str(row["id"]) for row in (source_profiles or [])
@@ -289,10 +298,22 @@ async def get_social_recommendations(
         candidate_id = str(edge.get("actor_user_id") or "")
         if candidate_id in visible_sources and candidate_id != viewer_id:
             mutual_counts[candidate_id] = mutual_counts.get(candidate_id, 0) + 1
-    if not mutual_counts:
-        return {"items": [], "count": 0, "strategy": "mutual_connections"}
+
+    interest_candidate_rows = []
+    if viewer_interest_keys:
+        interest_candidate_rows = await _server_db("POST", "rpc/find_interest_discovery_candidates", body={
+            "p_interest_keys": viewer_interest_keys,
+            "p_limit": 5000,
+        })
+    interest_counts: dict[str, int] = {}
+    for row in interest_candidate_rows or []:
+        candidate_id = str(row.get("user_id") or "")
+        if candidate_id and candidate_id != viewer_id:
+            interest_counts[candidate_id] = interest_counts.get(candidate_id, 0) + 1
 
     if node_type == "agent":
+        if not mutual_counts:
+            return {"items": [], "count": 0, "strategy": "mutual_connection_owners"}
         owner_ids = sorted(mutual_counts)
         agent_rows = await _server_db("GET", "ai_agents", params={
             "select": "id,created_by,handle,display_name,avatar_url,description,visibility,status",
@@ -348,7 +369,7 @@ async def get_social_recommendations(
             and str(row.get("id")) not in hidden_agent_ids
         ]
         eligible_agents.sort(key=lambda row: (
-            -mutual_counts.get(str(row.get("created_by")), 0),
+            -(mutual_counts.get(str(row.get("created_by")), 0) * 2 + interest_counts.get(str(row.get("created_by")), 0) * 3),
             str(row.get("display_name") or "").casefold(),
             str(row.get("id") or ""),
         ))
@@ -357,11 +378,23 @@ async def get_social_recommendations(
             "display_name": row.get("display_name"), "avatar_url": row.get("avatar_url"),
             "description": row.get("description"),
             "mutual_followers_count": mutual_counts.get(str(row.get("created_by")), 0),
-            "reason": "owned_by_mutual_connection",
+            "shared_interests_count": interest_counts.get(str(row.get("created_by")), 0),
+            "recommendation_score": mutual_counts.get(str(row.get("created_by")), 0) * 2 + interest_counts.get(str(row.get("created_by")), 0) * 3,
+            "reason": "owned_by_mutual_connection_and_shared_interests" if interest_counts.get(str(row.get("created_by")), 0) else "owned_by_mutual_connection",
         } for row in eligible_agents[:limit]]
-        return {"items": items, "count": len(items), "strategy": "mutual_connection_owners"}
+        return {"items": items, "count": len(items), "strategy": "mutual_connection_owners_and_shared_interests"}
 
-    ranked_ids = sorted(mutual_counts, key=lambda candidate_id: (-mutual_counts[candidate_id], candidate_id))
+    candidate_pool = set(mutual_counts) | set(interest_counts)
+    if not candidate_pool:
+        return {"items": [], "count": 0, "strategy": "mutual_connections_and_shared_interests"}
+    ranked_ids = sorted(
+        candidate_pool,
+        key=lambda candidate_id: (
+            -(mutual_counts.get(candidate_id, 0) * 2 + interest_counts.get(candidate_id, 0) * 3),
+            -mutual_counts.get(candidate_id, 0),
+            candidate_id,
+        ),
+    )
     candidate_ids = ranked_ids[: min(200, limit * 4)]
     candidate_filter = "in.(" + ",".join(candidate_ids) + ")"
 
@@ -403,7 +436,6 @@ async def get_social_recommendations(
         str(row["user_id"]) for row in (candidate_settings or [])
         if isinstance(row.get("privacy_settings"), dict)
         and row["privacy_settings"].get("discoverable_by_username") is True
-        and row["privacy_settings"].get("profile_visibility") == "public"
     }
     profiles_by_id = {
         str(row["id"]): row for row in (candidate_profiles or [])
@@ -414,15 +446,20 @@ async def get_social_recommendations(
         profile = profiles_by_id.get(candidate_id)
         if not profile or candidate_id not in discoverable or candidate_id in excluded_ids:
             continue
+        mutual_count = mutual_counts.get(candidate_id, 0)
+        shared_count = interest_counts.get(candidate_id, 0)
         items.append({
             "id": candidate_id, "username": profile.get("username"),
             "display_name": profile.get("display_name"), "avatar_url": profile.get("avatar_url"),
-            "bio": profile.get("bio"), "mutual_followers_count": mutual_counts[candidate_id],
-            "reason": "mutual_connections",
+            "bio": profile.get("bio"), "mutual_followers_count": mutual_count,
+            "shared_interests_count": shared_count,
+            "recommendation_score": mutual_count * 2 + shared_count * 3,
+            "reason": "mutual_connections_and_shared_interests" if mutual_count and shared_count else "shared_interests" if shared_count else "mutual_connections",
         })
         if len(items) >= limit:
             break
-    return {"items": items, "count": len(items), "strategy": "mutual_connections"}
+    strategy = "mutual_connections_and_shared_interests" if mutual_counts and interest_counts else "shared_interests" if interest_counts else "mutual_connections"
+    return {"items": items, "count": len(items), "strategy": strategy}
 
 
 @router.get("/activity")
