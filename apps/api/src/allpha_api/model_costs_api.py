@@ -21,7 +21,7 @@ from allpha_api.operator_security import (
 
 router = APIRouter(prefix="/v1/admin/model-costs", tags=["model-cost-operations"])
 _FIELDS = (
-    "id,provider_id,model_id,model_version,pricing_version,cost_unit,"
+    "id,capability,provider_id,model_id,model_version,pricing_version,cost_unit,"
     "input_micro_cost_per_token,output_micro_cost_per_token,max_cost_microunits,"
     "max_prompt_bytes,max_output_tokens,max_latency_ms,status,policy_version,policy_approved,"
     "policy_approval_reference,policy_approved_by,policy_approved_at,effective_at,created_by,updated_by,created_at,updated_at"
@@ -30,6 +30,7 @@ _FIELDS = (
 
 class ModelCostCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    capability: Literal["text_generation", "embedding", "image_generation", "video_generation", "reranking"] = "text_generation"
     provider_id: str = Field(min_length=2, max_length=80, pattern=r"^[a-z0-9][a-z0-9._-]*$")
     model_id: str = Field(min_length=2, max_length=180)
     model_version: str = Field(min_length=1, max_length=180)
@@ -46,6 +47,7 @@ class ModelCostCreate(BaseModel):
 
 class ModelCostUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    capability: Literal["text_generation", "embedding", "image_generation", "video_generation", "reranking"] | None = None
     model_version: str | None = Field(default=None, min_length=1, max_length=180)
     pricing_version: str | None = Field(default=None, min_length=1, max_length=80, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
     policy_version: str | None = Field(default=None, min_length=1, max_length=80, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
@@ -280,7 +282,7 @@ async def create_model_cost_config(
     await write_operator_audit(
         request, actor_user_id=operator["id"], action="model_cost.create", outcome="allowed",
         resource_type="ai_model_cost_config", resource_id=str(item["id"]),
-        metadata={"provider_id": item["provider_id"], "model_id": item["model_id"], "pricing_version": item["pricing_version"], "status": "draft"},
+        metadata={"capability": item["capability"], "provider_id": item["provider_id"], "model_id": item["model_id"], "pricing_version": item["pricing_version"], "status": "draft"},
     )
     return {"item": item, "runtime_enabled": False}
 
@@ -297,7 +299,7 @@ async def update_model_cost_config(
         raise HTTPException(status_code=422, detail={"code": "MODEL_COST_EMPTY_UPDATE", "message": "Tidak ada perubahan konfigurasi."})
     current = await privileged_rest_request(
         "GET", "ai_model_cost_configs",
-        params={"select": "id,provider_id,model_id,pricing_version,status", "id": f"eq.{config_id}", "limit": "1"},
+        params={"select": "id,capability,provider_id,model_id,pricing_version,status", "id": f"eq.{config_id}", "limit": "1"},
     )
     if not current:
         raise HTTPException(status_code=404, detail={"code": "MODEL_COST_NOT_FOUND", "message": "Konfigurasi biaya tidak ditemukan."})
@@ -340,7 +342,7 @@ async def activate_model_cost_config(
     # tariff per provider/model. The route never approves model execution policy.
     existing = await privileged_rest_request(
         "GET", "ai_model_cost_configs",
-        params={"select": "id", "provider_id": f"eq.{item['provider_id']}", "model_id": f"eq.{item['model_id']}", "status": "eq.active", "limit": "1"},
+        params={"select": "id", "provider_id": f"eq.{item['provider_id']}", "model_id": f"eq.{item['model_id']}", "capability": f"eq.{item['capability']}", "status": "eq.active", "limit": "1"},
     )
     if existing:
         raise HTTPException(status_code=409, detail={"code": "MODEL_COST_ACTIVE_VERSION_EXISTS", "message": "Tarif aktif untuk provider/model ini sudah ada. Arsipkan versi lama melalui prosedur terkontrol sebelum mengaktifkan versi baru."})
@@ -401,7 +403,7 @@ async def approve_model_execution_policy(
         request, actor_user_id=operator["id"], action="model_cost.policy_approve", outcome="allowed",
         resource_type="ai_model_cost_config", resource_id=str(config_id),
         metadata={
-            "provider_id": approved["provider_id"], "model_id": approved["model_id"],
+            "capability": approved["capability"], "provider_id": approved["provider_id"], "model_id": approved["model_id"],
             "model_version": approved["model_version"], "pricing_version": approved["pricing_version"],
             "policy_version": approved["policy_version"], "approval_reference": payload.approval_reference,
             "reason": payload.reason,
@@ -438,7 +440,7 @@ async def revoke_model_execution_policy(
     await write_operator_audit(
         request, actor_user_id=operator["id"], action="model_cost.policy_revoke", outcome="allowed",
         resource_type="ai_model_cost_config", resource_id=str(config_id),
-        metadata={"provider_id": item["provider_id"], "model_id": item["model_id"],
+        metadata={"capability": item["capability"], "provider_id": item["provider_id"], "model_id": item["model_id"],
                   "pricing_version": item["pricing_version"], "policy_version": item["policy_version"],
                   "reason": payload.reason},
     )
