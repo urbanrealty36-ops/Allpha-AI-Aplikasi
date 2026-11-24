@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import pytest
 
 from allpha_api.knowledge_policy import (
+    KnowledgePolicyDenied,
     KnowledgePolicySnapshot,
     KnowledgePolicyUnavailable,
     VersionedKnowledgePolicyResolver,
@@ -148,3 +149,25 @@ def test_policy_factory_returns_none_when_provider_has_no_resolve_method(monkeyp
         lambda _module_name: SimpleNamespace(build_provider=lambda: object()),
     )
     assert load_policy_resolver_from_environment() is None
+
+
+
+def test_verified_knowledge_consent_revocation_is_a_distinct_policy_denial():
+    async def scenario():
+        resolver = VersionedKnowledgePolicyResolver(Provider(snapshot(consent_revoked=True)))
+        with pytest.raises(KnowledgePolicyDenied):
+            await resolver.resolve(owner_id="owner-a", agent_id="agent-a")
+
+    asyncio.run(scenario())
+
+
+def test_retrieval_policy_maps_verified_consent_denial_to_access_denied():
+    from allpha_api.knowledge_retrieval import KnowledgeAccessDenied, VersionedKnowledgeRetrievalPolicy
+
+    async def scenario():
+        resolver = VersionedKnowledgePolicyResolver(Provider(snapshot(grants_active=False)))
+        policy = VersionedKnowledgeRetrievalPolicy(resolver)
+        with pytest.raises(KnowledgeAccessDenied):
+            await policy.allowed_sensitivities(owner_id="owner-a", agent_id="agent-a")
+
+    asyncio.run(scenario())
