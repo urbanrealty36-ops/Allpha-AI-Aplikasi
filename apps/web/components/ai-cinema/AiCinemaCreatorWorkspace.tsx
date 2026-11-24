@@ -189,8 +189,10 @@ export default function AiCinemaCreatorWorkspace() {
   const [episodes, setEpisodes] = useState<DraftEpisode[]>([]);
   const [readyMedia, setReadyMedia] = useState<ReadyMedia[]>([]);
   const [creatorMedia, setCreatorMedia] = useState<CreatorMedia[]>([]);
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [featureFilmFile, setFeatureFilmFile] = useState<File | null>(null);
+  const [episodePartFile, setEpisodePartFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadingKind, setUploadingKind] = useState<"feature" | "episode" | null>(null);
   const [selectedMediaId, setSelectedMediaId] = useState("");
   const [selectedTitleId, setSelectedTitleId] = useState("");
   const [title, setTitle] = useState("");
@@ -620,20 +622,20 @@ export default function AiCinemaCreatorWorkspace() {
     } finally { setGenerationBusy(false); }
   }
 
-  async function uploadCinemaMedia() {
-    if (!uploadFile || !uploadFile.type.startsWith("video/")) { setError("Pilih file video MP4 atau WebM terlebih dahulu."); return; }
-    if (uploadFile.size <= 0 || uploadFile.size > 50 * 1024 * 1024) { setError("Ukuran video harus lebih dari 0 dan maksimal 50 MiB."); return; }
-    setSaving(true); setError(""); setNotice(""); setUploadProgress(0);
+  async function uploadCinemaMedia(file: File | null, kind: "feature" | "episode") {
+    if (!file || !file.type.startsWith("video/")) { setError("Pilih file video MP4 atau WebM terlebih dahulu."); return; }
+    if (file.size <= 0 || file.size > 50 * 1024 * 1024) { setError("Ukuran video harus lebih dari 0 dan maksimal 50 MiB."); return; }
+    setSaving(true); setError(""); setNotice(""); setUploadProgress(0); setUploadingKind(kind);
     try {
-      const digest = await sha256File(uploadFile);
-      const sessionKey = "allpha:cinema:upload:current";
+      const digest = await sha256File(file);
+      const sessionKey = "allpha:cinema:upload:" + kind + ":current";
       let saved: PersistedCinemaUpload | null = null;
       try {
         const raw = window.localStorage.getItem(sessionKey);
         saved = raw ? JSON.parse(raw) as PersistedCinemaUpload : null;
       } catch { saved = null; }
       const sameSavedFile = Boolean(
-        saved && saved.filename === uploadFile.name && saved.size === uploadFile.size && saved.sha256 === digest,
+        saved && saved.filename === file.name && saved.size === file.size && saved.sha256 === digest,
       );
       let contentId = sameSavedFile ? saved!.contentId : "";
       let mediaId = sameSavedFile ? saved!.mediaId : "";
@@ -645,7 +647,7 @@ export default function AiCinemaCreatorWorkspace() {
         contentId = draft.item.id;
         mediaId = crypto.randomUUID();
         const next: PersistedCinemaUpload = {
-          contentId, mediaId, filename: uploadFile.name, size: uploadFile.size, sha256: digest,
+          contentId, mediaId, filename: file.name, size: file.size, sha256: digest,
         };
         window.localStorage.setItem(sessionKey, JSON.stringify(next));
       }
@@ -655,9 +657,9 @@ export default function AiCinemaCreatorWorkspace() {
           method: "POST",
           headers: { "Idempotency-Key": mediaId },
           body: JSON.stringify({
-            filename: uploadFile.name,
-            media_type: uploadFile.type,
-            size_bytes: uploadFile.size,
+            filename: file.name,
+            media_type: file.type,
+            size_bytes: file.size,
             sha256: digest,
           }),
         },
@@ -667,7 +669,7 @@ export default function AiCinemaCreatorWorkspace() {
         const publishableKey = getBrowserSupabasePublishableKey();
         if (!supabase || !publishableKey) throw new Error("Autentikasi Storage belum tersedia.");
         try {
-          await uploadFileWithTus(uploadFile, init, publishableKey, mediaId, setUploadProgress);
+          await fileWithTus(file, init, publishableKey, mediaId, setUploadProgress);
         } catch (cause) {
           if (!(cause instanceof Error) || cause.message !== "MEDIA_OBJECT_ALREADY_EXISTS") throw cause;
         }
@@ -683,7 +685,7 @@ export default function AiCinemaCreatorWorkspace() {
       await loadCreatorMedia();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Upload video AI Cinema gagal. Sesi tersimpan untuk dicoba kembali.");
-    } finally { setSaving(false); }
+    } finally { setSaving(false); setUploadingKind(null); }
   }
 
   async function createTitle(event: FormEvent<HTMLFormElement>) {
@@ -871,14 +873,25 @@ export default function AiCinemaCreatorWorkspace() {
             <button type="button" onClick={() => void submitForReview()} disabled={saving || !selectedTitleId || !rightsConfirmed || !aiDisclosureConfirmed} className="w-full rounded-xl border-2 border-slate-900 bg-rose-100 px-4 py-3 text-sm font-black text-rose-900 shadow-[2px_2px_0px_#0f172a] disabled:opacity-40">{saving ? "Mengajukan…" : "Ajukan rights review & moderasi"}</button>
             <p className="text-xs text-slate-600">API akan menolak pengajuan jika episode belum memiliki media ready dan scan clean. Keputusan hak cipta dan moderasi tetap dilakukan operator.</p>
           </div>
-          <section className="space-y-3 rounded-2xl border-2 border-slate-900 bg-white p-4">
-            <h3 className="font-bold">Upload video film · Media Pipeline</h3>
-            <p className="text-xs text-slate-600">MP4/WebM maksimal 50 MiB per file. Upload memakai TUS resumable ke Supabase Storage melalui token bertanda tangan dari FastAPI; sesi dapat dilanjutkan setelah koneksi terputus atau halaman dimuat ulang dengan memilih file yang sama.</p>
-            <input type="file" accept="video/mp4,video/webm" onChange={event => { setUploadFile(event.target.files?.[0] ?? null); }} className="block w-full text-xs text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-sky-300 file:border-2 file:border-slate-900 file:px-3 file:py-2 file:text-xs file:font-black file:text-slate-950" />
-            {uploadFile && <p className="text-xs text-slate-700">{uploadFile.name} · {(uploadFile.size / 1024 / 1024).toFixed(1)} MiB</p>}
-            {saving && <p className="text-xs font-semibold text-slate-700">Upload {uploadProgress}% · dapat dilanjutkan jika koneksi terputus</p>}
-            <button type="button" onClick={() => void uploadCinemaMedia()} disabled={saving || !uploadFile} className="w-full rounded-xl bg-sky-300 px-4 py-3 text-sm font-black text-slate-950 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] disabled:opacity-50">{saving ? "Mengunggah…" : "Unggah video ke Media Pipeline"}</button>
-            <div className="space-y-1 border-t border-slate-900 pt-3"><p className="text-xs font-bold text-slate-700">Status media saya</p>{creatorMedia.length ? creatorMedia.map(media => <p key={media.id} className="text-xs text-slate-600">{media.filename} · {media.status} · scan {media.scan_status}{media.processed_at ? " · diproses " + new Date(media.processed_at).toLocaleString("id-ID") : ""}</p>) : <p className="text-xs text-slate-600">Belum ada media milik akun ini.</p>}</div>
+          <section className="space-y-4 rounded-2xl border-2 border-slate-900 bg-white p-4">
+            <div className="space-y-2 border-b border-slate-200 pb-4">
+              <h3 className="font-bold">Upload film utama</h3>
+              <p className="text-xs text-slate-600">File master film diunggah terpisah dari part/episode. MP4/WebM maksimal 50 MiB per file sesuai batas bucket saat ini. TUS resumable memakai token object-scoped dari FastAPI.</p>
+              <input type="file" accept="video/mp4,video/webm" onChange={event => setFeatureFilmFile(event.target.files?.[0] ?? null)} className="block w-full text-xs text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-sky-300 file:border-2 file:border-slate-900 file:px-3 file:py-2 file:text-xs file:font-black file:text-slate-950" />
+              {featureFilmFile && <p className="text-xs text-slate-700">{featureFilmFile.name} · {(featureFilmFile.size / 1024 / 1024).toFixed(1)} MiB</p>}
+              {uploadingKind === "feature" && <p className="text-xs font-semibold text-slate-700">Upload film utama {uploadProgress}% · sesi dapat dilanjutkan</p>}
+              <button type="button" onClick={() => void uploadCinemaMedia(featureFilmFile, "feature")} disabled={saving || !featureFilmFile || !selectedTitleId} className="w-full rounded-xl bg-sky-300 px-4 py-3 text-sm font-black text-slate-950 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] disabled:opacity-50">{uploadingKind === "feature" ? "Mengunggah film utama…" : "Unggah file film utama"}</button>
+              <p className="text-xs text-slate-500">Setelah status ready dan scan clean, tautkan ke Asset Library film dengan peran <strong>source_video</strong>.</p>
+            </div>
+            <div className="space-y-2 border-b border-slate-200 pb-4">
+              <h3 className="font-bold">Upload part / segmen episode</h3>
+              <p className="text-xs text-slate-600">Setiap part memiliki file dan sesi TUS sendiri. Setelah pemrosesan selesai, pilih file tersebut pada formulir Tambah draft episode di bawah.</p>
+              <input type="file" accept="video/mp4,video/webm" onChange={event => setEpisodePartFile(event.target.files?.[0] ?? null)} className="block w-full text-xs text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-rose-200 file:border-2 file:border-slate-900 file:px-3 file:py-2 file:text-xs file:font-black file:text-slate-950" />
+              {episodePartFile && <p className="text-xs text-slate-700">{episodePartFile.name} · {(episodePartFile.size / 1024 / 1024).toFixed(1)} MiB</p>}
+              {uploadingKind === "episode" && <p className="text-xs font-semibold text-slate-700">Upload part {uploadProgress}% · sesi dapat dilanjutkan</p>}
+              <button type="button" onClick={() => void uploadCinemaMedia(episodePartFile, "episode")} disabled={saving || !episodePartFile || !selectedTitleId} className="w-full rounded-xl bg-rose-300 px-4 py-3 text-sm font-black text-slate-950 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] disabled:opacity-50">{uploadingKind === "episode" ? "Mengunggah part…" : "Unggah file part / segmen"}</button>
+            </div>
+            <div className="space-y-1 pt-1"><p className="text-xs font-bold text-slate-700">Status media saya</p>{creatorMedia.length ? creatorMedia.map(media => <p key={media.id} className="text-xs text-slate-600">{media.filename} · {media.status} · scan {media.scan_status}{media.processed_at ? " · diproses " + new Date(media.processed_at).toLocaleString("id-ID") : ""}</p>) : <p className="text-xs text-slate-600">Belum ada media milik akun ini.</p>}</div>
           </section>
           <form onSubmit={createEpisode} className="space-y-3 rounded-2xl border-2 border-slate-900 bg-white p-4">
             <h3 className="font-bold">Tambah draft episode</h3>
