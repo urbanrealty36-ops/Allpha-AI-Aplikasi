@@ -106,10 +106,35 @@ async def _scan(data: bytes,filename: str,media_type: str):
             raise HTTPException(422,detail={"code":"MALWARE_SCAN_REJECTED","message":"ClamAV mendeteksi konten berbahaya."})
         if process.returncode!=0:
             raise HTTPException(503,detail={"code":"SCANNER_UNAVAILABLE","message":"ClamAV tidak memberikan verdict; dokumen tetap dikarantina."})
-        return
+        try:
+            version_process = await asyncio.create_subprocess_exec(
+                "clamdscan", "--version",
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            )
+            version_stdout, _ = await asyncio.wait_for(version_process.communicate(), timeout=5)
+            version_text = version_stdout.decode("utf-8", errors="replace").strip()
+            version_match = re.search(r"ClamAV\\s+([^/\\s]+)/([^/\\s]+)/(.+)", version_text)
+            if version_process.returncode != 0 or not version_match:
+                raise ValueError("ClamAV engine/signature identity is unavailable")
+        except (OSError, asyncio.TimeoutError, ValueError) as exc:
+            raise HTTPException(503,detail={"code":"SCANNER_UNAVAILABLE","message":"Versi engine/signature ClamAV tidak dapat diverifikasi; dokumen tetap dikarantina."}) from exc
+        return {
+            "scanner_id": "clamav-local",
+            "engine_version": version_match.group(1),
+            "signature_version": version_match.group(2) + "/" + version_match.group(3),
+            "sha256": hashlib.sha256(data).hexdigest(),
+            "contract_version": "allpha.local-clamav.v1",
+        }
     try:
         scanner = RemoteDocumentScanner.from_environment()
-        return await scanner.scan(data, filename=filename, media_type=media_type)
+        receipt = await scanner.scan(data, filename=filename, media_type=media_type)
+        return {
+            "scanner_id": receipt.scanner_id,
+            "engine_version": receipt.engine_version,
+            "signature_version": receipt.signature_version,
+            "sha256": receipt.sha256,
+            "contract_version": receipt.contract_version,
+        }
     except DocumentScannerConfigurationError as exc:
         raise HTTPException(503,detail={"code":"SCANNER_NOT_CONFIGURED","message":"Pemindai malware memerlukan URL HTTPS, credential, dan hostname allowlist yang valid."}) from exc
     except DocumentMalwareDetected as exc:
