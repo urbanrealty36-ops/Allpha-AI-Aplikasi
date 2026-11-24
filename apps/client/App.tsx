@@ -84,6 +84,7 @@ type RuntimePlannerEvidence = { model_id?: string; provider_id?: string; input_t
 type ChallengeSkill = { id: string; agent_id: string; slug: string; name: string; status: string; version: number; tests?: Record<string, unknown>[]; hidden_challenges_available?: boolean; evaluation_rubric_available?: boolean };
 type ChallengeRun = { id: string; agent_id: string; skill_id: string; agent_version: number; skill_version: number; challenge_key: string; status: string; challenge_input: Record<string, unknown>; evaluation_result?: Record<string, unknown> | null; evidence_digest?: string | null; runtime_evidence_digest?: string | null; previous_version_comparison?: Record<string, unknown> | null; release_decision?: string | null; release_decision_reason?: string | null; created_at: string };
 type RuntimeTask = { id: string; session_id: string; skill_id: string; tool_key?: string; state: string; input_payload?: Record<string, unknown>; output_payload?: Record<string, unknown> | null; error_code?: string | null; created_at: string; updated_at: string; trace_id: string };
+type RuntimeExecutionEvent = { id: string; sequence: number; trace_id: string; event_type: string; state: string; step_key: string; details: Record<string, unknown>; created_at: string };
 type KnowledgeSource = { id: string; filename: string; size_bytes: number; sha256: string; status: string; processing_stage: string; sensitivity?: "public" | "internal" | "confidential" | "restricted" | null; error_code?: string | null; created_at: string; latest_job?: { id: string; status: string; stage: string; attempt: number; progress: number; error_code?: string | null } | null };
 type KnowledgeRetrievalResult = { source_id: string; source_version: number; chunk_id: string; content: string; content_sha256: string; source_location: Record<string, unknown>; sensitivity: string; retrieval_method: "vector" | "keyword" | "hybrid"; score: number; provider_id?: string | null; model_id?: string | null; model_version?: string | null; index_generation?: string | null };
 type Profile = { id: string; username: string | null; display_name: string; avatar_url: string | null; bio: string; locale: "id-ID" | "en-US"; visibility: "public" | "private"; account_status?: "active" | "deactivation_requested"; created_at?: string };
@@ -628,6 +629,8 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
   const [runtimeSkills, setRuntimeSkills] = useState<Record<string, RuntimeSkill[]>>({});
   const [runtimeTools, setRuntimeTools] = useState<Record<string, RegisteredTool[]>>({});
   const [runtimeTasks, setRuntimeTasks] = useState<Record<string, RuntimeTask[]>>({});
+  const [runtimeExecutionEvents, setRuntimeExecutionEvents] = useState<Record<string, RuntimeExecutionEvent[]>>({});
+  const [runtimeExecutionEventErrors, setRuntimeExecutionEventErrors] = useState<Record<string, string>>({});
   const [runtimeSkillBySession, setRuntimeSkillBySession] = useState<Record<string, string>>({});
   const [runtimeToolBySession, setRuntimeToolBySession] = useState<Record<string, string>>({});
   const [runtimeInputsBySession, setRuntimeInputsBySession] = useState<Record<string, string>>({});
@@ -1227,9 +1230,23 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
     setRuntimeSkills(current => ({ ...current, [agentId]: skillsBody.items ?? [] }));
     setRuntimeTools(current => ({ ...current, [agentId]: (toolsBody.items ?? []).filter(tool => tool.executable) }));
   }
+  async function loadRuntimeTaskEvents(taskId: string) {
+    try {
+      const body = await apiRequest("/v1/agent-runtime/tasks/" + encodeURIComponent(taskId) + "/events") as { items?: RuntimeExecutionEvent[] };
+      setRuntimeExecutionEvents(current => ({ ...current, [taskId]: body.items ?? [] }));
+      setRuntimeExecutionEventErrors(current => ({ ...current, [taskId]: "" }));
+    } catch (cause) {
+      setRuntimeExecutionEventErrors(current => ({
+        ...current,
+        [taskId]: cause instanceof Error ? cause.message : "Execution trace belum tersedia.",
+      }));
+    }
+  }
   async function loadRuntimeSessionTasks(sessionId: string) {
     const body = await apiRequest("/v1/agent-runtime/sessions/" + encodeURIComponent(sessionId)) as { tasks?: RuntimeTask[] };
-    setRuntimeTasks(current => ({ ...current, [sessionId]: body.tasks ?? [] }));
+    const tasks = body.tasks ?? [];
+    setRuntimeTasks(current => ({ ...current, [sessionId]: tasks }));
+    await Promise.all(tasks.map(task => loadRuntimeTaskEvents(task.id)));
   }
   async function loadRuntimePlannerStatus() {
     try {
@@ -1329,6 +1346,7 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
         method: "POST", body: JSON.stringify(command),
       }) as { task: RuntimeTask; idempotent_replay?: boolean };
       setRuntimeTasks(current => ({ ...current, [item.id]: [body.task, ...(current[item.id] ?? []).filter(task => task.id !== body.task.id)] }));
+      await loadRuntimeTaskEvents(body.task.id);
       setRuntimeInputsBySession(current => ({ ...current, [item.id]: "{}" }));
       setRuntimePlanJsonBySession(current => ({ ...current, [item.id]: "" }));
       setRuntimePlannedToolPlanIdBySession(current => ({ ...current, [item.id]: "" }));
@@ -1370,6 +1388,7 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
     try {
       const body = await apiRequest("/v1/agent-runtime/tasks/" + encodeURIComponent(task.id) + "/" + action, { method: "POST", body: "{}" }) as { task: RuntimeTask };
       setRuntimeTasks(current => ({ ...current, [item.id]: (current[item.id] ?? []).map(value => value.id === task.id ? body.task : value) }));
+      await loadRuntimeTaskEvents(task.id);
       setMessage(action === "execute" ? "Permintaan eksekusi diproses oleh API." : action === "cancel" ? "Permintaan pembatalan diproses oleh API." : "Status dipulihkan tanpa replay otomatis.");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Operasi task gagal."); }
     finally { setRuntimeTaskBusy(null); }
@@ -2350,6 +2369,14 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
               {tasks.length === 0 ? <Text style={s.muted}>Belum ada task pada sesi ini.</Text> : tasks.map(task => <View key={task.id} style={s.card}>
                 <Text style={s.body}>{task.tool_key || "multi-step plan"} · {task.state}</Text><Text style={s.muted}>ID: {task.id} · {task.error_code ?? "Tanpa error"}</Text>
                 {task.output_payload && <Text style={s.muted}>Output: {JSON.stringify(task.output_payload)}</Text>}
+                <View style={{ marginTop: 8 }}>
+                  <Text style={s.kicker}>EXECUTION TRACE · {runtimeExecutionEvents[task.id]?.length ?? 0} EVENT</Text>
+                  {runtimeExecutionEventErrors[task.id] ? <Text style={s.muted}>{runtimeExecutionEventErrors[task.id]}</Text> :
+                    (runtimeExecutionEvents[task.id] ?? []).map(event => <Text key={event.id} style={s.muted}>
+                      #{event.sequence} · {event.state} · {event.step_key} · {new Date(event.created_at).toLocaleTimeString("id-ID")}
+                    </Text>)}
+                  <Button title="Muat trace" secondary disabled={runtimeTaskBusy === task.id} onPress={() => void loadRuntimeTaskEvents(task.id)}/>
+                </View>
                 <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
                   <Button title="Jalankan" secondary disabled={runtimeTaskBusy === task.id || task.state !== "created"} onPress={() => void runtimeTaskAction(item, task, "execute")}/>
                   <Button title="Batalkan" secondary disabled={runtimeTaskBusy === task.id || !["created","queued","waiting_for_approval","waiting_for_input"].includes(task.state)} onPress={() => void runtimeTaskAction(item, task, "cancel")}/>
