@@ -30,11 +30,15 @@ def run(args: list[str], sql: str | None = None, check: bool = True) -> subproce
 
 
 def psql(sql: str, check: bool = True) -> subprocess.CompletedProcess[str]:
-    return run(
+    result = run(
         ["docker", "exec", "-i", CONTAINER, "psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", "postgres"],
         sql,
-        check=check,
+        check=False,
     )
+    if check and result.returncode:
+        logs = run(["docker", "logs", CONTAINER], check=False)
+        raise RuntimeError(result.stdout + "\n" + result.stderr + "\nPostgreSQL container logs:\n" + logs.stdout + logs.stderr)
+    return result
 
 
 def as_user(user_id: str, sql: str, check: bool = True) -> subprocess.CompletedProcess[str]:
