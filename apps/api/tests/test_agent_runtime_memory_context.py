@@ -6,6 +6,7 @@ import pytest
 
 from allpha_api.agent_runtime_api import (
     _knowledge_context_snapshot, _memory_context_snapshot,
+    _validate_knowledge_context_provenance,
     _retrieve_agent_knowledge_context,
 )
 from allpha_api.knowledge_retrieval import KnowledgeRetrievalService, RetrievalHit
@@ -237,3 +238,33 @@ def test_knowledge_context_snapshot_drops_untrusted_source_location_metadata():
     assert context[0]["source_location"] == {"kind": "page", "index": 3}
     assert "raw_text" not in str(context)
     assert "raw_text" not in str(references)
+
+
+
+def test_task_knowledge_provenance_validator_accepts_content_free_references():
+    hit = knowledge_hit()
+    _, refs, _ = _knowledge_context_snapshot([hit])
+    digest = hashlib.sha256(b"planner knowledge context").hexdigest()
+    normalized, actual_digest, state = _validate_knowledge_context_provenance(refs, digest, "available")
+    assert normalized == refs
+    assert actual_digest == digest
+    assert state == "available"
+    assert "content" not in normalized[0]
+
+
+def test_task_knowledge_provenance_validator_rejects_raw_document_content():
+    hit = knowledge_hit()
+    _, refs, _ = _knowledge_context_snapshot([hit])
+    unsafe = [{**refs[0], "content": hit.content}]
+    with pytest.raises(Exception, match="metadata tanpa konten"):
+        _validate_knowledge_context_provenance(
+            unsafe, hashlib.sha256(b"planner knowledge context").hexdigest(), "available",
+        )
+
+
+def test_task_knowledge_provenance_validator_accepts_not_configured_empty_state():
+    empty_digest = hashlib.sha256(b"[]").hexdigest()
+    refs, digest, state = _validate_knowledge_context_provenance([], empty_digest, "not_configured")
+    assert refs == []
+    assert digest == empty_digest
+    assert state == "not_configured"
