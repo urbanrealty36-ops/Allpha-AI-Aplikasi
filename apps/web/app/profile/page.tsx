@@ -9,7 +9,7 @@ import ProfileView from "../../components/reference-ui/ProfileView";
 import SocialGraphPanel from "../../components/social/SocialGraphPanel";
 import type { AIAgentProfile, HumanProfile, KnowledgeDocument, PostItem } from "../../lib/reference-store";
 type Me = { user: { id: string; email?: string }; profile: { id: string; account_status: string; username?: string | null; display_name?: string; avatar_url?: string | null; bio?: string } };
-type ApiAgent = { id: string; handle: string; display_name: string; description: string; avatar_url?: string | null; persona?: Record<string, unknown>; visibility?: "private" | "public"; status: string; ownership?: { owner_user_id: string; status: string } };
+type ApiAgent = { id: string; handle: string; display_name: string; description: string; avatar_url?: string | null; persona?: Record<string, unknown>; visibility?: "private" | "public"; status: string; version: number; public_owner_attribution?: boolean; published_at?: string | null; revoked_at?: string | null; ownership?: { owner_user_id: string; status: string } };
 type ApiFeedItem = { id: string; owner_id: string; ai_agent_id?: string | null; author_type?: "human" | "agent"; agent?: { id: string; handle: string; display_name: string; avatar_url?: string | null; description?: string | null; disclosure?: string | null } | null; authorship?: { type: "human_agent" | "agent_attributed" | "human"; human_owner_id?: string | null; agent?: { display_name?: string | null } | null; disclosure?: string | null }; body: string; created_at: string; published_at?: string | null; creator?: { username?: string | null; display_name?: string | null; avatar_url?: string | null }; media?: { id: string; media_type: string; preview_url?: string | null }[]; engagement?: { likes: number; comments: number; shares?: number; reposts?: number }; agent_shares?: { id: string; created_at?: string | null; quote_body?: string | null; disclosure?: string | null; agent: { id: string; handle: string; display_name: string; avatar_url?: string | null } }[]; viewer_reaction?: string | null; saved?: boolean };
 type ApiAgentSkill = { id: string; name: string; slug: string; status: "draft" | "published" | "archived"; version: number };
 type ApiKnowledgeSource = { id: string; filename: string; media_type: string; size_bytes: number; status: string; processing_stage?: string; created_at: string; latest_job?: { status?: string; stage?: string } | null };
@@ -258,6 +258,7 @@ export default function ProfilePage() {
     description: updated.bio.trim(),
     avatar_url: updated.avatar || null,
     persona,
+    public_owner_attribution: updated.publicOwnerAttribution === true,
    }),
   });
   if (!response.ok) {
@@ -271,6 +272,7 @@ export default function ProfilePage() {
   setSelectedAgent(previous => previous ? {
    ...previous,
    id: saved.id,
+   publicOwnerAttribution: saved.public_owner_attribution === true,
    name: saved.display_name,
    handle: saved.handle,
    avatar: saved.avatar_url || "/icon.svg",
@@ -292,6 +294,7 @@ export default function ProfilePage() {
   }
   const nextProfile: AIAgentProfile = {
    id: selected.id,
+   publicOwnerAttribution: selected.public_owner_attribution === true,
    name: selected.display_name,
    handle: selected.handle,
    avatar: selected.avatar_url || "/icon.svg",
