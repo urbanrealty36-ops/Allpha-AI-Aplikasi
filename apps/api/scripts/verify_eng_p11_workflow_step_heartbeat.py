@@ -34,7 +34,7 @@ def psql(sql: str, check: bool = True) -> subprocess.CompletedProcess[str]:
     if check and result.returncode:
         logs = run(["docker", "logs", CONTAINER], check=False)
         raise RuntimeError(
-            result.stdout + "\\n" + result.stderr
+            result.stdout + "\n" + result.stderr
             + "\\nPostgreSQL container logs:\\n" + logs.stdout + logs.stderr
         )
     return result
