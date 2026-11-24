@@ -5,10 +5,12 @@ import subprocess, sys, time, uuid
 
 ROOT = Path(__file__).resolve().parents[3]
 MIGRATION = ROOT / "apps/api/supabase/migrations/20261122154257_eng_p06_skill_version_rollover_runtime_pinning.sql"
+INSTALLATION_MIGRATION = ROOT / "apps/api/supabase/migrations/20261124034103_eng_p06_skill_installation_licensing_runtime_gate.sql"
 NAME = "allpha-p06-" + uuid.uuid4().hex[:8]
 OWNER = "11111111-1111-4111-8111-111111111111"
 AGENT = "22222222-2222-4222-8222-222222222222"
 SKILL = "33333333-3333-4333-8333-333333333333"
+INSTALL_TARGET_AGENT = "66666666-6666-4666-8666-666666666666"
 
 def run(args, sql=None, check=True):
     result = subprocess.run(args, input=sql, text=True, capture_output=True)
@@ -39,20 +41,32 @@ create role anon nologin;
 create role authenticated nologin;
 create role service_role nologin bypassrls;
 create schema auth;
-create extension if not exists pgcrypto;
+create schema private;
+create schema extensions;
+create extension if not exists pgcrypto with schema extensions;
 create table auth.users(id uuid primary key);
-create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
-grant usage on schema auth to public;
-grant execute on function auth.uid() to public;
+create function auth.uid() returns uuid language sql stable as $ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $;
+create function auth.role() returns text language sql stable as $ select nullif(current_setting('request.jwt.claim.role',true),'') $;
+grant usage on schema auth,private,extensions to public;
+grant execute on function auth.uid(),auth.role() to public;
 create table public.ai_agents(id uuid primary key,visibility text not null,status text not null);
+create function private.has_agent_ownership(p_agent_id uuid,p_user_id uuid,p_role text)
+returns boolean language sql stable security definer set search_path=''
+as $ select exists(select 1 from public.agent_ownerships o where o.agent_id=p_agent_id and o.owner_user_id=p_user_id and o.ownership_role=p_role and o.status='active') $;
+grant execute on function private.has_agent_ownership(uuid,uuid,text) to public;
+create table private.account_export_sources(source_key text primary key,table_name text not null,filter_kind text not null,owner_columns text[] not null,sort_order integer not null,enabled boolean not null default true);
+create table public.account_deletion_source_policies(source_key text primary key,data_class text not null,deletion_action text not null,dependency_order integer not null,policy_version integer not null,reason text not null,approved_by uuid,approved_at timestamptz,active boolean not null default true,table_name text not null,filter_kind text not null,owner_columns text[] not null,decision_source text not null,decision_reference text not null,updated_at timestamptz not null default now());
+create table public.account_deletion_dependency_rules(child_schema text not null,child_table text not null,constraint_name text not null,fk_column text not null,delete_rule text not null,resolution_action text not null,reason text not null,active boolean not null default true,unique(child_schema,child_table,constraint_name));
+insert into public.account_deletion_source_policies(source_key,data_class,deletion_action,dependency_order,policy_version,reason,active,table_name,filter_kind,owner_columns,decision_source,decision_reference)
+values('agent_ownerships','agent_operational','preserve',51,1,'CI fixture owner policy',true,'agent_ownerships','owner_columns',array['owner_user_id'],'product_owner_directive','CI fixture only');
 create table public.agent_ownerships(agent_id uuid,owner_user_id uuid,ownership_role text,status text);
 grant select on public.agent_ownerships to authenticated, service_role;
 create table public.agent_skills(
  id uuid primary key default gen_random_uuid(),agent_id uuid not null,created_by uuid not null,
  slug text not null,name text not null,description text not null default '',category text not null default 'general',
  inputs_schema jsonb not null default '{"type":"object"}',outputs_schema jsonb not null default '{"type":"object"}',
- instructions text not null default '',constraints jsonb not null default '{}',tool_dependencies jsonb not null default '[]',
- required_permission_scopes jsonb not null default '[]',model_requirements jsonb not null default '{}',
+ instructions text not null default '',constraints jsonb not null default '{}',tool_dependencies text[] not null default '{}',
+ required_permission_scopes text[] not null default '{}',model_requirements jsonb not null default '{}',
  budget_limits jsonb not null default '{}',tests jsonb not null default '[]',evaluation_rubric jsonb not null default '{}',
  provenance jsonb not null default '{}',version integer not null default 1,changelog text not null default '',
  publication_terms jsonb not null default '{}',status text not null default 'draft',
@@ -89,14 +103,17 @@ grant select,insert,update,delete on public.agent_skills to service_role;
 grant select,insert,update,delete on public.agent_skill_versions to service_role;
 """)
         psql(MIGRATION.read_text(encoding="utf-8"))
+        psql(INSTALLATION_MIGRATION.read_text(encoding="utf-8"))
         psql("""
 insert into auth.users(id) values ('11111111-1111-4111-8111-111111111111');
 insert into public.ai_agents(id,visibility,status) values
  ('22222222-2222-4222-8222-222222222222','public','active'),
- ('44444444-4444-4444-8444-444444444444','private','active');
+ ('44444444-4444-4444-8444-444444444444','private','active'),
+ ('66666666-6666-4666-8666-666666666666','public','active');
 insert into public.agent_ownerships values
  ('22222222-2222-4222-8222-222222222222','11111111-1111-4111-8111-111111111111','owner','active'),
- ('44444444-4444-4444-8444-444444444444','11111111-1111-4111-8111-111111111111','owner','active');
+ ('44444444-4444-4444-8444-444444444444','11111111-1111-4111-8111-111111111111','owner','active'),
+ ('66666666-6666-4666-8666-666666666666','11111111-1111-4111-8111-111111111111','owner','active');
 """)
         # Owner can create only draft v1. The snapshot trigger writes as its definer.
         psql("""
@@ -166,7 +183,86 @@ begin
  if (select count(*) from public.agent_skill_publications where agent_id='44444444-4444-4444-8444-444444444444')<>0 then raise exception 'private Agent Skill leaked to public view'; end if;
 end $$;
 """)
-        print("PASS: ENG-P06 owner draft rollover, immutable publication snapshots, server-only publication, public Passport snapshot view, delete/DML restrictions and historical version retention.")
+        # A published source Skill can be installed only by the target Agent owner
+        # after explicit license acceptance. The cloned skill remains a draft.
+        psql("""
+set role authenticated;
+select set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',false);
+select set_config('request.jwt.claim.role','authenticated',false);
+select public.install_agent_skill(
+ '66666666-6666-4666-8666-666666666666',
+ '22222222-2222-4222-8222-222222222222',
+ '33333333-3333-4333-8333-333333333333',
+ 5,true,'p06-install-key-0001'
+);
+select public.install_agent_skill(
+ '66666666-6666-4666-8666-666666666666',
+ '22222222-2222-4222-8222-222222222222',
+ '33333333-3333-4333-8333-333333333333',
+ 5,true,'p06-install-key-0001'
+);
+reset role;
+do $
+begin
+ if (select count(*) from public.agent_skill_installations where agent_id='66666666-6666-4666-8666-666666666666')<>1 then raise exception 'idempotent Skill install duplicated entitlement'; end if;
+ if not exists(select 1 from public.agent_skill_installations where agent_id='66666666-6666-4666-8666-666666666666' and source_version=5 and status='active' and license_terms_digest ~ '^[0-9a-f]{64}
+    finally:
+        run(["docker","rm","--force",NAME],check=False)
+
+if __name__ == "__main__":
+    try: main()
+    except Exception as exc:
+        print(f"FAIL: ENG-P06 PostgreSQL 17 verification: {exc}",file=sys.stderr)
+        raise SystemExit(1)
+) then raise exception 'license snapshot not persisted'; end if;
+ if not exists(select 1 from public.agent_skill_installation_events where event_type='installed') then raise exception 'installation event missing'; end if;
+ if not exists(select 1 from public.agent_skills where id=(select installed_skill_id from public.agent_skill_installations where agent_id='66666666-6666-4666-8666-666666666666') and status='draft' and version=1) then raise exception 'installed Skill must start as local draft v1'; end if;
+end $;
+""")
+        psql("""
+set role service_role;
+update public.agent_skills set status='published'
+ where id=(select installed_skill_id from public.agent_skill_installations where agent_id='66666666-6666-4666-8666-666666666666');
+reset role;
+do $
+begin
+ if not exists(select 1 from public.agent_skill_publications where id=(select installed_skill_id from public.agent_skill_installations where agent_id='66666666-6666-4666-8666-666666666666')) then
+   raise exception 'active licensed installation not visible in public Passport after owner/operator publication';
+ end if;
+end $;
+""")
+        psql("""
+set role authenticated;
+select set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',false);
+select set_config('request.jwt.claim.role','authenticated',false);
+select public.revoke_agent_skill_installation(
+ '66666666-6666-4666-8666-666666666666',
+ (select id from public.agent_skill_installations where agent_id='66666666-6666-4666-8666-666666666666'),
+ 'Owner revoked the source license'
+);
+reset role;
+do $
+begin
+ if not exists(select 1 from public.agent_skill_installations where agent_id='66666666-6666-4666-8666-666666666666' and status='revoked') then raise exception 'license revocation state not persisted'; end if;
+ if (select count(*) from public.agent_skill_installation_events where event_type in ('installed','revoked'))<>2 then raise exception 'install/revoke audit trail incomplete'; end if;
+ if exists(select 1 from public.agent_skill_publications where id=(select installed_skill_id from public.agent_skill_installations where agent_id='66666666-6666-4666-8666-666666666666')) then raise exception 'revoked installation still appears in public Passport'; end if;
+ if not exists(select 1 from private.account_export_sources where source_key='agent_skill_installations' and enabled) then raise exception 'installation missing from account export'; end if;
+ if not exists(select 1 from public.account_deletion_source_policies where source_key='agent_skill_installations' and active and deletion_action='preserve') then raise exception 'installation license audit not protected by P03'; end if;
+end $;
+""")
+        denied = psql("""
+set role authenticated;
+select set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',false);
+select set_config('request.jwt.claim.role','authenticated',false);
+select public.install_agent_skill(
+ '66666666-6666-4666-8666-666666666666',
+ '22222222-2222-4222-8222-222222222222',
+ '33333333-3333-4333-8333-333333333333',
+ 5,false,'p06-install-key-denied'
+);
+""",check=False)
+        if denied.returncode == 0: raise RuntimeError("Skill installation unexpectedly succeeded without license acceptance")
+        print("PASS: ENG-P06 immutable Skill publication, version rollover, explicit license acceptance, idempotent installation, draft clone, public Passport visibility, revocation, runtime gate source state and P03 export/retention integration.")
     finally:
         run(["docker","rm","--force",NAME],check=False)
 
