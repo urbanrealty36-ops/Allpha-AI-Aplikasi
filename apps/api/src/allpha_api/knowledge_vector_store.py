@@ -47,6 +47,8 @@ class VectorRepository(Protocol):
         records: list[VectorRecord],
         *,
         expected_source_version: int,
+        job_id: str,
+        lease_token: str,
         idempotency_key: str,
     ) -> None:
         """Atomically persist all records, fenced by current source version.
@@ -72,7 +74,9 @@ def build_vector_records(
         or int(job.get("source_version", -1)) != request.source_version
     ):
         raise VectorPersistenceConflict("job and embedding request identity/version differ")
-    if not job.get("lease_token"):
+    if not isinstance(job.get("id"), str) or not job["id"].strip():
+        raise VectorPersistenceConflict("job identity is missing")
+    if not isinstance(job.get("lease_token"), str) or not job["lease_token"].strip():
         raise VectorPersistenceConflict("job lease fencing token is missing")
 
     by_id = {item.chunk_id: item for item in response.vectors}
@@ -122,6 +126,8 @@ class IdempotentKnowledgeVectorSink:
         await self.repository.upsert_batch(
             records,
             expected_source_version=request.source_version,
+            job_id=str(job["id"]),
+            lease_token=str(job["lease_token"]),
             idempotency_key=request.idempotency_key,
         )
 
