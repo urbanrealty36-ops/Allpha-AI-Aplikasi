@@ -7,6 +7,7 @@ approved runtime policy. Model output is never treated as authorization.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import time
 import uuid
@@ -238,21 +239,21 @@ class AgentRuntime:
                     or any(char not in "0123456789abcdef" for char in ref["content_sha256"])
                     or not isinstance(ref.get("retrieved_content_sha256"), str) or len(ref["retrieved_content_sha256"]) != 64
                     or any(char not in "0123456789abcdef" for char in ref["retrieved_content_sha256"])
-                    or ref.get("sensitivity") not in {"public", "internal", "confidential", "restricted"}
-                    or ref.get("retrieval_method") not in {"vector", "keyword", "hybrid"}
+                    or not isinstance(ref.get("sensitivity"), str)
+                    or ref["sensitivity"] not in {"public", "internal", "confidential", "restricted"}
+                    or not isinstance(ref.get("retrieval_method"), str)
+                    or ref["retrieval_method"] not in {"vector", "keyword", "hybrid"}
                     or not isinstance(location, dict) or set(location) != {"kind", "index"}
-                    or location.get("kind") not in {"document", "page", "paragraph"}
+                    or not isinstance(location.get("kind"), str)
+                    or location["kind"] not in {"document", "page", "paragraph"}
                     or not isinstance(location.get("index"), int)
                     or isinstance(location.get("index"), bool) or location["index"] < 1
                 ):
                     raise AgentRuntimeBlocked("Knowledge context citation metadata is invalid")
-        elif envelope.knowledge_context_refs or (
-            envelope.knowledge_context_sha256 is not None
-            and (not isinstance(envelope.knowledge_context_sha256, str)
-                 or len(envelope.knowledge_context_sha256) != 64
-                 or any(char not in "0123456789abcdef" for char in envelope.knowledge_context_sha256))
-        ):
-            raise AgentRuntimeBlocked("Empty Knowledge context cannot carry references or invalid digest")
+        else:
+            empty_digest = hashlib.sha256(b"[]").hexdigest()
+            if envelope.knowledge_context_refs or envelope.knowledge_context_sha256 not in {None, empty_digest}:
+                raise AgentRuntimeBlocked("Empty Knowledge context cannot carry references or a non-empty digest")
         if time.monotonic() >= envelope.deadline_monotonic:
             raise AgentRuntimeBlocked("task deadline has expired")
 
