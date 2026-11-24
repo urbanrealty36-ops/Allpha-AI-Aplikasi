@@ -151,6 +151,31 @@ select public.agent_memory_search(
    raise RuntimeError("Memory retrieval accepted a non-owner or leaked an empty result instead of denying")
   psql(f"""
 set role service_role;
+select public.agent_memory_transition('set_policy','{OWNER}','{AGENT}',null,
+ jsonb_build_object('memory_type','long_term','enabled',false,'allowed_purposes',jsonb_build_array(),
+  'allowed_sensitivities',jsonb_build_array(),'retention_days',31));
+reset role;
+do $do$
+declare v_count integer;
+begin
+ select count(*) into v_count from public.agent_memory_search(
+  '{OWNER}','{AGENT}',array(select id from public.agent_memory_policies where owner_user_id='{OWNER}' and agent_id='{AGENT}'),
+  'agent_generation_context',array['public','internal'], 'concise summaries','internal',10
+ );
+ if v_count<>0 then raise exception 'revoked Memory consent did not stop retrieval'; end if;
+ if not exists(select 1 from public.agent_memory_policies where owner_user_id='{OWNER}' and agent_id='{AGENT}' and not enabled and policy_version=3) then
+  raise exception 'Memory consent revocation did not advance policy version';
+ end if;
+end $do$;
+set role service_role;
+select public.agent_memory_transition('set_policy','{OWNER}','{AGENT}',null,
+ jsonb_build_object('memory_type','long_term','enabled',true,'consent_version','allpha.memory.v1',
+  'allowed_purposes',jsonb_build_array('agent_generation_context','agent_runtime_context'),
+  'allowed_sensitivities',jsonb_build_array('public','internal'),'retention_days',31));
+reset role;
+""")
+  psql(f"""
+set role service_role;
 select public.agent_memory_transition('delete','{OWNER}','{AGENT}',
  (select id from public.agent_memory_items where owner_user_id='{OWNER}' and agent_id='{AGENT}' limit 1),'{{}}'::jsonb);
 select public.agent_memory_transition('create_proposal','{OWNER}','{AGENT}',null,
@@ -174,6 +199,9 @@ begin
  end if;
  if not exists(select 1 from public.agent_memory_events where event_type='item_expired' and owner_user_id='{OWNER}') then
   raise exception 'Memory retention expiry audit missing';
+ end if;
+ if not exists(select 1 from public.agent_memory_items where owner_user_id='{OWNER}' and status='expired' and content='') then
+  raise exception 'expired Memory content was not erased';
  end if;
  if has_function_privilege('authenticated','public.agent_memory_transition(text,uuid,uuid,uuid,jsonb)','EXECUTE')
     or has_function_privilege('authenticated','public.agent_memory_search(uuid,uuid,uuid[],text,text[],text,text,integer)','EXECUTE') then
