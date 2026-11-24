@@ -70,6 +70,7 @@ type CatalogSkill = { key: string; name: string; category: string; category_labe
 type SkillCatalogResponse = { items: CatalogSkill[]; categories: { key: string; label: string; count: number }[] };
 type AgentPassport = Pick<AgentIdentity, "id" | "handle" | "display_name" | "description" | "visibility" | "status" | "version" | "public_owner_attribution" | "published_at"> & { disclosure?: string; created_at?: string; owner_attribution?: { username: string; display_name: string; avatar_url?: string | null } | null; skills?: { id: string; name: string; slug: string; version: number; description?: string }[]; capabilities?: { id: string; capability_key: string; description?: string; risk_level: string }[] };
 type AgentIdentityVersion = { id: string; version: number; event_type: string; snapshot: Record<string, unknown>; snapshot_sha256: string; recorded_at: string };
+type AgentOwnershipTransfer = { id: string; agent_id: string; from_owner_user_id: string; to_owner_user_id: string; status: "pending" | "accepted" | "rejected" | "cancelled" | "expired"; expires_at: string; created_at: string };
 type RegisteredTool = { key: string; version: string; name: string; description: string; risk_level: string; required_permission_scopes: string[]; executable: boolean };
 type AgentSkill = { id: string; slug: string; name: string; description?: string; status: "draft" | "published" | "archived"; version: number; required_permission_scopes?: string[]; tool_dependencies?: string[] };
 type AgentCapability = { id: string; capability_key: string; description?: string; status: "requested" | "approved" | "denied" | "revoked"; risk_level: string };
@@ -500,6 +501,9 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
     return data.session?.access_token || session.access_token;
   }, [session.access_token]);
   const [agents, setAgents] = useState<AgentIdentity[]>([]);
+  const [ownershipTransfers, setOwnershipTransfers] = useState<{outgoing: AgentOwnershipTransfer[]; incoming: AgentOwnershipTransfer[]}>({outgoing: [], incoming: []});
+  const [transferRecipientUserId, setTransferRecipientUserId] = useState("");
+  const [transferBusy, setTransferBusy] = useState(false);
   const [socialActorAgents, setSocialActorAgents] = useState<SocialActorAgent[]>([]);
   const [agentLoading, setAgentLoading] = useState(false);
   const [contentItems, setContentItems] = useState<NativeContentItem[]>([]);
@@ -1679,6 +1683,56 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
     finally { setAgentLoading(false); }
   }, [session.access_token]);
 
+  const loadAgentOwnershipTransfers = useCallback(async () => {
+    try {
+      const payload = await apiRequest("/v1/agent-ownership-transfers") as {outgoing?: AgentOwnershipTransfer[]; incoming?: AgentOwnershipTransfer[]};
+      setOwnershipTransfers({outgoing: payload.outgoing || [], incoming: payload.incoming || []});
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Permintaan transfer Agent tidak dapat dimuat.");
+    }
+  }, [session.access_token]);
+
+  async function requestAgentOwnershipTransfer(agent: AgentIdentity) {
+    const recipient = transferRecipientUserId.trim();
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(recipient)) {
+      setError("Masukkan UUID akun penerima yang valid."); return;
+    }
+    setTransferBusy(true); setError(""); setMessage("");
+    try {
+      await apiRequest("/v1/agents/" + encodeURIComponent(agent.id) + "/ownership-transfers", {
+        method: "POST",
+        body: JSON.stringify({recipient_user_id: recipient, idempotency_key: createClientUuid() + createClientUuid().slice(0, 8)}),
+      });
+      setTransferRecipientUserId("");
+      setMessage("Permintaan transfer dikirim; kepemilikan berpindah setelah penerima menyetujui.");
+      await loadAgentOwnershipTransfers();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Permintaan transfer gagal."); }
+    finally { setTransferBusy(false); }
+  }
+
+  async function respondAgentOwnershipTransfer(item: AgentOwnershipTransfer, accept: boolean) {
+    setTransferBusy(true); setError(""); setMessage("");
+    try {
+      const result = await apiRequest("/v1/agent-ownership-transfers/" + encodeURIComponent(item.id) + "/respond", {
+        method: "POST", body: JSON.stringify({accept}),
+      }) as {status?: string};
+      setMessage(result.status === "accepted"
+        ? "Kepemilikan berpindah. Grant lama dan publikasi dicabut untuk persetujuan ulang."
+        : result.status === "expired" ? "Permintaan transfer sudah kedaluwarsa." : "Permintaan transfer ditolak.");
+      await Promise.all([loadAgents(), loadAgentOwnershipTransfers()]);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Respons transfer gagal."); }
+    finally { setTransferBusy(false); }
+  }
+
+  async function cancelAgentOwnershipTransfer(item: AgentOwnershipTransfer) {
+    setTransferBusy(true); setError(""); setMessage("");
+    try {
+      await apiRequest("/v1/agent-ownership-transfers/" + encodeURIComponent(item.id) + "/cancel", {method:"POST"});
+      setMessage("Permintaan transfer dibatalkan."); await loadAgentOwnershipTransfers();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Pembatalan transfer gagal."); }
+    finally { setTransferBusy(false); }
+  }
+
   const loadSocialActorAgents = useCallback(async () => {
     try {
       const payload = await apiRequest("/v1/social/actor-agents") as { items?: SocialActorAgent[] };
@@ -1689,8 +1743,8 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
   }, [session.access_token]);
 
   useEffect(() => {
-    if (tab === "agents") void loadAgents();
-  }, [tab, loadAgents]);
+    if (tab === "agents") void Promise.all([loadAgents(), loadAgentOwnershipTransfers()]);
+  }, [tab, loadAgents, loadAgentOwnershipTransfers]);
   useEffect(() => {
     let active = true;
     void Promise.all([
@@ -2193,6 +2247,16 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
           {selectedCatalogSkill ? <Text style={s.muted}>Skill dipilih: {skillCatalog.find(item => item.key === selectedCatalogSkill)?.name} · Role AI Character: {skillCatalog.find(item => item.key === selectedCatalogSkill)?.character_profile.display_role}. Asset GLB tetap perlu diverifikasi sebelum dirender.</Text> : <Text style={s.muted}>Pilih satu Skill untuk menentukan bidang dan role karakter AI.</Text>}
           <Button title={busy ? "Membuat…" : "Buat Agent privat"} disabled={busy || skillCatalogLoading || !selectedCatalogSkill || agentName.trim().length < 2 || !/^[a-z0-9_]{3,30}$/.test(agentHandle.trim())} onPress={() => void createAgent()}/>
           <Button title="Muat ulang daftar" secondary disabled={agentLoading} onPress={() => void loadAgents()}/>
+          <View style={s.socialRow}>
+            <Text style={s.kicker}>TRANSFER KEPEMILIKAN AGENT</Text>
+            <Text style={s.muted}>Transfer membutuhkan persetujuan Human Owner saat ini dan penerima. Masukkan UUID akun penerima, lalu pilih Agent.</Text>
+            <TextInput accessibilityLabel="UUID Human Owner penerima" value={transferRecipientUserId} onChangeText={setTransferRecipientUserId} autoCapitalize="none" style={field} placeholder="UUID akun penerima" placeholderTextColor="#8B94AC"/>
+            {agents.map(agent => <Button key={"transfer-"+agent.id} title={(transferBusy ? "Memproses…" : "Ajukan transfer · "+agent.display_name)} secondary disabled={transferBusy || !transferRecipientUserId.trim()} onPress={() => void requestAgentOwnershipTransfer(agent)}/>)}
+            <Text style={s.kicker}>PERMINTAAN MASUK</Text>
+            {ownershipTransfers.incoming.filter(item=>item.status==="pending").length ? ownershipTransfers.incoming.filter(item=>item.status==="pending").map(item=><View key={item.id} style={s.socialRow}><Text style={s.body}>Agent {item.agent_id} · dari {item.from_owner_user_id}</Text><Text style={s.muted}>Berlaku sampai {new Date(item.expires_at).toLocaleString("id-ID")}</Text><Button title="Terima transfer" disabled={transferBusy} onPress={()=>void respondAgentOwnershipTransfer(item,true)}/><Button title="Tolak transfer" secondary disabled={transferBusy} onPress={()=>void respondAgentOwnershipTransfer(item,false)}/></View>) : <Text style={s.muted}>Tidak ada permintaan masuk yang menunggu.</Text>}
+            <Text style={s.kicker}>PERMINTAAN KELUAR</Text>
+            {ownershipTransfers.outgoing.filter(item=>item.status==="pending").length ? ownershipTransfers.outgoing.filter(item=>item.status==="pending").map(item=><View key={item.id} style={s.socialRow}><Text style={s.body}>Agent {item.agent_id} · penerima {item.to_owner_user_id}</Text><Text style={s.muted}>Berlaku sampai {new Date(item.expires_at).toLocaleString("id-ID")}</Text><Button title="Batalkan permintaan" secondary disabled={transferBusy} onPress={()=>void cancelAgentOwnershipTransfer(item)}/></View>) : <Text style={s.muted}>Tidak ada permintaan keluar yang menunggu.</Text>}
+          </View>
           {agentLoading ? <ActivityIndicator color="#A5B4FC"/> : agents.length ? agents.map(agent => <View key={agent.id} style={s.socialRow}><Text style={s.body}>{agent.display_name} · @{agent.handle}</Text><Text style={s.muted}>{agent.status} · {agent.visibility} · {agent.ownership?.role || "owner"}</Text><View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}><Button title="Lihat Passport" secondary disabled={agent.status !== "active" || agent.visibility !== "public"} onPress={() => void loadPassport(agent.handle)}/><Button title={agent.visibility === "public" ? "Cabut publikasi" : "Publikasikan"} disabled={busy || agent.status === "archived"} onPress={() => void (agent.visibility === "public" ? revokeAgentPublication(agent) : publishAgent(agent))}/><Button title={agent.public_owner_attribution ? "Sembunyikan Human Owner" : "Tampilkan Human Owner"} secondary disabled={busy || agent.visibility !== "public"} onPress={() => void updateAgent(agent, { public_owner_attribution: !agent.public_owner_attribution })}/><Button title="Riwayat identitas" secondary disabled={busy} onPress={() => void loadAgentIdentityVersions(agent)}/><Button title="Arsipkan" secondary disabled={busy || agent.status === "archived"} onPress={() => void updateAgent(agent, { status: "archived", visibility: "private" })}/><Button title="Kelola Skills & Tools" secondary onPress={() => void loadAgentStudio(agent.id)}/>{identityVersionsAgentId === agent.id && <View style={s.socialRow}><Text style={s.kicker}>RIWAYAT IDENTITAS · {agentIdentityVersions[agent.id]?.length ?? 0} VERSI</Text>{(agentIdentityVersions[agent.id] ?? []).map(version => <Text key={version.id} style={s.muted}>v{version.version} · {version.event_type} · {new Date(version.recorded_at).toLocaleString("id-ID")}</Text>)}</View>}<Button title={runtimeSessionBusy === agent.id ? "Memuat…" : "Buat sesi runtime"} disabled={runtimeSessionBusy !== null} secondary onPress={() => void createRuntimeSession(agent)}/><Button title="Muat sesi & task" disabled={runtimeSessionBusy !== null} secondary onPress={() => void loadRuntimeSessions(agent.id)}/></View>{(runtimeSessions[agent.id] ?? []).map(item => {
             const selectedSkill = (runtimeSkills[agent.id] ?? []).find(skill => skill.id === runtimeSkillBySession[item.id]);
             const allowedToolKeys = selectedSkill?.tool_dependencies ?? [];
