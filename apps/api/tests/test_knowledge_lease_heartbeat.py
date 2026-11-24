@@ -102,7 +102,7 @@ def test_knowledge_heartbeat_migration_is_service_only_and_lease_fenced():
     migration = (
         Path(__file__).resolve().parents[1]
         / "supabase" / "migrations"
-        / "20261124075000_eng_p07_knowledge_job_lease_heartbeat.sql"
+        / "20261124081300_eng_p07_knowledge_job_lease_heartbeat.sql"
     )
     sql = " ".join(migration.read_text(encoding="utf-8").lower().split())
     assert "p_lease_seconds is null" in sql
