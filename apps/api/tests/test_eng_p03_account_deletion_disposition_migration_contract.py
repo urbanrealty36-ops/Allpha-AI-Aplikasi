@@ -216,7 +216,8 @@ def test_account_export_deletion_lifecycle_is_linked_and_fail_closed_on_missing_
     source = " ".join(migration.read_text(encoding="utf-8").lower().split())
     assert "add column if not exists export_job_id uuid" in source
     assert "add column if not exists idempotency_key text" in source
-    assert "create_account_deletion_request_for_actor(uuid,text)" in source
+    assert "create or replace function public.create_account_deletion_request_for_actor(" in source
+    assert "p_idempotency_key text" in source
     assert "insert into public.account_export_jobs(user_id,idempotency_key)" in source
     assert "private.account_deletion_export_gate" in source
     assert "account_export_retention_policy_missing" in source
