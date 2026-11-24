@@ -337,3 +337,30 @@ def test_canonical_router_does_not_retry_transient_failure_with_unknown_provider
         assert error.value.failure.retryable is False
         assert adapter.calls == 1
     asyncio.run(scenario())
+
+
+
+def test_canonical_router_honors_bounded_retry_after_for_explicit_rate_limit(monkeypatch):
+    delays = []
+
+    async def capture_sleep(seconds):
+        delays.append(seconds)
+
+    monkeypatch.setattr("allpha_api.model_router.asyncio.sleep", capture_sleep)
+
+    async def scenario():
+        adapter = FakeAdapter([
+            ModelRouterTransient("rate limited", safe_to_retry=True, retry_after_ms=2000),
+            response(),
+        ])
+        router = CanonicalModelRouter(
+            routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1", max_attempts=2)},
+            adapters={"router-policy": adapter},
+            retry_delay_seconds=0,
+        )
+        result = await router.embed(request())
+        assert result.model_id == "selected-model"
+        assert adapter.calls == 2
+
+    asyncio.run(scenario())
+    assert delays == [2.0]
