@@ -217,8 +217,8 @@ end $do$;
 select public.begin_agent_knowledge_source_delete('{SOURCE}','{AGENT}','{OWNER}');
 do $do$
 begin
- if not has_function_privilege('authenticated','public.begin_agent_knowledge_source_delete(uuid,uuid,uuid)','EXECUTE') then
-  raise exception 'authenticated must not execute privileged source deletion fence';
+ if has_function_privilege('authenticated','public.begin_agent_knowledge_source_delete(uuid,uuid,uuid)','EXECUTE') then
+  raise exception 'authenticated can execute privileged source deletion fence';
  end if;
 end $do$;
 """)
