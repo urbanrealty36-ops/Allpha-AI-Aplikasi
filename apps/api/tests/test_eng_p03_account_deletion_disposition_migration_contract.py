@@ -212,7 +212,7 @@ def test_dependency_and_legal_hold_requeues_write_audit_events():
 
 
 def test_account_export_deletion_lifecycle_is_linked_and_fail_closed_on_missing_retention():
-    migration = MIGRATIONS / "20261124213000_eng_p03_account_export_deletion_lifecycle.sql"
+    migration = MIGRATIONS / "20261124015229_eng_p03_account_export_deletion_lifecycle.sql"
     source = " ".join(migration.read_text(encoding="utf-8").lower().split())
     assert "add column if not exists export_job_id uuid" in source
     assert "add column if not exists idempotency_key text" in source
