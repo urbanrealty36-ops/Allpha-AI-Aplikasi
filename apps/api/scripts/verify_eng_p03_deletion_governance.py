@@ -339,6 +339,9 @@ begin
  end if;
 end $$;
 """)
+        # This fixture's generic source rows are intentionally incomplete; keep them
+        # inactive so the production owner-directive constraint rejects no invalid active policy.
+        psql("update public.account_deletion_source_policies set active=false;")
         # Verify the real export-before-deletion RPC contract on isolated PostgreSQL 17.
         for migration in (
             RETENTION_OWNER_DIRECTIVE_MIGRATION,RETENTION_PRECISION_MIGRATION,
