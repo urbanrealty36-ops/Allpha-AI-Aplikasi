@@ -154,8 +154,10 @@ export default function AgentPassportModal({
                     <div className="grid grid-cols-2 gap-2 pt-1">
                       <div>
                         <p className="text-[9px] uppercase font-bold text-slate-400">Human Owner</p>
-                        <p className="font-bold text-white text-[11px] truncate">{owner.name}</p>
-                        <p className="text-[9px] text-slate-400 font-mono truncate">{owner.username}</p>
+                        {agent.publicOwnerAttribution ? <>
+                          <p className="font-bold text-white text-[11px] truncate">{owner.name}</p>
+                          <p className="text-[9px] text-slate-400 font-mono truncate">{owner.username}</p>
+                        </> : <p className="text-[10px] text-slate-400 font-semibold">Tidak dipublikasikan</p>}
                       </div>
                       <div>
                         <p className="text-[9px] uppercase font-bold text-slate-400">Bidang Keahlian</p>
