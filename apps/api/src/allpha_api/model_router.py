@@ -128,8 +128,18 @@ class CanonicalModelRouter:
                     except (ValueError, RuntimeError) as exc:
                         raise ModelRouterRejected(EmbeddingFailure(task_id=request.task_id, code="MODEL_ROUTER_COST_POLICY_REJECTED", retryable=False, trace_id=request.trace_id)) from exc
                 if self._metering_sink is not None:
-                    record = build_metering_record(request, response)
-                    await self._metering_sink.write_idempotent(record)
+                    try:
+                        record = build_metering_record(request, response)
+                        await self._metering_sink.write_idempotent(record)
+                    except Exception as exc:
+                        # A provider response may already be billable. Never retry
+                        # the provider call when durable usage persistence is uncertain.
+                        raise ModelRouterRejected(EmbeddingFailure(
+                            task_id=request.task_id,
+                            code="MODEL_ROUTER_METERING_UNCONFIRMED",
+                            retryable=False,
+                            trace_id=request.trace_id,
+                        )) from exc
                 return response
             except ModelRouterRejected:
                 raise
