@@ -147,3 +147,13 @@ def test_new_auth_users_get_private_subjects_and_agent_ownership_transfer_is_bul
     assert "ownership_role='owner' and ao.status='active'" in source
     assert "account_deletion_agent_successor_conflict" in source
     assert "agent_transfer_executor_fence_anchor_missing" in source
+
+
+
+def test_account_deletion_and_export_failure_use_qualified_pgcrypto_with_empty_search_path():
+    migration = MIGRATIONS / "20261124010254_eng_p03_subject_digest_path_repairs.sql"
+    source = " ".join(migration.read_text(encoding="utf-8").lower().split())
+    assert "private.ensure_account_identity_subject()" in source
+    assert "public.create_account_deletion_request_for_actor(uuid)" in source
+    assert "public.fail_account_export_job(uuid,uuid,text,integer)" in source
+    assert "replace(v_definition,'digest(','extensions.digest(')" in source
