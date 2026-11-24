@@ -60,3 +60,11 @@ def test_metering_record_rejects_identity_mismatch(changes):
 def test_embedding_response_rejects_partial_usage_cost_unit_attribution():
     with pytest.raises(ValueError, match="usage and cost attribution"):
         response(usage_units=None, cost_microunits=125)
+
+
+
+def test_metering_fingerprint_binds_capability():
+    record = build_metering_record(request(), response())
+    text_record = replace(record, capability="text_generation")
+    assert record.capability == "embedding"
+    assert record.payload_fingerprint() != text_record.payload_fingerprint()
