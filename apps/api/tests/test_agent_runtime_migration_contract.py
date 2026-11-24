@@ -109,6 +109,9 @@ def test_runtime_worker_readiness_and_success_receipt_guard_are_fail_closed():
     assert "has_table_privilege('service_role'" in readiness
     assert "c.relrowsecurity" in readiness
     assert "cardinality(v_missing_functions)=0" in readiness
+    assert "array['agent_runtime_tool_plans','knowledge_context_refs']" in readiness
+    assert "array['agent_runtime_tool_plans','knowledge_context_sha256']" in readiness
+    assert "array['agent_runtime_tool_plans','knowledge_context_state']" in readiness
     assert "agent_runtime_task_success_receipt_guard" in receipt
     assert "agent_runtime_success_requires_confirmed_effect_outcome" in receipt
     assert "agent_runtime_success_requires_approved_social_effect_receipt" in receipt
