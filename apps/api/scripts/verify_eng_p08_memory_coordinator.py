@@ -179,9 +179,12 @@ begin
     or has_function_privilege('authenticated','public.agent_memory_search(uuid,uuid,uuid[],text,text[],text,text,integer)','EXECUTE') then
   raise exception 'authenticated can execute privileged Memory RPCs';
  end if;
- if not has_table_privilege('authenticated','public.agent_memory_items','SELECT')
-    or not has_table_privilege('service_role','public.agent_memory_items','SELECT') then
-  raise exception 'Memory table access grants are incorrect';
+ if has_table_privilege('authenticated','public.agent_memory_items','SELECT')
+    or not has_table_privilege('service_role','public.agent_memory_items','SELECT')
+    or has_table_privilege('service_role','public.agent_memory_items','INSERT')
+    or has_table_privilege('service_role','public.agent_memory_items','UPDATE')
+    or has_table_privilege('service_role','public.agent_memory_items','DELETE') then
+  raise exception 'Memory table access grants are not read-only for the service role';
  end if;
 end $do$;
 delete from auth.users where id='{OWNER}';
