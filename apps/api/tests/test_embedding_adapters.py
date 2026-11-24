@@ -157,3 +157,21 @@ def test_environment_adapter_is_absent_until_explicit_profile_is_complete(monkey
     monkeypatch.setenv("ALLPHA_EMBEDDING_BASE_URL", "https://provider.example/v1")
     with pytest.raises(EmbeddingProviderConfigurationError, match="partially configured"):
         build_embedding_adapter_from_environment()
+
+
+
+def test_embedding_adapter_enforces_approved_input_byte_limit():
+    async def scenario():
+        limited = OpenAICompatibleEmbeddingAdapter(
+            base_url="https://embedding.example/v1",
+            api_key="server-only-secret",
+            provider_id="deployment-provider",
+            model_version="immutable-model-build-7",
+            expected_dimensions=3,
+            max_input_bytes=10,
+            transport=httpx.MockTransport(lambda request: httpx.Response(500)),
+        )
+        with pytest.raises(ModelRouterRejected) as error:
+            await limited.embed(request(), model_id="model")
+        assert error.value.failure.code == "EMBEDDING_INPUT_LIMIT_EXCEEDED"
+    asyncio.run(scenario())
