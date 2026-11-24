@@ -5,6 +5,8 @@ import asyncio
 import hashlib
 import logging
 import os
+import shutil
+import subprocess
 from dataclasses import dataclass
 from urllib.parse import quote
 
@@ -191,10 +193,21 @@ def main() -> None:
     supabase_url = os.getenv("SUPABASE_URL", "").strip()
     service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip() or os.getenv("SUPABASE_SECRET_KEY", "").strip()
     scanner_url = os.getenv("ALLPHA_DOCUMENT_SCANNER_URL", "").strip()
+    scanner_mode = os.getenv("ALLPHA_DOCUMENT_SCANNER_MODE", "").strip().lower()
     if not supabase_url or not service_key:
         raise SystemExit("Knowledge document worker disabled: server-side Supabase credentials are required")
-    if not scanner_url:
-        raise SystemExit("Knowledge document worker disabled: ALLPHA_DOCUMENT_SCANNER_URL is required; quarantined files remain queued")
+    if not scanner_url and scanner_mode != "clamd":
+        raise SystemExit("Knowledge document worker disabled: configure ALLPHA_DOCUMENT_SCANNER_URL or local ALLPHA_DOCUMENT_SCANNER_MODE=clamd")
+    if not scanner_url and scanner_mode == "clamd":
+        scanner = shutil.which("clamdscan")
+        if not scanner:
+            raise SystemExit("Knowledge document worker disabled: clamdscan binary is missing")
+        try:
+            probe = subprocess.run([scanner, "--ping=1"], capture_output=True, timeout=6, check=False)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise SystemExit("Knowledge document worker disabled: local ClamAV daemon is unavailable") from exc
+        if probe.returncode != 0:
+            raise SystemExit("Knowledge document worker disabled: local ClamAV daemon did not answer its health probe")
     store = SupabaseKnowledgeJobStore(supabase_url=supabase_url, service_key=service_key)
     storage = SupabaseKnowledgeStorage(supabase_url=supabase_url, service_key=service_key)
     worker = KnowledgeDocumentWorker(
