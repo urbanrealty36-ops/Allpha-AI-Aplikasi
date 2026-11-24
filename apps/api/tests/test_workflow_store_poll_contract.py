@@ -40,3 +40,26 @@ def test_runnable_run_scan_returns_empty_when_no_candidates():
         transport=httpx.MockTransport(handler),
     )
     assert asyncio.run(store.list_runnable_runs(limit=25)) == []
+
+
+def test_workflow_step_heartbeat_uses_service_only_rpc_and_lease_identity():
+    observed={}
+    async def handler(request):
+        observed["path"]=request.url.path
+        observed["body"]=await request.aread()
+        return httpx.Response(200,json=[{"id":"step-1","status":"running"}])
+    store=WorkflowStore(
+        supabase_url="https://supabase.example",
+        service_key="service-only-test-key",
+        transport=httpx.MockTransport(handler),
+    )
+    rows=asyncio.run(store.heartbeat_step(
+        "owner-1","run-1","step-1","lease-1",lease_seconds=45,
+    ))
+    assert rows["id"]=="step-1"
+    assert observed["path"]=="/rest/v1/rpc/heartbeat_workflow_step"
+    import json
+    assert json.loads(observed["body"])=={
+        "p_run_id":"run-1","p_owner_user_id":"owner-1","p_step_id":"step-1",
+        "p_lease_token":"lease-1","p_lease_seconds":45,
+    }
