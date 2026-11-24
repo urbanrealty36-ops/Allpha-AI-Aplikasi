@@ -111,7 +111,10 @@ def test_remote_scanner_configuration_requires_authenticated_allowlisted_endpoin
     assert 'clamd)' in script
     assert 'SCANNER_API_KEY="${ALLPHA_DOCUMENT_SCANNER_API_KEY:-}"' in script
     assert 'SCANNER_ALLOWED_HOSTS="${ALLPHA_DOCUMENT_SCANNER_ALLOWED_HOSTS:-}"' in script
-    assert "remote scanner URL, API key and exact hostname allowlist are all required" in script
+    assert 'SCANNER_ID="${ALLPHA_DOCUMENT_SCANNER_ID:-}"' in script
+    assert 'SCANNER_ENGINE_VERSION="${ALLPHA_DOCUMENT_SCANNER_ENGINE_VERSION:-}"' in script
+    assert 'SCANNER_SIGNATURE_VERSION="${ALLPHA_DOCUMENT_SCANNER_SIGNATURE_VERSION:-}"' in script
+    assert "remote scanner URL, API key, exact hostname allowlist and pinned scanner identity are all required" in script
     assert "RemoteDocumentScanner.from_environment()" in script
 
 
@@ -128,7 +131,7 @@ def test_shared_worker_keeps_other_consumers_alive_when_remote_scanner_is_missin
 def _base_env(monkeypatch):
     monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
     monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "service")
-    for name in ("URL", "API_KEY", "ALLOWED_HOSTS", "MODE"):
+    for name in ("URL", "API_KEY", "ALLOWED_HOSTS", "ID", "ENGINE_VERSION", "SIGNATURE_VERSION", "MODE"):
         monkeypatch.delenv(f"ALLPHA_DOCUMENT_SCANNER_{name}", raising=False)
 
 
@@ -159,6 +162,9 @@ def test_document_consumer_starts_with_valid_remote_scanner_config(monkeypatch):
     monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_URL", "https://scanner.example.com/scan")
     monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_API_KEY", "k")
     monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_ALLOWED_HOSTS", "scanner.example.com")
+    monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_ID", "scanner-prod-1")
+    monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_ENGINE_VERSION", "engine-1.4.6")
+    monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_SIGNATURE_VERSION", "2026-11-24T00:00:00Z")
     assert knowledge_ingestion_worker.build_worker_from_environment().batch_size == 50
 
 

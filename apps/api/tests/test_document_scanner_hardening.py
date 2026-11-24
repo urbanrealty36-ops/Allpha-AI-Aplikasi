@@ -350,7 +350,7 @@ def _real_tls_scan(tmp_path, monkeypatch, cert_name):
     async def scenario():
         server = await asyncio.start_server(serve, "127.0.0.1", 0, ssl=server_ctx)
         port = server.sockets[0].getsockname()[1]
-        s = RemoteDocumentScanner(endpoint="https://scanner.example.com/v1/scan", api_key="k", allowed_hosts={"scanner.example.com"})
+        s = RemoteDocumentScanner(endpoint="https://scanner.example.com/v1/scan", api_key="k", allowed_hosts={"scanner.example.com"}, expected_scanner_id="scanner-1", expected_engine_version="1.4.6", expected_signature_version="2026-11-24")
         s._connect_port = port
         s._ssl_context = client_ctx
         try:

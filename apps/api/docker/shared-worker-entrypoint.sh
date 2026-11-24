@@ -6,6 +6,9 @@ SCANNER_MODE="$(printf '%s' "${ALLPHA_DOCUMENT_SCANNER_MODE:-}" | tr '[:upper:]'
 SCANNER_URL="${ALLPHA_DOCUMENT_SCANNER_URL:-}"
 SCANNER_API_KEY="${ALLPHA_DOCUMENT_SCANNER_API_KEY:-}"
 SCANNER_ALLOWED_HOSTS="${ALLPHA_DOCUMENT_SCANNER_ALLOWED_HOSTS:-}"
+SCANNER_ID="${ALLPHA_DOCUMENT_SCANNER_ID:-}"
+SCANNER_ENGINE_VERSION="${ALLPHA_DOCUMENT_SCANNER_ENGINE_VERSION:-}"
+SCANNER_SIGNATURE_VERSION="${ALLPHA_DOCUMENT_SCANNER_SIGNATURE_VERSION:-}"
 
 disable_knowledge_documents() {
     echo "$1" >&2
@@ -15,8 +18,8 @@ disable_knowledge_documents() {
 if [ "$KNOWLEDGE_ENABLED" = "true" ]; then
     case "$SCANNER_MODE" in
         remote)
-            if [ -z "$SCANNER_URL" ] || [ -z "$SCANNER_API_KEY" ] || [ -z "$SCANNER_ALLOWED_HOSTS" ]; then
-                disable_knowledge_documents "Knowledge document consumer disabled: remote scanner URL, API key and exact hostname allowlist are all required"
+            if [ -z "$SCANNER_URL" ] || [ -z "$SCANNER_API_KEY" ] || [ -z "$SCANNER_ALLOWED_HOSTS" ] || [ -z "$SCANNER_ID" ] || [ -z "$SCANNER_ENGINE_VERSION" ] || [ -z "$SCANNER_SIGNATURE_VERSION" ]; then
+                disable_knowledge_documents "Knowledge document consumer disabled: remote scanner URL, API key, exact hostname allowlist and pinned scanner identity are all required"
             elif ! gosu worker python -c 'from allpha_api.knowledge import RemoteDocumentScanner; RemoteDocumentScanner.from_environment()'; then
                 disable_knowledge_documents "Knowledge document consumer disabled: remote scanner URL/HTTPS/allowlist configuration failed validation"
             else
