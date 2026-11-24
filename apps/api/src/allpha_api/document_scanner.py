@@ -128,6 +128,9 @@ class RemoteDocumentScanner:
         endpoint: str,
         api_key: str,
         allowed_hosts: set[str],
+        expected_scanner_id: str,
+        expected_engine_version: str,
+        expected_signature_version: str,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         try:
@@ -158,6 +161,15 @@ class RemoteDocumentScanner:
             )
         if not api_key.strip():
             raise DocumentScannerConfigurationError("scanner API credential is required")
+        try:
+            expected_identity = (
+                _identity(expected_scanner_id),
+                _identity(expected_engine_version),
+                _identity(expected_signature_version),
+            )
+        except ValueError as exc:
+            raise DocumentScannerConfigurationError("trusted scanner, engine and signature identities are required") from exc
+        self._expected_identity = expected_identity
         self._endpoint = endpoint.strip()
         self._host = host
         self._api_key = api_key.strip()
@@ -177,14 +189,20 @@ class RemoteDocumentScanner:
             for host in os.getenv("ALLPHA_DOCUMENT_SCANNER_ALLOWED_HOSTS", "").split(",")
             if host.strip()
         }
-        if not endpoint or not api_key or not allowed_hosts:
+        expected_scanner_id = os.getenv("ALLPHA_DOCUMENT_SCANNER_ID", "").strip()
+        expected_engine_version = os.getenv("ALLPHA_DOCUMENT_SCANNER_ENGINE_VERSION", "").strip()
+        expected_signature_version = os.getenv("ALLPHA_DOCUMENT_SCANNER_SIGNATURE_VERSION", "").strip()
+        if not endpoint or not api_key or not allowed_hosts or not all((expected_scanner_id, expected_engine_version, expected_signature_version)):
             raise DocumentScannerConfigurationError(
-                "scanner URL, API key and explicit hostname allowlist are required"
+                "scanner URL, API key, hostname allowlist and pinned scanner/engine/signature identities are required"
             )
         return cls(
             endpoint=endpoint,
             api_key=api_key,
             allowed_hosts=allowed_hosts,
+            expected_scanner_id=expected_scanner_id,
+            expected_engine_version=expected_engine_version,
+            expected_signature_version=expected_signature_version,
             transport=transport,
         )
 
@@ -212,6 +230,9 @@ class RemoteDocumentScanner:
                 f"remote document scanner returned non-verdict HTTP {status_code}"
             )
         receipt, verdict = _parse_response(body, digest)
+        actual_identity = (receipt.scanner_id, receipt.engine_version, receipt.signature_version)
+        if actual_identity != self._expected_identity:
+            raise DocumentScannerUnavailable("remote scanner receipt does not match the deployment-pinned scanner identity")
         if verdict == "malicious":
             raise DocumentMalwareDetected("remote scanner detected malicious content")
         if verdict != "clean":

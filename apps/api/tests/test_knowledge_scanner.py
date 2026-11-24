@@ -71,6 +71,9 @@ def scanner_client_mock(monkeypatch):
     monkeypatch.delenv("ALLPHA_DOCUMENT_SCANNER_URL", raising=False)
     monkeypatch.delenv("ALLPHA_DOCUMENT_SCANNER_API_KEY", raising=False)
     monkeypatch.delenv("ALLPHA_DOCUMENT_SCANNER_ALLOWED_HOSTS", raising=False)
+    monkeypatch.delenv("ALLPHA_DOCUMENT_SCANNER_ID", raising=False)
+    monkeypatch.delenv("ALLPHA_DOCUMENT_SCANNER_ENGINE_VERSION", raising=False)
+    monkeypatch.delenv("ALLPHA_DOCUMENT_SCANNER_SIGNATURE_VERSION", raising=False)
 
 
 def clean_receipt(data: bytes):
@@ -90,6 +93,9 @@ def configure_scanner(monkeypatch):
     monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_URL", "https://scanner.example.com/v1/scan")
     monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_API_KEY", "test-only-secret")
     monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_ALLOWED_HOSTS", "scanner.example.com")
+    monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_ID", "scanner-prod-1")
+    monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_ENGINE_VERSION", "engine-1.4.6")
+    monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_SIGNATURE_VERSION", "2026-11-24T00:00:00Z")
 
 
 def test_scanner_missing_configuration_fails_closed(monkeypatch):
@@ -188,6 +194,9 @@ def test_scanner_rejects_non_https_unallowlisted_or_credentialless_endpoint(
     monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_URL", endpoint)
     monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_ALLOWED_HOSTS", allowlist)
     monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_API_KEY", api_key)
+    monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_ID", "scanner-prod-1")
+    monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_ENGINE_VERSION", "engine-1.4.6")
+    monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_SIGNATURE_VERSION", "2026-11-24T00:00:00Z")
 
     async def scenario():
         with pytest.raises(HTTPException) as error:

@@ -52,7 +52,8 @@ def receipt(**override):
 def scanner(handler, host="scanner.example.com"):
     return RemoteDocumentScanner(
         endpoint=f"https://{host}/v1/scan", api_key="secret-key", allowed_hosts={host},
-        transport=httpx.MockTransport(handler),
+        expected_scanner_id="scanner-1", expected_engine_version="1.4.6",
+        expected_signature_version="2026-11-24", transport=httpx.MockTransport(handler),
     )
 
 
@@ -80,20 +81,20 @@ def scan(s, data=DATA):
 def test_rejects_unsafe_endpoint_even_when_allowlisted(endpoint):
     host = (endpoint.split("//")[-1].split("/")[0].split("@")[-1].rsplit(":", 1)[0]).strip("[]")
     with pytest.raises(DocumentScannerConfigurationError):
-        RemoteDocumentScanner(endpoint=endpoint, api_key="k", allowed_hosts={host})
+        RemoteDocumentScanner(endpoint=endpoint, api_key="k", allowed_hosts={host}, expected_scanner_id="scanner-1", expected_engine_version="1.4.6", expected_signature_version="2026-11-24")
 
 
 def test_rejects_host_missing_from_strict_allowlist_and_empty_credential():
     with pytest.raises(DocumentScannerConfigurationError):
-        RemoteDocumentScanner(endpoint="https://scanner.example.com/x", api_key="k", allowed_hosts={"evil.example.com"})
+        RemoteDocumentScanner(endpoint="https://scanner.example.com/x", api_key="k", allowed_hosts={"evil.example.com"}, expected_scanner_id="scanner-1", expected_engine_version="1.4.6", expected_signature_version="2026-11-24")
     with pytest.raises(DocumentScannerConfigurationError):
-        RemoteDocumentScanner(endpoint="https://scanner.example.com/x", api_key="  ", allowed_hosts={"scanner.example.com"})
+        RemoteDocumentScanner(endpoint="https://scanner.example.com/x", api_key="  ", allowed_hosts={"scanner.example.com"}, expected_scanner_id="scanner-1", expected_engine_version="1.4.6", expected_signature_version="2026-11-24")
     with pytest.raises(DocumentScannerConfigurationError):  # suffix/subdomain is not an allowlist match
-        RemoteDocumentScanner(endpoint="https://a.scanner.example.com/x", api_key="k", allowed_hosts={"scanner.example.com"})
+        RemoteDocumentScanner(endpoint="https://a.scanner.example.com/x", api_key="k", allowed_hosts={"scanner.example.com"}, expected_scanner_id="scanner-1", expected_engine_version="1.4.6", expected_signature_version="2026-11-24")
 
 
 def test_environment_requires_url_key_and_allowlist(monkeypatch):
-    for name in ("URL", "API_KEY", "ALLOWED_HOSTS"):
+    for name in ("URL", "API_KEY", "ALLOWED_HOSTS", "ID", "ENGINE_VERSION", "SIGNATURE_VERSION"):
         monkeypatch.delenv(f"ALLPHA_DOCUMENT_SCANNER_{name}", raising=False)
     with pytest.raises(DocumentScannerConfigurationError):
         RemoteDocumentScanner.from_environment()
@@ -221,7 +222,7 @@ def test_tls_verification_and_no_redirects_or_env_proxy(monkeypatch):
     "::1", "fe80::1", "fc00::1", "::ffff:127.0.0.1", "100.64.0.1", "0.0.0.0", "224.0.0.1",
 ])
 def test_allowlisted_name_resolving_to_non_public_address_is_refused(monkeypatch, address):
-    s = RemoteDocumentScanner(endpoint="https://scanner.example.com/v1/scan", api_key="k", allowed_hosts={"scanner.example.com"})
+    s = RemoteDocumentScanner(endpoint="https://scanner.example.com/v1/scan", api_key="k", allowed_hosts={"scanner.example.com"}, expected_scanner_id="scanner-1", expected_engine_version="1.4.6", expected_signature_version="2026-11-24")
 
     async def scenario():
         loop = asyncio.get_running_loop()
@@ -374,3 +375,31 @@ def test_real_tls_certificate_for_other_name_is_rejected(tmp_path, monkeypatch, 
     scenario, _ = _real_tls_scan(tmp_path, monkeypatch, "evil.example.net")
     with pytest.raises(DocumentScannerUnavailable):
         run(scenario())
+
+
+@pytest.mark.parametrize(
+    ("scanner_id", "engine_version", "signature_version"),
+    [
+        ("scanner-2", "1.4.6", "2026-11-24"),
+        ("scanner-1", "1.4.7", "2026-11-24"),
+        ("scanner-1", "1.4.6", "2026-11-25"),
+    ],
+)
+def test_clean_verdict_requires_exact_deployment_pinned_scanner_identity(scanner_id, engine_version, signature_version):
+    payload = receipt()
+    payload["scanner"] = {
+        "id": scanner_id,
+        "engine_version": engine_version,
+        "signature_version": signature_version,
+    }
+    with pytest.raises(DocumentScannerUnavailable, match="deployment-pinned"):
+        scan(scanner(lambda request: httpx.Response(200, json=payload)))
+
+
+def test_scanner_identity_pins_are_required_and_validated():
+    with pytest.raises(DocumentScannerConfigurationError, match="trusted scanner"):
+        RemoteDocumentScanner(
+            endpoint="https://scanner.example.com/x", api_key="k",
+            allowed_hosts={"scanner.example.com"}, expected_scanner_id="",
+            expected_engine_version="1.4.6", expected_signature_version="2026-11-24",
+        )
