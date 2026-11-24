@@ -2,8 +2,13 @@ import asyncio
 import hashlib
 
 from fastapi import HTTPException
+import httpx
+import pytest
 
-from allpha_api.knowledge_ingestion_worker import KnowledgeDocumentWorker, main
+from allpha_api.knowledge_ingestion_worker import (
+    KnowledgeDocumentWorker, KnowledgeStorageObjectTooLarge,
+    SupabaseKnowledgeStorage, main,
+)
 from knowledge_worker_fakes import DATA, FakeStorage, FakeStore
 from allpha_api.knowledge_policy import KnowledgePolicyDenied
 
@@ -157,3 +162,86 @@ def test_document_worker_entrypoint_respects_disabled_consumer_flag(monkeypatch)
         fail_if_built,
     )
     main()
+
+
+class OversizedBody(httpx.AsyncByteStream):
+    async def __aiter__(self):
+        yield b"123"
+        yield b"45"
+
+    async def aclose(self):
+        return None
+
+
+def test_storage_download_stream_is_bounded_without_content_length(monkeypatch):
+    monkeypatch.setattr(
+        "allpha_api.knowledge_ingestion_worker.MAX_KNOWLEDGE_SOURCE_BYTES", 4,
+    )
+    seen = {}
+
+    def handler(request):
+        seen["authorization"] = request.headers.get("authorization")
+        seen["accept_encoding"] = request.headers.get("accept-encoding")
+        return httpx.Response(200, stream=OversizedBody())
+
+    storage = SupabaseKnowledgeStorage(
+        supabase_url="https://supabase.example",
+        service_key="server-secret",
+    )
+    storage._transport = httpx.MockTransport(handler)
+
+    async def run():
+        with pytest.raises(KnowledgeStorageObjectTooLarge):
+            await storage.download(
+                "11111111-1111-4111-8111-111111111111/"
+                "22222222-2222-4222-8222-222222222222/"
+                "33333333-3333-4333-8333-333333333333/notes.txt"
+            )
+
+    asyncio.run(run())
+    assert seen == {
+        "authorization": "Bearer server-secret",
+        "accept_encoding": "identity",
+    }
+
+
+def test_storage_download_rejects_declared_oversize_before_reading(monkeypatch):
+    monkeypatch.setattr(
+        "allpha_api.knowledge_ingestion_worker.MAX_KNOWLEDGE_SOURCE_BYTES", 4,
+    )
+    body_read = False
+
+    class UnreadableBody(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            nonlocal body_read
+            body_read = True
+            yield b"x"
+
+        async def aclose(self):
+            return None
+
+    storage = SupabaseKnowledgeStorage(
+        supabase_url="https://supabase.example",
+        service_key="server-secret",
+        timeout_seconds=1,
+    )
+    storage._transport = httpx.MockTransport(
+        lambda request: httpx.Response(
+            200,
+            headers={"content-length": "5"},
+            stream=UnreadableBody(),
+        )
+    )
+
+    async def run():
+        with pytest.raises(KnowledgeStorageObjectTooLarge):
+            await storage.download(
+                "11111111-1111-4111-8111-111111111111/"
+                "22222222-2222-4222-8222-222222222222/"
+                "33333333-3333-4333-8333-333333333333/notes.txt"
+            )
+
+    asyncio.run(run())
+    assert body_read is False
+
+
