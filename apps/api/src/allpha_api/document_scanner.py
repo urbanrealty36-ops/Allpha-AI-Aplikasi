@@ -49,7 +49,11 @@ class RemoteDocumentScanner:
         allowed_hosts: set[str],
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
-        parsed = urlsplit(endpoint.strip())
+        try:
+            parsed = urlsplit(endpoint.strip())
+            port = parsed.port
+        except ValueError as exc:
+            raise DocumentScannerConfigurationError("scanner endpoint URL is malformed") from exc
         host = (parsed.hostname or "").lower().rstrip(".")
         try:
             ipaddress.ip_address(host)
@@ -63,7 +67,7 @@ class RemoteDocumentScanner:
             or parsed.password is not None
             or parsed.query
             or parsed.fragment
-            or parsed.port not in (None, 443)
+            or port not in (None, 443)
             or is_ip_literal
             or host not in {item.lower().strip().rstrip(".") for item in allowed_hosts if item.strip()}
         ):
