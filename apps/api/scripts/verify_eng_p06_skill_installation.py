@@ -322,7 +322,7 @@ update public.agent_skills set status='published' where id='{SOURCE_SKILL}';
 reset role;
 """)
         paid = psql(f"""
-set role authenticated;
+set role service_role;
 select set_config('request.jwt.claim.sub','{OWNER}',false);
 select set_config('request.jwt.claim.role','authenticated',false);
 select public.install_agent_skill('{TARGET_AGENT}','{SOURCE_AGENT}','{SOURCE_SKILL}',8,true,'p06-paid-license-denied', '11111111-1111-4111-8111-111111111111');
@@ -331,7 +331,7 @@ select public.install_agent_skill('{TARGET_AGENT}','{SOURCE_AGENT}','{SOURCE_SKI
             raise RuntimeError("Paid Skill installation bypassed the Billing entitlement gate")
 
         denied = psql(f"""
-set role authenticated;
+set role service_role;
 select set_config('request.jwt.claim.sub','{OWNER}',false);
 select set_config('request.jwt.claim.role','authenticated',false);
 select public.install_agent_skill('{TARGET_AGENT}','{SOURCE_AGENT}','{SOURCE_SKILL}',8,false,'p06-license-not-accepted', '11111111-1111-4111-8111-111111111111');
