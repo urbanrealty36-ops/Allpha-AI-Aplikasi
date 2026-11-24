@@ -221,11 +221,12 @@ async def _serve_runtime_enabled(stop_event: asyncio.Event) -> None:
 
 
 async def serve() -> None:
-    """Host independent runtime and workflow consumers under one graceful process lifecycle."""
-    from allpha_api import workflow_worker_host
+    """Host independently gated runtime, workflow and Knowledge consumers in one process."""
+    from allpha_api import workflow_worker_host, knowledge_ingestion_worker
 
     runtime_enabled = _enabled()
     workflow_enabled = workflow_worker_host.enabled()
+    knowledge_documents_enabled = knowledge_ingestion_worker.enabled()
     stop_event = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
@@ -243,17 +244,22 @@ async def serve() -> None:
         consumers.append(asyncio.create_task(
             workflow_worker_host.serve_enabled(stop_event=stop_event), name="workflow-worker",
         ))
+    if knowledge_documents_enabled:
+        consumers.append(asyncio.create_task(
+            knowledge_ingestion_worker.serve_enabled(stop_event=stop_event),
+            name="knowledge-document-ingestion-worker",
+        ))
 
     if not consumers:
         logger.warning(
-            "Allpha worker container is healthy but idle; Agent Runtime and Workflow consumers are disabled"
+            "Allpha worker container is healthy but idle; Agent Runtime, Workflow and Knowledge consumers are disabled"
         )
         await stop_event.wait()
         return
 
     logger.info(
-        "Allpha shared worker host started; agent_runtime=%s workflow=%s",
-        runtime_enabled, workflow_enabled,
+        "Allpha shared worker host started; agent_runtime=%s workflow=%s knowledge_documents=%s",
+        runtime_enabled, workflow_enabled, knowledge_documents_enabled,
     )
     await asyncio.gather(*consumers)
 
