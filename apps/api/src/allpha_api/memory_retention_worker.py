@@ -19,6 +19,11 @@ def _enabled() -> bool:
     return value == "true"
 
 
+def enabled() -> bool:
+    """Expose the independent retention gate to the shared Railway worker host."""
+    return _enabled()
+
+
 def _bounded_int(name: str, default: int, minimum: int, maximum: int) -> int:
     raw = os.getenv(name, str(default)).strip()
     try:
