@@ -41,6 +41,7 @@ class MeteringRecord:
     pricing_version: str
     completed_at: str
     billing_account_id: str | None = None
+    capability: str = "embedding"
 
     def __post_init__(self) -> None:
         required = (
@@ -54,6 +55,8 @@ class MeteringRecord:
             raise ValueError("metering version, usage and cost must be valid non-negative values")
         if self.sensitivity not in {"public", "internal", "confidential", "restricted"}:
             raise ValueError("metering sensitivity is invalid")
+        if self.capability not in {"text_generation", "embedding", "image_generation", "video_generation", "reranking"}:
+            raise ValueError("metering capability is invalid")
 
     def payload_fingerprint(self) -> str:
         """Canonical digest used to distinguish safe duplicate delivery from conflict."""
@@ -62,6 +65,7 @@ class MeteringRecord:
             "trace_id": self.trace_id,
             "owner_id": self.owner_id,
             "billing_account_id": self.billing_account_id or self.owner_id,
+            "capability": self.capability,
             "agent_id": self.agent_id,
             "source_id": self.source_id,
             "source_version": self.source_version,
