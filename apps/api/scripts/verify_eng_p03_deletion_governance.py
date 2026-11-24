@@ -219,6 +219,21 @@ begin
  if position('auth.users' in pg_get_functiondef('public.execute_account_deletion_execution_job(uuid,uuid)'::regprocedure))=0 then
    raise exception 'dependency FK parent check is missing';
  end if;
+ if position('account_deletion_storage_jobs' in pg_get_functiondef('public.execute_account_deletion_execution_job(uuid,uuid)'::regprocedure))=0
+    or position('preserved' in pg_get_functiondef('public.execute_account_deletion_execution_job(uuid,uuid)'::regprocedure))=0 then
+   raise exception 'database executor does not wait for completed/preserved Storage disposition';
+ end if;
+ if not exists(select 1 from information_schema.columns where table_schema='public'
+   and table_name='account_deletion_storage_jobs' and column_name='source_key') then
+   raise exception 'source-aware Storage job key is missing';
+ end if;
+ if not exists(select 1 from information_schema.columns where table_schema='public'
+   and table_name='account_deletion_source_policies' and column_name='owner_columns') then
+   raise exception 'source registry metadata columns are missing';
+ end if;
+ if to_regclass('public.account_data_retention_policies') is null then
+   raise exception 'canonical retention policy table is missing';
+ end if;
 end {dollar_quote};
 """)
         psql(f"""
