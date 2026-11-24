@@ -36,6 +36,7 @@ GOVERNANCE_RETRY_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123182248_eng
 FK_ACTION_GATE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124010741_eng_p03_fk_action_integrity_gate.sql"
 EXPORT_DELETION_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124015229_eng_p03_account_export_deletion_lifecycle.sql"
 DELETION_RPC_AMBIGUITY_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124020721_eng_p03_account_deletion_rpc_ambiguity_fix.sql"
+ACCOUNT_LIFECYCLE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123191600_eng_p03_account_export_and_deletion_request_lifecycle.sql"
 MIGRATION=ROOT/"apps/api/supabase/migrations/20261123192200_eng_p03_deletion_legal_hold_governance_worker.sql"
 SOURCE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123153243_eng_p03_account_deletion_specialized_source_handlers.sql"
 OWNER_SCOPE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123153456_eng_p03_agent_skill_deletion_owner_scope.sql"
@@ -258,6 +259,7 @@ insert into private.account_export_sources(source_key,table_name,filter_kind) va
             REQUEUE_AUDIT_MIGRATION,
         ):
             psql(migration.read_text(encoding="utf-8"))
+        psql(ACCOUNT_LIFECYCLE_MIGRATION.read_text(encoding="utf-8"))
         psql(MIGRATION.read_text(encoding="utf-8"))
         psql(MIGRATION.read_text(encoding="utf-8")) # repeatable forward migration
         psql(f"""
