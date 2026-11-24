@@ -8,8 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import importlib
-import inspect
 import logging
 import os
 import signal
@@ -265,13 +263,6 @@ class SupabaseKnowledgeJobStore:
         return bool(result)
 
 
-def _load_factory(path: str):
-    if ":" not in path:
-        raise WorkerConfigurationError("ALLPHA_KNOWLEDGE_WORKER_FACTORY must be module:function")
-    module_name, function_name = path.split(":", 1)
-    return getattr(importlib.import_module(module_name), function_name)
-
-
 def enabled() -> bool:
     raw = os.getenv("ALLPHA_KNOWLEDGE_EMBEDDING_WORKER_ENABLED", "false").strip().lower()
     if raw not in {"true", "false"}:
@@ -280,21 +271,12 @@ def enabled() -> bool:
 
 
 async def build_worker_from_environment() -> KnowledgeEmbeddingWorker:
-    factory_path = os.getenv("ALLPHA_KNOWLEDGE_WORKER_FACTORY", "").strip()
-    if not factory_path:
-        raise WorkerConfigurationError("approved router and vector sink factory is not configured")
-    factory = _load_factory(factory_path)
-    worker = factory()
-    if inspect.isawaitable(worker):
-        worker = await worker
+    """Use the canonical Model Router and pgvector repository composition root."""
+    from allpha_api.knowledge_worker_factory import build_worker
+
+    worker = await build_worker()
     if not isinstance(worker, KnowledgeEmbeddingWorker):
-        raise WorkerConfigurationError("worker factory must return KnowledgeEmbeddingWorker")
-    if not isinstance(worker.router, CanonicalModelRouter):
-        raise WorkerConfigurationError("runtime must use CanonicalModelRouter")
-    try:
-        worker.router.require_runtime_ready()
-    except ModelRouterUnavailable as exc:
-        raise WorkerConfigurationError(f"canonical Model Router is not runtime-ready: {exc}") from exc
+        raise WorkerConfigurationError("canonical Knowledge worker factory returned an invalid worker")
     return worker
 
 
