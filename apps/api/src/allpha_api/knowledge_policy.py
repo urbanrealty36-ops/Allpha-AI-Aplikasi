@@ -41,10 +41,15 @@ class KnowledgePolicySnapshot:
     allowed_purposes: tuple[str, ...]
     grants_active: bool
     resolved_at_version: str
+    tenant_id: str | None = None
+    session_id: str | None = None
 
 
 class KnowledgePolicySnapshotProvider(Protocol):
-    async def resolve(self, *, owner_id: str, agent_id: str, audience: str) -> KnowledgePolicySnapshot | None:
+    async def resolve(
+        self, *, owner_id: str, agent_id: str, audience: str,
+        tenant_id: str | None, session_id: str | None,
+    ) -> KnowledgePolicySnapshot | None:
         """Resolve authoritative, current policy/consent/grant facts from canonical storage."""
         ...
 
@@ -58,6 +63,8 @@ class ResolvedKnowledgePolicy:
     audience: str
     grant_version: str
     decision_reference: str
+    tenant_id: str | None = None
+    session_id: str | None = None
     purpose: str = RETRIEVAL_PURPOSE
 
 
@@ -67,11 +74,39 @@ class VersionedKnowledgePolicyResolver:
     def __init__(self, provider: KnowledgePolicySnapshotProvider):
         self._provider = provider
 
-    async def resolve(self, *, owner_id: str, agent_id: str, audience: str = "owner_private") -> ResolvedKnowledgePolicy:
+    async def resolve(
+        self, *, owner_id: str, agent_id: str, audience: str = "owner_private",
+        tenant_id: str | None = None, session_id: str | None = None,
+    ) -> ResolvedKnowledgePolicy:
         if not isinstance(audience, str) or audience not in KNOWLEDGE_AUDIENCES:
             raise KnowledgePolicyUnavailable("knowledge retrieval audience is invalid")
+
+        def canonical_scope_id(value: str | None, label: str) -> str | None:
+            if value is None:
+                return None
+            if not isinstance(value, str):
+                raise KnowledgePolicyUnavailable(f"trusted {label} scope is invalid")
+            try:
+                canonical = str(uuid.UUID(value))
+            except (ValueError, TypeError, AttributeError) as exc:
+                raise KnowledgePolicyUnavailable(f"trusted {label} scope is invalid") from exc
+            if canonical != value.lower():
+                raise KnowledgePolicyUnavailable(f"trusted {label} scope is not canonical")
+            return canonical
+
+        tenant_id = canonical_scope_id(tenant_id, "tenant")
+        session_id = canonical_scope_id(session_id, "session")
+        if audience == "tenant_shared" and (tenant_id is None or session_id is not None):
+            raise KnowledgePolicyUnavailable("tenant_shared retrieval requires only a trusted tenant scope")
+        if audience == "session_scoped" and session_id is None:
+            raise KnowledgePolicyUnavailable("session_scoped retrieval requires a trusted session scope")
+        if audience in {"owner_private", "published_knowledge"} and (tenant_id is not None or session_id is not None):
+            raise KnowledgePolicyUnavailable("owner/published retrieval cannot carry tenant or session scope")
         try:
-            snapshot = await self._provider.resolve(owner_id=owner_id, agent_id=agent_id, audience=audience)
+            snapshot = await self._provider.resolve(
+                owner_id=owner_id, agent_id=agent_id, audience=audience,
+                tenant_id=tenant_id, session_id=session_id,
+            )
         except Exception as exc:
             raise KnowledgePolicyUnavailable("canonical knowledge policy provider failed") from exc
         if snapshot is None:
@@ -94,6 +129,8 @@ class VersionedKnowledgePolicyResolver:
             or snapshot.owner_id != owner_id
             or not isinstance(snapshot.agent_id, str)
             or snapshot.agent_id != agent_id
+            or snapshot.tenant_id != tenant_id
+            or snapshot.session_id != session_id
         ):
             raise KnowledgePolicyUnavailable("knowledge policy identity/version is invalid")
         if snapshot.audience not in KNOWLEDGE_AUDIENCES:
@@ -149,6 +186,8 @@ class VersionedKnowledgePolicyResolver:
             audience=snapshot.audience,
             grant_version=snapshot.grant_version,
             decision_reference=snapshot.decision_reference,
+            tenant_id=tenant_id,
+            session_id=session_id,
         )
 
 
@@ -163,11 +202,15 @@ class VersionedKnowledgeRetrievalPolicy:
         self._resolver = resolver
         self._audience = audience
 
-    async def resolve_context(self, *, owner_id: str, agent_id: str, audience: str | None = None) -> ResolvedKnowledgePolicy:
+    async def resolve_context(
+        self, *, owner_id: str, agent_id: str, audience: str | None = None,
+        tenant_id: str | None = None, session_id: str | None = None,
+    ) -> ResolvedKnowledgePolicy:
         try:
             return await self._resolver.resolve(
                 owner_id=owner_id, agent_id=agent_id,
                 audience=self._audience if audience is None else audience,
+                tenant_id=tenant_id, session_id=session_id,
             )
         except KnowledgePolicyDenied as exc:
             from allpha_api.knowledge_retrieval import KnowledgeAccessDenied
