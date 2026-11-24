@@ -98,6 +98,10 @@ class WorkflowStore:
             "select": "sequence,event_type,step_key,details,created_at",
             "run_id": f"eq.{run_id}", "owner_user_id": f"eq.{owner_id}",
             "order": "sequence.asc", "limit": "200"})
+        run["approvals"] = await self.request("GET", "workflow_step_approvals", params={
+            "select": "id,run_id,step_id,owner_user_id,message,context,status,decision_note,decided_by,decided_at,created_at,updated_at",
+            "run_id": f"eq.{run_id}", "owner_user_id": f"eq.{owner_id}",
+            "order": "created_at.asc", "limit": "100"})
         return run
 
     async def list_runs(self, owner_id: str, *, limit: int = 50) -> list[dict[str, Any]]:
@@ -109,6 +113,26 @@ class WorkflowStore:
     async def cancel_run(self, owner_id: str, run_id: str) -> dict[str, Any] | None:
         rows = await self.request("POST", "rpc/cancel_workflow_run", body={
             "p_run_id": run_id, "p_owner_user_id": owner_id})
+        return rows[0] if rows else None
+
+    async def approve_step(
+        self, owner_id: str, run_id: str, step_id: str, approval_id: str,
+        decision_note: str | None = None,
+    ) -> dict[str, Any] | None:
+        rows = await self.request("POST", "rpc/approve_workflow_step", body={
+            "p_run_id": run_id, "p_owner_user_id": owner_id, "p_step_id": step_id,
+            "p_approval_id": approval_id, "p_decision_note": decision_note,
+        })
+        return rows[0] if rows else None
+
+    async def reject_step(
+        self, owner_id: str, run_id: str, step_id: str, approval_id: str,
+        decision_note: str | None = None,
+    ) -> dict[str, Any] | None:
+        rows = await self.request("POST", "rpc/reject_workflow_step", body={
+            "p_run_id": run_id, "p_owner_user_id": owner_id, "p_step_id": step_id,
+            "p_approval_id": approval_id, "p_decision_note": decision_note,
+        })
         return rows[0] if rows else None
 
     async def list_runnable_runs(self, *, limit: int = 25) -> list[dict[str, Any]]:
