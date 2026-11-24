@@ -21,7 +21,7 @@ def snapshot(**overrides):
         allowed_source_ids=("00000000-0000-0000-0000-0000000000c9",),
         audience="owner_private", grant_version="knowledge-grant.v1",
         decision_reference="decision-42",
-        knowledge_consent_granted=True
+        knowledge_consent_granted=True,
         consent_version="knowledge-consent.v2",
         consent_revoked=False,
         allowed_purposes=("agent_context_retrieval",),
