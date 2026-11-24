@@ -100,7 +100,7 @@ export function WorkflowCenter({apiBase,getAccessToken}:Props){
    <Pressable onPress={()=>void refresh()} disabled={loading||busy} style={styles.secondaryButton}><Text style={styles.secondaryText}>{loading?"Memuat…":"Muat ulang"}</Text></Pressable>
   </View>
   {error?<Text accessibilityRole="alert" style={styles.error}>{error}</Text>:null}
-  {notice?<Text accessibilityRole="status" style={styles.success}>{notice}</Text>:null}
+  {notice?<Text style={styles.success}>{notice}</Text>:null}
   <View style={styles.card}>
    <Text style={styles.kicker}>VERSIONED DEFINITION</Text><Text style={styles.sectionTitle}>Simpan definisi workflow</Text>
    <Text style={styles.copy}>JSON deklaratif. Node yang belum didukung ditolak oleh API; tidak ada arbitrary code execution.</Text>
