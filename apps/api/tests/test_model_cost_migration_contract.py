@@ -43,3 +43,18 @@ def test_model_usage_summary_is_service_only_and_does_not_mix_cost_units():
     assert "grant execute on function public.get_agent_model_usage_summary(timestamptz,timestamptz) to service_role" in sql
     assert "group by provider_id,model_id,usage_unit,cost_unit,pricing_version" in sql
     assert "generation_output_moderation_one_approved" in sql
+
+
+CAPABILITY = ROOT / "supabase" / "migrations" / "20261124074500_eng_p09_model_capability_contract.sql"
+
+
+def test_model_cost_registry_persists_explicit_capability_and_fails_closed_on_unknown_backfill():
+    sql = " ".join(CAPABILITY.read_text(encoding="utf-8").lower().split())
+    assert "add column if not exists capability text" in sql
+    assert "provider_id = 'nvidia-nim'" in sql
+    assert "model_id = 'qwen/qwen2.5-coder-32b-instruct'" in sql
+    assert "set capability = 'text_generation'" in sql
+    assert "alter column capability set not null" in sql
+    assert "ai_model_cost_capability_valid" in sql
+    assert "'embedding'" in sql
+    assert "ai_model_cost_approved_capability_route_idx" in sql
