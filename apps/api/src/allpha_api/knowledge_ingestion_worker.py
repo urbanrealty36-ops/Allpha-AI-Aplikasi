@@ -229,14 +229,31 @@ class KnowledgeDocumentWorker:
             raise WorkerConfigurationError("canonical Knowledge consent/source-grant resolver is not configured")
         await self.policy_resolver.authorize_source(owner_id=str(job["owner_id"]), agent_id=str(job["agent_id"]), source_id=str(source["id"]), sensitivity=str(sensitivity), purpose=KNOWLEDGE_INGESTION_PURPOSE)
 
-        await self._set_processing_state(job, stage="malware_scan")
-        data = await self.storage.download(storage_path)
-        expected_sha = str(source.get("sha256") or "").lower()
-        expected_size = int(source.get("size_bytes") or 0)
-        if expected_size <= 0 or expected_size > MAX_KNOWLEDGE_SOURCE_BYTES or len(data) != expected_size:
+        raw_expected_size = source.get("size_bytes")
+        if (
+            type(raw_expected_size) is not int
+            or raw_expected_size <= 0
+            or raw_expected_size > MAX_KNOWLEDGE_SOURCE_BYTES
+        ):
             await self._fail(job, "KNOWLEDGE_SOURCE_SIZE_MISMATCH", "document_parse_failed", False, 0)
             return
-        if not expected_sha or hashlib.sha256(data).hexdigest() != expected_sha:
+        expected_size = raw_expected_size
+        expected_sha = source.get("sha256")
+        if (
+            not isinstance(expected_sha, str)
+            or len(expected_sha) != 64
+            or expected_sha != expected_sha.lower()
+            or any(char not in "0123456789abcdef" for char in expected_sha)
+        ):
+            await self._fail(job, "KNOWLEDGE_SOURCE_SHA256_MISMATCH", "document_parse_failed", False, 0)
+            return
+
+        await self._set_processing_state(job, stage="malware_scan")
+        data = await self.storage.download(storage_path)
+        if len(data) != expected_size:
+            await self._fail(job, "KNOWLEDGE_SOURCE_SIZE_MISMATCH", "document_parse_failed", False, 0)
+            return
+        if hashlib.sha256(data).hexdigest() != expected_sha:
             await self._fail(job, "KNOWLEDGE_SOURCE_SHA256_MISMATCH", "document_parse_failed", False, 0)
             return
 
