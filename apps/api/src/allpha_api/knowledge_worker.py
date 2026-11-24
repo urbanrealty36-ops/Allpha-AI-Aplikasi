@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import importlib
+import inspect
 import logging
 import os
 import signal
@@ -269,12 +270,14 @@ def enabled() -> bool:
     return raw == "true"
 
 
-def build_worker_from_environment() -> KnowledgeEmbeddingWorker:
+async def build_worker_from_environment() -> KnowledgeEmbeddingWorker:
     factory_path = os.getenv("ALLPHA_KNOWLEDGE_WORKER_FACTORY", "").strip()
     if not factory_path:
         raise WorkerConfigurationError("approved router and vector sink factory is not configured")
     factory = _load_factory(factory_path)
     worker = factory()
+    if inspect.isawaitable(worker):
+        worker = await worker
     if not isinstance(worker, KnowledgeEmbeddingWorker):
         raise WorkerConfigurationError("worker factory must return KnowledgeEmbeddingWorker")
     if not isinstance(worker.router, CanonicalModelRouter):
@@ -318,7 +321,7 @@ async def run_forever(
 async def serve_enabled(*, stop_event: asyncio.Event) -> None:
     if not enabled():
         return
-    worker = build_worker_from_environment()
+    worker = await build_worker_from_environment()
     poll_seconds = float(os.getenv("KNOWLEDGE_EMBEDDING_POLL_SECONDS", "2"))
     log.info(
         "Knowledge embedding consumer enabled; poll_seconds=%s batch_size=%s lease_seconds=%s",
@@ -327,12 +330,16 @@ async def serve_enabled(*, stop_event: asyncio.Event) -> None:
     await run_forever(worker, poll_seconds=poll_seconds, stop_event=stop_event)
 
 
+async def _main() -> None:
+    worker = await build_worker_from_environment()
+    await run_forever(
+        worker, poll_seconds=float(os.getenv("KNOWLEDGE_EMBEDDING_POLL_SECONDS", "2")),
+    )
+
+
 def main() -> None:
     logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
-    worker = build_worker_from_environment()
-    asyncio.run(run_forever(
-        worker, poll_seconds=float(os.getenv("KNOWLEDGE_EMBEDDING_POLL_SECONDS", "2")),
-    ))
+    asyncio.run(_main())
 
 
 if __name__ == "__main__":
