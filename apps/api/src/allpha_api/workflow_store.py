@@ -38,7 +38,10 @@ class WorkflowStore:
         if prefer:
             headers["Prefer"] = prefer
         try:
-            async with httpx.AsyncClient(timeout=self._TIMEOUT, transport=self._transport) as client:
+            async with httpx.AsyncClient(
+                timeout=self._TIMEOUT, transport=self._transport,
+                follow_redirects=False, trust_env=False,
+            ) as client:
                 response = await client.request(method, f"{self._base_url}/rest/v1/{path}",
                                                 headers=headers, params=params, json=body)
         except httpx.HTTPError as exc:
