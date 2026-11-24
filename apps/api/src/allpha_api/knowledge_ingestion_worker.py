@@ -177,19 +177,37 @@ class KnowledgeDocumentWorker:
             log.exception("Could not persist failure state for Knowledge document job %s", job.get("id"))
 
 
-async def run_forever(worker: KnowledgeDocumentWorker, *, poll_seconds: float = 2.0) -> None:
-    while True:
+async def run_forever(
+    worker: KnowledgeDocumentWorker,
+    *,
+    poll_seconds: float = 2.0,
+    stop_event: asyncio.Event | None = None,
+) -> None:
+    stop = stop_event or asyncio.Event()
+    interval = max(0.25, min(poll_seconds, 30.0))
+    while not stop.is_set():
         try:
             worked = await worker.process_once()
+        except asyncio.CancelledError:
+            raise
         except Exception:
             log.exception("Knowledge document worker poll failed")
             worked = False
-        if not worked:
-            await asyncio.sleep(max(0.25, min(poll_seconds, 30.0)))
+        if not worked and not stop.is_set():
+            try:
+                await asyncio.wait_for(stop.wait(), timeout=interval)
+            except asyncio.TimeoutError:
+                pass
 
 
-def main() -> None:
-    logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
+def enabled() -> bool:
+    raw = os.getenv("ALLPHA_KNOWLEDGE_DOCUMENT_WORKER_ENABLED", "false").strip().lower()
+    if raw not in {"true", "false"}:
+        raise SystemExit("ALLPHA_KNOWLEDGE_DOCUMENT_WORKER_ENABLED must be true or false")
+    return raw == "true"
+
+
+def build_worker_from_environment() -> KnowledgeDocumentWorker:
     supabase_url = os.getenv("SUPABASE_URL", "").strip()
     service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip() or os.getenv("SUPABASE_SECRET_KEY", "").strip()
     scanner_url = os.getenv("ALLPHA_DOCUMENT_SCANNER_URL", "").strip()
@@ -210,12 +228,29 @@ def main() -> None:
             raise SystemExit("Knowledge document worker disabled: local ClamAV daemon did not answer its health probe")
     store = SupabaseKnowledgeJobStore(supabase_url=supabase_url, service_key=service_key)
     storage = SupabaseKnowledgeStorage(supabase_url=supabase_url, service_key=service_key)
-    worker = KnowledgeDocumentWorker(
+    return KnowledgeDocumentWorker(
         store=store,
         storage=storage,
         lease_seconds=int(os.getenv("KNOWLEDGE_DOCUMENT_LEASE_SECONDS", "120")),
         batch_size=int(os.getenv("KNOWLEDGE_DOCUMENT_BATCH_SIZE", "50")),
     )
+
+
+async def serve_enabled(*, stop_event: asyncio.Event) -> None:
+    if not enabled():
+        return
+    worker = build_worker_from_environment()
+    poll_seconds = float(os.getenv("KNOWLEDGE_DOCUMENT_POLL_SECONDS", "2"))
+    log.info(
+        "Knowledge document consumer enabled; poll_seconds=%s batch_size=%s lease_seconds=%s",
+        poll_seconds, worker.batch_size, worker.lease_seconds,
+    )
+    await run_forever(worker, poll_seconds=poll_seconds, stop_event=stop_event)
+
+
+def main() -> None:
+    logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
+    worker = build_worker_from_environment()
     asyncio.run(run_forever(worker, poll_seconds=float(os.getenv("KNOWLEDGE_DOCUMENT_POLL_SECONDS", "2"))))
 
 
