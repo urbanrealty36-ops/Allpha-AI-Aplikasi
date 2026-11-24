@@ -191,3 +191,63 @@ def test_delete_source_returns_success_when_source_is_already_deleted(monkeypatc
         app.dependency_overrides.clear()
     assert response.status_code==204
     assert calls==[("POST","rpc/begin_agent_knowledge_source_delete")]
+
+
+def test_clamd_scanner_accepts_only_clean_local_verdicts(monkeypatch):
+    import asyncio
+    from allpha_api.knowledge import _scan
+    monkeypatch.delenv("ALLPHA_DOCUMENT_SCANNER_URL",raising=False)
+    monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_MODE","clamd")
+    calls=[]
+    class Process:
+        returncode=0
+        async def communicate(self):
+            return b"allpha-knowledge.txt: OK",b""
+    async def fake_exec(*args,**kwargs):
+        calls.append(args)
+        assert args[0]=="clamdscan"
+        assert "--fdpass" in args and "--no-summary" in args
+        with open(args[-1],"rb") as source:
+            assert source.read()==b"private document"
+        return Process()
+    monkeypatch.setattr("allpha_api.knowledge.asyncio.create_subprocess_exec",fake_exec)
+    asyncio.run(_scan(b"private document","notes.txt","text/plain"))
+    assert len(calls)==1
+
+
+def test_clamd_scanner_rejects_infected_document(monkeypatch):
+    import asyncio
+    from fastapi import HTTPException
+    from allpha_api.knowledge import _scan
+    monkeypatch.delenv("ALLPHA_DOCUMENT_SCANNER_URL",raising=False)
+    monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_MODE","clamd")
+    class Process:
+        returncode=1
+        async def communicate(self):
+            return b"notes.txt: Eicar-Test-Signature FOUND",b""
+    async def fake_exec(*args,**kwargs):
+        return Process()
+    monkeypatch.setattr("allpha_api.knowledge.asyncio.create_subprocess_exec",fake_exec)
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(_scan(b"infected","notes.txt","text/plain"))
+    assert error.value.status_code==422
+    assert error.value.detail["code"]=="MALWARE_SCAN_REJECTED"
+
+
+def test_clamd_scanner_fails_closed_when_daemon_unavailable(monkeypatch):
+    import asyncio
+    from fastapi import HTTPException
+    from allpha_api.knowledge import _scan
+    monkeypatch.delenv("ALLPHA_DOCUMENT_SCANNER_URL",raising=False)
+    monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_MODE","clamd")
+    class Process:
+        returncode=2
+        async def communicate(self):
+            return b"",b"Could not connect to clamd"
+    async def fake_exec(*args,**kwargs):
+        return Process()
+    monkeypatch.setattr("allpha_api.knowledge.asyncio.create_subprocess_exec",fake_exec)
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(_scan(b"private","notes.txt","text/plain"))
+    assert error.value.status_code==503
+    assert error.value.detail["code"]=="SCANNER_UNAVAILABLE"
