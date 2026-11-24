@@ -375,6 +375,27 @@ async def get_agent_ownership_audit(
     return {"ownership_transfers": transfers or [], "passport_consents": consents or [], "limit": bounded_limit}
 
 
+@router.get("/operator/agent-skills/installations/audit", name="get_agent_skill_installation_audit")
+async def get_agent_skill_installation_audit(
+    limit: int = 100,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:security.audit.read")),
+) -> dict[str, Any]:
+    bounded_limit = min(max(1, limit), 100)
+    installations, events = await asyncio.gather(
+        privileged_rest_request(
+            "GET", "agent_skill_installations",
+            params={"select": "id,agent_id,source_agent_id,source_skill_id,source_version,source_snapshot_digest,installed_skill_id,installer_subject_ref,license_terms_snapshot,license_terms_digest,license_expires_at,accepted_at,status,created_at,revoked_at,revocation_reason",
+                    "order": "created_at.desc", "limit": str(bounded_limit)},
+        ),
+        privileged_rest_request(
+            "GET", "agent_skill_installation_events",
+            params={"select": "id,installation_id,agent_id,source_agent_id,source_skill_id,event_type,actor_subject_ref,source_version,source_snapshot_digest,license_terms_digest,details,created_at",
+                    "order": "created_at.desc", "limit": str(bounded_limit)},
+        ),
+    )
+    return {"installations": installations or [], "events": events or [], "limit": bounded_limit}
+
+
 @router.get("/operator/agent-social/governance", name="get_agent_social_governance")
 async def get_agent_social_governance(
     limit: int = 100,
