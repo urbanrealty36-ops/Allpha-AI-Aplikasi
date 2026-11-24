@@ -4,7 +4,8 @@ import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, Text
 type Definition={id:string;workflow_key:string;version:number;status:string;digest:string;definition:Record<string,unknown>;created_at:string};
 type WorkflowStep={id:string;node_key:string;node_kind:string;status:string;output_payload?:Record<string,unknown>|null;error_code?:string|null;attempts?:number;max_attempts?:number};
 type WorkflowEvent={sequence:number;event_type:string;step_key?:string|null;details?:Record<string,unknown>;created_at:string};
-type WorkflowRun={id:string;definition_id:string;definition_version:number;status:string;trace_id:string;created_at:string;updated_at:string;completed_at?:string|null;steps?:WorkflowStep[];events?:WorkflowEvent[]};
+type WorkflowApproval={id:string;step_id:string;message:string;context?:Record<string,unknown>;status:string;decision_note?:string|null};
+type WorkflowRun={id:string;definition_id:string;definition_version:number;status:string;trace_id:string;created_at:string;updated_at:string;completed_at?:string|null;steps?:WorkflowStep[];events?:WorkflowEvent[];approvals?:WorkflowApproval[]};
 type Props={apiBase:string;getAccessToken:()=>Promise<string>};
 
 const DEFINITION_HINT="{\n  \"workflow_key\": \"workflow-key-anda\",\n  \"version\": 1,\n  \"max_runtime_seconds\": 120,\n  \"max_retries\": 1,\n  \"nodes\": [{ \"key\": \"hasil\", \"kind\": \"constant\", \"config\": { \"value\": \"hasil\" }, \"timeout_seconds\": 5 }],\n  \"edges\": []\n}";
@@ -77,6 +78,24 @@ export function WorkflowCenter({apiBase,getAccessToken}:Props){
   catch(cause){setError(cause instanceof Error?cause.message:"Detail workflow tidak dapat dimuat.");}
  }
 
+ async function decideApproval(runId:string,stepId:string,approvalId:string,decision:"approve"|"reject"){
+  Alert.alert(decision==="approve"?"Setujui workflow":"Tolak workflow","Keputusan ini akan dicatat pada audit trail workflow.",[
+   {text:"Kembali",style:"cancel"},
+   {text:decision==="approve"?"Setujui":"Tolak",style:decision==="approve"?"default":"destructive",onPress:()=>void performApprovalDecision(runId,stepId,approvalId,decision)},
+  ]);
+ }
+ async function performApprovalDecision(runId:string,stepId:string,approvalId:string,decision:"approve"|"reject"){
+  setBusy(true);setError("");setNotice("");
+  try{
+   await request("/v1/workflows/runs/"+encodeURIComponent(runId)+"/steps/"+encodeURIComponent(stepId)+"/"+decision,{
+    method:"POST",body:JSON.stringify({approval_id:approvalId,decision_note:null}),
+   });
+   setNotice(decision==="approve"?"Approval disetujui; worker dapat melanjutkan.":"Approval ditolak; workflow run dihentikan.");
+   await refresh();await inspectRun(runId);
+  }catch(cause){setError(cause instanceof Error?cause.message:"Keputusan approval tidak dapat disimpan.");}
+  finally{setBusy(false);}
+ }
+
  async function cancelRun(runId:string){
   Alert.alert("Batalkan workflow","Permintaan pembatalan akan dicatat oleh Workflow Engine.",[
    {text:"Kembali",style:"cancel"},
@@ -127,7 +146,22 @@ export function WorkflowCenter({apiBase,getAccessToken}:Props){
    <Text style={styles.body}>Status: {selectedRun.status} · v{selectedRun.definition_version}</Text><Text style={styles.muted}>Run {selectedRun.id}</Text><Text style={styles.muted}>Trace {selectedRun.trace_id}</Text>
    <Pressable disabled={busy} onPress={()=>void inspectRun(selectedRun.id)} style={styles.secondaryButton}><Text style={styles.secondaryText}>Refresh detail</Text></Pressable>
    <Text style={styles.sectionTitle}>Steps / checkpoints ({selectedRun.steps?.length||0})</Text>
-   {(selectedRun.steps||[]).map(step=><View key={step.id} style={styles.row}><Text style={styles.body}>{step.node_key} · {step.node_kind} · {step.status}</Text><Text style={styles.muted}>Percobaan {step.attempts??0}/{step.max_attempts??0}</Text>{step.error_code?<Text style={styles.error}>{step.error_code}</Text>:null}{step.output_payload?<Text style={styles.code}>{JSON.stringify(step.output_payload,null,2)}</Text>:null}</View>)}
+   {(selectedRun.steps||[]).map(step=>{
+    const approval=(selectedRun.approvals||[]).find(item=>item.step_id===step.id&&item.status==="pending");
+    return <View key={step.id} style={styles.row}>
+     <Text style={styles.body}>{step.node_key} · {step.node_kind} · {step.status}</Text>
+     <Text style={styles.muted}>Percobaan {step.attempts??0}/{step.max_attempts??0}</Text>
+     {step.error_code?<Text style={styles.error}>{step.error_code}</Text>:null}
+     {approval?<View style={styles.approvalPanel}>
+      <Text style={styles.body}>Approval diperlukan</Text><Text style={styles.muted}>{approval.message}</Text>
+      <View style={styles.approvalActions}>
+       <Pressable disabled={busy} onPress={()=>void decideApproval(selectedRun.id,step.id,approval.id,"approve")} style={[styles.primaryButton,busy&&styles.disabled]}><Text style={styles.primaryText}>Setujui</Text></Pressable>
+       <Pressable disabled={busy} onPress={()=>void decideApproval(selectedRun.id,step.id,approval.id,"reject")} style={[styles.cancelButton,busy&&styles.disabled]}><Text style={styles.cancelText}>Tolak</Text></Pressable>
+      </View>
+     </View>:null}
+     {step.output_payload?<Text style={styles.code}>{JSON.stringify(step.output_payload,null,2)}</Text>:null}
+    </View>;
+   })}
    <Text style={styles.sectionTitle}>Event log ({selectedRun.events?.length||0})</Text>
    {(selectedRun.events||[]).map(event=><View key={event.sequence} style={styles.row}><Text style={styles.body}>#{event.sequence} · {event.event_type}{event.step_key?" · "+event.step_key:""}</Text><Text style={styles.muted}>{new Date(event.created_at).toLocaleString("id-ID")}</Text>{event.details?<Text style={styles.code}>{JSON.stringify(event.details)}</Text>:null}</View>)}
   </View>}
@@ -145,6 +179,7 @@ const styles=StyleSheet.create({
  primaryButton:{minHeight:46,borderRadius:12,backgroundColor:"#A5B4FC",alignItems:"center",justifyContent:"center",padding:12},primaryText:{color:"#11162B",fontWeight:"900",fontSize:13},
  secondaryButton:{alignSelf:"flex-start",borderRadius:12,borderWidth:1,borderColor:"#4A5678",paddingVertical:10,paddingHorizontal:14},secondaryText:{color:"#E5E7F6",fontWeight:"700",fontSize:12},
  cancelButton:{borderRadius:10,borderWidth:1,borderColor:"#8D4455",padding:8},cancelText:{color:"#FCA5A5",fontWeight:"700",fontSize:11},
+ approvalPanel:{backgroundColor:"#1A233C",borderRadius:12,padding:12,gap:8},approvalActions:{flexDirection:"row",alignItems:"center",gap:10},
  row:{borderTopWidth:1,borderTopColor:"#29314B",paddingVertical:10,gap:6},selected:{borderColor:"#818CF8",borderWidth:1,borderRadius:10,padding:10},runSelect:{gap:3},
  disabled:{opacity:0.45},error:{color:"#FCA5A5",backgroundColor:"#321D2B",padding:10,borderRadius:10,fontSize:12},
  success:{color:"#86EFAC",backgroundColor:"#12302C",padding:10,borderRadius:10,fontSize:12},
