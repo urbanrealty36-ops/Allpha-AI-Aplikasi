@@ -134,7 +134,7 @@ declare v_job public.agent_knowledge_jobs%rowtype; v_result jsonb;
 begin
  select * into v_job from public.agent_knowledge_jobs where source_id='{SOURCE}' and stage='awaiting_malware_scan';
  if v_job.status<>'processing' or v_job.lease_token is null then raise exception 'document job lease not acquired'; end if;
- select public.persist_agent_knowledge_chunk_batch(
+ perform public.persist_agent_knowledge_chunk_batch(
   v_job.id,v_job.lease_token,1,true,
   jsonb_build_array(
    jsonb_build_object('chunk_index',0,'content','alpha','source_location',jsonb_build_object('kind','page','index',1),'content_sha256',encode(extensions.digest('alpha','sha256'),'hex')),
