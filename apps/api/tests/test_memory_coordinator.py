@@ -145,3 +145,28 @@ def test_memory_api_agent_scope_rejects_non_owner(monkeypatch):
     with pytest.raises(HTTPException) as error:
         asyncio.run(memory_api._owner(AGENT,request,{"id":"other-owner"}))
     assert error.value.status_code==404
+
+
+def test_owner_pin_and_unpin_use_canonical_memory_transition(monkeypatch):
+    store=FakeMemoryCoordinator()
+    pinned=asyncio.run(store.pin(OWNER,"memory-1",True))
+    unpinned=asyncio.run(store.pin(OWNER,"memory-1",False))
+    assert pinned=={"expired_count":0}
+    assert unpinned=={"expired_count":0}
+    calls=[call for call in store.calls if call["path"]=="rpc/agent_memory_transition"]
+    assert calls[0]["body"]["p_action"]=="pin"
+    assert calls[0]["body"]["p_owner_user_id"]==OWNER
+    assert calls[0]["body"]["p_item_id"]=="memory-1"
+    assert calls[0]["body"]["p_payload"]=={"pinned":True}
+    assert calls[1]["body"]["p_payload"]=={"pinned":False}
+
+
+def test_owner_immediate_expiry_uses_canonical_memory_transition():
+    store=FakeMemoryCoordinator()
+    result=asyncio.run(store.expire_item(OWNER,"memory-1"))
+    assert result=={"expired_count":0}
+    call=store.calls[0]
+    assert call["path"]=="rpc/agent_memory_transition"
+    assert call["body"]["p_action"]=="expire_item"
+    assert call["body"]["p_owner_user_id"]==OWNER
+    assert call["body"]["p_item_id"]=="memory-1"
