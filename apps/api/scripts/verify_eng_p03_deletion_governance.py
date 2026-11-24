@@ -10,7 +10,6 @@ RETENTION_CANONICAL_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123142451_
 LEGAL_HOLD_REQUEUE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123142930_eng_p03_deletion_legal_hold_release_requeue.sql"
 STORAGE_DISPOSITION_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123143130_eng_p03_deletion_storage_disposition_gate.sql"
 SOURCE_METADATA_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123143201_eng_p03_deletion_source_registry_metadata.sql"
-SOURCE_CLASSIFICATION_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123165316_eng_p03_source_policy_classification.sql"
 REQUEUE_AUDIT_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124012454_eng_p03_requeue_audit_trail.sql"
 MIGRATION=ROOT/"apps/api/supabase/migrations/20261123192200_eng_p03_deletion_legal_hold_governance_worker.sql"
 SOURCE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123153243_eng_p03_account_deletion_specialized_source_handlers.sql"
@@ -118,10 +117,13 @@ insert into private.account_export_sources(source_key,table_name,filter_kind) va
  ('workspace_documents_in_memberships','workspace_documents','member_workspaces'),
  ('workspace_annotations_in_memberships','workspace_annotations','member_workspaces');
 """)
+        # This isolated fixture has 10 representative source rows; the separate
+        # production classification migration backfills 106 enabled sources.
+        # Its exact migration contract is covered by test_eng_p03_account_deletion_disposition_migration_contract.py.
         for migration in (
             EXECUTOR_MIGRATION,DEPENDENCY_REQUEUE_MIGRATION,RETENTION_CANONICAL_MIGRATION,
             LEGAL_HOLD_REQUEUE_MIGRATION,STORAGE_DISPOSITION_MIGRATION,SOURCE_METADATA_MIGRATION,
-            SOURCE_CLASSIFICATION_MIGRATION,REQUEUE_AUDIT_MIGRATION,
+            REQUEUE_AUDIT_MIGRATION,
         ):
             psql(migration.read_text(encoding="utf-8"))
         psql(MIGRATION.read_text(encoding="utf-8"))
