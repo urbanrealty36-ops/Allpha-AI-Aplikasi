@@ -163,7 +163,8 @@ create table public.agent_consumer_grant_events(
 create table public.billing_orders(
  id uuid primary key default gen_random_uuid(),
  owner_user_id uuid not null constraint billing_orders_owner_user_id_fkey references auth.users(id) on delete restrict,
- stripe_checkout_url text
+ stripe_checkout_url text,stripe_subscription_id text,stripe_mode text,
+ created_at timestamptz not null default now()
 );
 create table public.billing_receipts(
  id uuid primary key default gen_random_uuid(),
