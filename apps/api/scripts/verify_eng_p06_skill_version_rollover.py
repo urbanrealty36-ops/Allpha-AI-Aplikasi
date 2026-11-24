@@ -226,12 +226,12 @@ set role service_role;
 update public.agent_skills set status='published'
  where id=(select installed_skill_id from public.agent_skill_installations where agent_id='66666666-6666-4666-8666-666666666666');
 reset role;
-do $
+do $do$
 begin
  if not exists(select 1 from public.agent_skill_publications where id=(select installed_skill_id from public.agent_skill_installations where agent_id='66666666-6666-4666-8666-666666666666')) then
    raise exception 'active licensed installation not visible in public Passport after owner/operator publication';
  end if;
-end $;
+end $do$;
 """)
         psql("""
 set role authenticated;
@@ -243,14 +243,14 @@ select public.revoke_agent_skill_installation(
  'Owner revoked the source license'
 );
 reset role;
-do $
+do $do$
 begin
  if not exists(select 1 from public.agent_skill_installations where agent_id='66666666-6666-4666-8666-666666666666' and status='revoked') then raise exception 'license revocation state not persisted'; end if;
  if (select count(*) from public.agent_skill_installation_events where event_type in ('installed','revoked'))<>2 then raise exception 'install/revoke audit trail incomplete'; end if;
  if exists(select 1 from public.agent_skill_publications where id=(select installed_skill_id from public.agent_skill_installations where agent_id='66666666-6666-4666-8666-666666666666')) then raise exception 'revoked installation still appears in public Passport'; end if;
  if not exists(select 1 from private.account_export_sources where source_key='agent_skill_installations' and enabled) then raise exception 'installation missing from account export'; end if;
  if not exists(select 1 from public.account_deletion_source_policies where source_key='agent_skill_installations' and active and deletion_action='preserve') then raise exception 'installation license audit not protected by P03'; end if;
-end $;
+end $do$;
 """)
         # Re-install after revocation, then materialize an elapsed entitlement.
         psql("""
@@ -273,12 +273,12 @@ select set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111'
 select set_config('request.jwt.claim.role','authenticated',false);
 select public.expire_agent_skill_installations('66666666-6666-4666-8666-666666666666');
 reset role;
-do $
+do $do$
 begin
  if not exists(select 1 from public.agent_skill_installations where agent_id='66666666-6666-4666-8666-666666666666' and status='expired' and revocation_reason='license_expired') then raise exception 'elapsed Skill license was not marked expired'; end if;
  if (select count(*) from public.agent_skill_installation_events where event_type in ('installed','revoked','expired'))<>4 then raise exception 'install/revoke/expiry audit trail incomplete'; end if;
  if exists(select 1 from public.agent_skill_publications where id=(select installed_skill_id from public.agent_skill_installations where agent_id='66666666-6666-4666-8666-666666666666' and status='expired')) then raise exception 'expired installation remains visible in public Passport'; end if;
-end $;
+end $do$;
 """)
         denied = psql("""
 set role authenticated;
