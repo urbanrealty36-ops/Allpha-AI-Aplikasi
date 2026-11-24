@@ -58,3 +58,27 @@ def test_model_cost_registry_persists_explicit_capability_and_fails_closed_on_un
     assert "ai_model_cost_capability_valid" in sql
     assert "'embedding'" in sql
     assert "ai_model_cost_approved_capability_route_idx" in sql
+
+
+
+CAPABILITY_SCOPE = ROOT / "supabase" / "migrations" / "20261124073000_eng_p09_model_cost_capability_scope.sql"
+METERING_CAPABILITY = ROOT / "supabase" / "migrations" / "20261124081000_eng_p09_usage_metering_capability.sql"
+
+
+def test_model_cost_active_tariffs_are_scoped_by_capability():
+    sql = " ".join(CAPABILITY_SCOPE.read_text(encoding="utf-8").lower().split())
+    assert "drop index if exists public.ai_model_cost_one_active_version" in sql
+    assert "create unique index ai_model_cost_one_active_capability_version" in sql
+    assert "provider_id,model_id,capability" in sql
+
+
+def test_usage_metering_persists_capability_and_billing_payer():
+    sql = " ".join(METERING_CAPABILITY.read_text(encoding="utf-8").lower().split())
+    assert "add column if not exists capability text not null default 'text_generation'" in sql
+    assert "billing_account_id" in sql
+    assert "v_capability := p_record->>'capability'" in sql
+    assert "invalid_metering_capability" in sql
+    assert "insert into public.agent_model_usage_metering" in sql
+    assert "'by_capability'" in sql
+    assert "revoke all on function public.record_agent_model_usage_metering(jsonb)" in sql
+    assert "to service_role" in sql
