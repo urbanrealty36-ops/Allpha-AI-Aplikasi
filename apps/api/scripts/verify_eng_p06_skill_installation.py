@@ -217,7 +217,136 @@ begin
  if (select count(*) from public.agent_skill_installations where agent_id='{TARGET_AGENT}')<>1 then
   raise exception 'idempotent Skill install duplicated entitlement';
  end if;
- if not exists(select 1 from public.agent_skill_installations where agent_id='{TARGET_AGENT}' and source_version=5 and status='active' and license_terms_digest ~ '^[0-9a-f]{64}$') then
+ if not exists(select 1 from public.agent_skill_installations where agent_id='{TARGET_AGENT}' and source_version=5 and status='active' and length(license_terms_digest)=64 and license_terms_digest ~ '^[0-9a-f]+) then
+  raise exception 'license snapshot not persisted';
+ end if;
+ if not exists(select 1 from public.agent_skill_installation_events where event_type='installed') then
+  raise exception 'installation event missing';
+ end if;
+ if not exists(select 1 from public.agent_skills where id=(select installed_skill_id from public.agent_skill_installations where agent_id='{TARGET_AGENT}') and status='draft' and version=1) then
+  raise exception 'installed Skill must start as local draft v1';
+ end if;
+end $do$;
+""")
+
+        # Only an active, unexpired license is eligible for public Passport and Runtime.
+        psql(f"""
+set role service_role;
+update public.agent_skills set status='published'
+ where id=(select installed_skill_id from public.agent_skill_installations where agent_id='{TARGET_AGENT}');
+reset role;
+do $do$
+begin
+ if not exists(select 1 from public.agent_skill_publications where id=(select installed_skill_id from public.agent_skill_installations where agent_id='{TARGET_AGENT}')) then
+  raise exception 'active licensed installation not visible in public Passport';
+ end if;
+end $do$;
+""")
+
+        # Owner revocation is immutable, removes public Passport visibility and disables Runtime.
+        psql(f"""
+set role authenticated;
+select set_config('request.jwt.claim.sub','{OWNER}',false);
+select set_config('request.jwt.claim.role','authenticated',false);
+select public.revoke_agent_skill_installation(
+ '{TARGET_AGENT}',
+ (select id from public.agent_skill_installations where agent_id='{TARGET_AGENT}'),
+ 'Owner revoked the source license'
+);
+reset role;
+do $do$
+begin
+ if not exists(select 1 from public.agent_skill_installations where agent_id='{TARGET_AGENT}' and status='revoked') then
+  raise exception 'license revocation state not persisted';
+ end if;
+ if (select count(*) from public.agent_skill_installation_events where event_type in ('installed','revoked'))<>2 then
+  raise exception 'install/revoke audit trail incomplete';
+ end if;
+ if exists(select 1 from public.agent_skill_publications where id=(select installed_skill_id from public.agent_skill_installations where agent_id='{TARGET_AGENT}')) then
+  raise exception 'revoked installation still appears in public Passport';
+ end if;
+ if not exists(select 1 from private.account_export_sources where source_key='agent_skill_installations' and enabled) then
+  raise exception 'installation missing from account export';
+ end if;
+ if not exists(select 1 from public.account_deletion_source_policies where source_key='agent_skill_installations' and active and deletion_action='preserve') then
+  raise exception 'installation license audit not protected by P03';
+ end if;
+end $do$;
+""")
+
+        # Re-install after revocation, then materialize expiry as an auditable lifecycle event.
+        psql(f"""
+set role authenticated;
+select set_config('request.jwt.claim.sub','{OWNER}',false);
+select set_config('request.jwt.claim.role','authenticated',false);
+select public.install_agent_skill('{TARGET_AGENT}','{SOURCE_AGENT}','{SOURCE_SKILL}',5,true,'p06-install-key-0002');
+reset role;
+update public.agent_skill_installations set license_expires_at=clock_timestamp()-interval '1 second'
+ where agent_id='{TARGET_AGENT}' and status='active';
+""")
+        psql(f"""
+set role authenticated;
+select set_config('request.jwt.claim.sub','{OWNER}',false);
+select set_config('request.jwt.claim.role','authenticated',false);
+select public.expire_agent_skill_installations('{TARGET_AGENT}');
+reset role;
+do $do$
+begin
+ if not exists(select 1 from public.agent_skill_installations where agent_id='{TARGET_AGENT}' and status='expired' and revocation_reason='license_expired') then
+  raise exception 'elapsed Skill license was not marked expired';
+ end if;
+ if (select count(*) from public.agent_skill_installation_events where event_type in ('installed','revoked','expired'))<>4 then
+  raise exception 'install/revoke/expiry audit trail incomplete';
+ end if;
+ if exists(select 1 from public.agent_skill_publications where id=(select installed_skill_id from public.agent_skill_installations where agent_id='{TARGET_AGENT}' and status='expired')) then
+  raise exception 'expired installation remains visible in public Passport';
+ end if;
+end $do$;
+""")
+
+        # Paid licenses cannot be installed without a Billing entitlement.
+        psql(f"""
+set role authenticated;
+select set_config('request.jwt.claim.sub','{OWNER}',false);
+select set_config('request.jwt.claim.role','authenticated',false);
+update public.agent_skills set status='draft' where id='{SOURCE_SKILL}';
+update public.agent_skills set publication_terms='{{"license":"owner","requires_purchase":true}}'::jsonb
+ where id='{SOURCE_SKILL}';
+reset role;
+set role service_role;
+update public.agent_skills set status='published' where id='{SOURCE_SKILL}';
+reset role;
+""")
+        paid = psql(f"""
+set role authenticated;
+select set_config('request.jwt.claim.sub','{OWNER}',false);
+select set_config('request.jwt.claim.role','authenticated',false);
+select public.install_agent_skill('{TARGET_AGENT}','{SOURCE_AGENT}','{SOURCE_SKILL}',8,true,'p06-paid-license-denied');
+""", check=False)
+        if paid.returncode == 0 or "SKILL_LICENSE_ENTITLEMENT_REQUIRED" not in paid.stderr:
+            raise RuntimeError("Paid Skill installation bypassed the Billing entitlement gate")
+
+        denied = psql(f"""
+set role authenticated;
+select set_config('request.jwt.claim.sub','{OWNER}',false);
+select set_config('request.jwt.claim.role','authenticated',false);
+select public.install_agent_skill('{TARGET_AGENT}','{SOURCE_AGENT}','{SOURCE_SKILL}',8,false,'p06-license-not-accepted');
+""", check=False)
+        if denied.returncode == 0 or "SKILL_LICENSE_ACCEPTANCE_REQUIRED" not in denied.stderr:
+            raise RuntimeError("Skill installation unexpectedly succeeded without explicit license acceptance")
+
+        print("PASS: ENG-P06 PostgreSQL 17 Skill versioning, explicit license acceptance, idempotent installation, local draft clone, Passport publication, revocation, expiry, paid-entitlement gate and P03 export/retention.")
+    finally:
+        run(["docker", "rm", "--force", NAME], check=False)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as exc:
+        print(f"FAIL: ENG-P06 Skill installation verification: {exc}", file=sys.stderr)
+        raise SystemExit(1)
+) then
   raise exception 'license snapshot not persisted';
  end if;
  if not exists(select 1 from public.agent_skill_installation_events where event_type='installed') then
