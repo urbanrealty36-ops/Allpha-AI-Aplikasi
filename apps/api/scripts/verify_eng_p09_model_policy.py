@@ -8,7 +8,7 @@ import time
 import uuid
 
 ROOT=Path(__file__).resolve().parents[3]
-MIGRATION=ROOT/"apps/api/supabase/migrations/20261124061000_eng_p09_model_policy_approval_metadata.sql"
+MIGRATION=ROOT/"apps/api/supabase/migrations/20261124064458_eng_p09_model_policy_approval_metadata.sql"
 NAME="allpha-p09-policy-"+uuid.uuid4().hex[:8]
 OWNER="11111111-1111-4111-8111-111111111111"
 
