@@ -88,9 +88,11 @@ def test_shared_worker_entrypoint_disables_only_knowledge_when_clamav_is_unavail
     start = script.index('if [ "$READY" -ne 1 ]')
     end = script.index("    fi", start) + len("    fi")
     failure_branch = script[start:end]
-    assert "Knowledge document consumer disabled" in failure_branch
-    assert "export ALLPHA_KNOWLEDGE_DOCUMENT_WORKER_ENABLED=false" in failure_branch
+    assert "only the Knowledge document consumer will be disabled" in failure_branch
+    assert "return 1" in failure_branch
     assert "exit 1" not in failure_branch
+    assert "elif ! start_local_clamav; then" in script
+    assert "export ALLPHA_KNOWLEDGE_DOCUMENT_WORKER_ENABLED=false" in script
 
 
 
@@ -150,8 +152,9 @@ def test_shared_worker_does_not_start_memory_heavy_clamav_without_explicit_resou
         / "docker" / "shared-worker-entrypoint.sh"
     ).read_text(encoding="utf-8")
     assert "ALLPHA_CLAMAV_ENABLED:-false" in script
-    assert 'if [ "$SCANNER_MODE" != "clamd" ] || [ "$CLAMAV_ENABLED" != "true" ]; then' in script
-    assert "configure the authenticated remote scanner" in script
+    assert 'clamd)' in script
+    assert 'if [ "$CLAMAV_ENABLED" != "true" ]; then' in script
+    assert "remote scanner URL, API key and exact hostname allowlist are all required" in script
     assert "export ALLPHA_KNOWLEDGE_DOCUMENT_WORKER_ENABLED=false" in script
 
 
