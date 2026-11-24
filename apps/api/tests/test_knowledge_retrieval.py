@@ -466,7 +466,7 @@ def test_public_route_traces_resolved_policy_and_consent_versions():
         return {"id": "owner-a"}
 
     class Provider:
-        async def resolve(self, *, owner_id, agent_id):
+        async def resolve(self, *, owner_id, agent_id, audience):
             return KnowledgePolicySnapshot(
                 policy_version="knowledge-policy.v3",
                 owner_id=owner_id,

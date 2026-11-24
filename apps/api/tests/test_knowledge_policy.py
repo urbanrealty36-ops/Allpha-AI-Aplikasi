@@ -37,8 +37,8 @@ class Provider:
         self.value = value
         self.calls = []
 
-    async def resolve(self, *, owner_id, agent_id):
-        self.calls.append((owner_id, agent_id))
+    async def resolve(self, *, owner_id, agent_id, audience):
+        self.calls.append((owner_id, agent_id, audience))
         return self.value
 
 
@@ -54,7 +54,7 @@ def test_versioned_policy_resolves_current_owner_agent_consent_and_sensitivities
         assert resolved.allowed_source_ids == ("00000000-0000-0000-0000-0000000000c9",)
         assert resolved.grant_version == "knowledge-grant.v1"
         assert resolved.audience == "owner_private"
-        assert provider.calls == [("owner-a", "agent-a")]
+        assert provider.calls == [("owner-a", "agent-a", "owner_private")]
     asyncio.run(scenario())
 
 
@@ -96,7 +96,7 @@ def test_versioned_policy_fails_closed_when_snapshot_is_missing():
 
 def test_versioned_policy_fails_closed_when_provider_raises():
     class BrokenProvider:
-        async def resolve(self, *, owner_id, agent_id):
+        async def resolve(self, *, owner_id, agent_id, audience):
             raise TimeoutError("synthetic test timeout")
 
     async def scenario():
@@ -199,4 +199,33 @@ def test_versioned_retrieval_policy_returns_request_local_context_without_shared
         assert second.consent_version == "knowledge-consent.v2"
         assert not hasattr(policy, "last_resolved")
 
+    asyncio.run(scenario())
+
+
+def test_versioned_policy_rejects_audience_mismatch_before_allowing_retrieval():
+    async def scenario():
+        resolver = VersionedKnowledgePolicyResolver(Provider(snapshot(audience="owner_private")))
+        with pytest.raises(KnowledgePolicyDenied):
+            await resolver.resolve(owner_id="owner-a", agent_id="agent-a", audience="published_knowledge")
+    asyncio.run(scenario())
+
+
+def test_versioned_policy_supports_explicit_published_knowledge_audience():
+    async def scenario():
+        resolver = VersionedKnowledgePolicyResolver(Provider(snapshot(audience="published_knowledge")))
+        resolved = await resolver.resolve(
+            owner_id="owner-a", agent_id="agent-a", audience="published_knowledge"
+        )
+        assert resolved.audience == "published_knowledge"
+    asyncio.run(scenario())
+
+
+def test_versioned_policy_rejects_unknown_audience():
+    async def scenario():
+        provider = Provider(snapshot())
+        with pytest.raises(KnowledgePolicyUnavailable):
+            await VersionedKnowledgePolicyResolver(provider).resolve(
+                owner_id="owner-a", agent_id="agent-a", audience="public_catalog"
+            )
+        assert provider.calls == []
     asyncio.run(scenario())

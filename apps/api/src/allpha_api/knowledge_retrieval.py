@@ -461,7 +461,7 @@ def request_scoped_external_public_retrieval_service() -> KnowledgeRetrievalServ
         return None
     return KnowledgeRetrievalService(
         repository=repository,
-        policy=VersionedKnowledgeRetrievalPolicy(resolver),
+        policy=VersionedKnowledgeRetrievalPolicy(resolver, audience="published_knowledge"),
     )
 
 

@@ -14,6 +14,7 @@ from typing import Callable, Protocol
 
 SENSITIVITIES = frozenset({"public", "internal", "confidential", "restricted"})
 RETRIEVAL_PURPOSE = "agent_context_retrieval"
+KNOWLEDGE_AUDIENCES = frozenset({"owner_private", "tenant_shared", "published_knowledge", "session_scoped"})
 
 
 class KnowledgePolicyUnavailable(RuntimeError):
@@ -43,7 +44,7 @@ class KnowledgePolicySnapshot:
 
 
 class KnowledgePolicySnapshotProvider(Protocol):
-    async def resolve(self, *, owner_id: str, agent_id: str) -> KnowledgePolicySnapshot | None:
+    async def resolve(self, *, owner_id: str, agent_id: str, audience: str) -> KnowledgePolicySnapshot | None:
         """Resolve authoritative, current policy/consent/grant facts from canonical storage."""
         ...
 
@@ -66,9 +67,11 @@ class VersionedKnowledgePolicyResolver:
     def __init__(self, provider: KnowledgePolicySnapshotProvider):
         self._provider = provider
 
-    async def resolve(self, *, owner_id: str, agent_id: str) -> ResolvedKnowledgePolicy:
+    async def resolve(self, *, owner_id: str, agent_id: str, audience: str = "owner_private") -> ResolvedKnowledgePolicy:
+        if not isinstance(audience, str) or audience not in KNOWLEDGE_AUDIENCES:
+            raise KnowledgePolicyUnavailable("knowledge retrieval audience is invalid")
         try:
-            snapshot = await self._provider.resolve(owner_id=owner_id, agent_id=agent_id)
+            snapshot = await self._provider.resolve(owner_id=owner_id, agent_id=agent_id, audience=audience)
         except Exception as exc:
             raise KnowledgePolicyUnavailable("canonical knowledge policy provider failed") from exc
         if snapshot is None:
@@ -93,6 +96,10 @@ class VersionedKnowledgePolicyResolver:
             or snapshot.agent_id != agent_id
         ):
             raise KnowledgePolicyUnavailable("knowledge policy identity/version is invalid")
+        if snapshot.audience not in KNOWLEDGE_AUDIENCES:
+            raise KnowledgePolicyUnavailable("knowledge policy audience is invalid")
+        if snapshot.audience != audience:
+            raise KnowledgePolicyDenied("knowledge grant does not authorize this retrieval audience")
         if (
             type(snapshot.knowledge_consent_granted) is not bool
             or type(snapshot.consent_revoked) is not bool
@@ -152,12 +159,16 @@ class VersionedKnowledgeRetrievalPolicy:
     must not observe another request's consent or grant version.
     """
 
-    def __init__(self, resolver: VersionedKnowledgePolicyResolver):
+    def __init__(self, resolver: VersionedKnowledgePolicyResolver, *, audience: str = "owner_private"):
         self._resolver = resolver
+        self._audience = audience
 
-    async def resolve_context(self, *, owner_id: str, agent_id: str) -> ResolvedKnowledgePolicy:
+    async def resolve_context(self, *, owner_id: str, agent_id: str, audience: str | None = None) -> ResolvedKnowledgePolicy:
         try:
-            return await self._resolver.resolve(owner_id=owner_id, agent_id=agent_id)
+            return await self._resolver.resolve(
+                owner_id=owner_id, agent_id=agent_id,
+                audience=self._audience if audience is None else audience,
+            )
         except KnowledgePolicyDenied as exc:
             from allpha_api.knowledge_retrieval import KnowledgeAccessDenied
             raise KnowledgeAccessDenied("knowledge consent or access grant is not active") from exc
