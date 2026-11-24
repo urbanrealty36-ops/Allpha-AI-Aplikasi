@@ -24,9 +24,17 @@ LogVerbose yes
 LogFile /var/log/clamav/clamav.log
 TCPSocket 3310
 TCPAddr 127.0.0.1
-MaxFileSize 20M
-MaxScanSize 50M
+MaxFileSize 10M
+MaxScanSize 20M
 StreamMaxLength 20M
+MaxThreads 1
+MaxConnectionQueueLength 4
+MaxQueue 8
+MaxRecursion 8
+MaxFiles 200
+MaxDirectoryRecursion 5
+ConcurrentDatabaseReload no
+SelfCheck 3600
 CLAMD_CONFIG
 
     cat > /etc/clamav/clamdscan.conf <<'CLAMDSCAN_CONFIG'
