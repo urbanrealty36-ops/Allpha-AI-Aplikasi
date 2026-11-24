@@ -190,3 +190,11 @@ def test_memory_api_owner_pin_and_expire_routes_use_coordinator(monkeypatch):
     assert pinned["pinned_at"]=="2026-11-24T00:00:00Z"
     assert expired["content_cleared"] is True
     assert calls==[("pin",OWNER,str(item_id),True),("expire",OWNER,str(item_id))]
+
+
+def test_memory_items_projection_includes_owner_pin_state():
+    store=FakeMemoryCoordinator()
+    asyncio.run(store.items(OWNER,AGENT))
+    call=store.calls[0]
+    assert call["path"]=="agent_memory_items"
+    assert "pinned_at" in call["params"]["select"].split(",")
