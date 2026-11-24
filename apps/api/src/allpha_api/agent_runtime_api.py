@@ -29,6 +29,9 @@ from allpha_api.knowledge_retrieval import (
     KnowledgeAccessDenied, KnowledgeRetrievalUnavailable, KnowledgeRetrievalService,
     RetrievalRequest, request_scoped_retrieval_service,
 )
+from allpha_api.knowledge_policy import (
+    KnowledgePolicyDenied, KnowledgePolicyUnavailable, load_policy_resolver_from_environment,
+)
 from allpha_api.content_api import _server_db
 from allpha_api.agent_social_side_effect_adapter import get_side_effect_adapter
 from allpha_api.side_effect_adapter_contract import SideEffectCommand
