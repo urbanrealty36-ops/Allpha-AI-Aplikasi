@@ -160,6 +160,21 @@ def test_remote_scanner_configuration_skips_local_clamav_bootstrap():
         Path(__file__).resolve().parents[1]
         / "docker" / "shared-worker-entrypoint.sh"
     ).read_text(encoding="utf-8")
-    assert 'if [ "$KNOWLEDGE_ENABLED" = "true" ] && [ -z "$SCANNER_URL" ]; then' in script
-    assert "ALLPHA_DOCUMENT_SCANNER_API_KEY" not in script
-    assert "ALLPHA_DOCUMENT_SCANNER_ALLOWED_HOSTS" not in script
+    assert 'remote)' in script
+    assert 'clamd)' in script
+    assert 'SCANNER_API_KEY="${ALLPHA_DOCUMENT_SCANNER_API_KEY:-}"' in script
+    assert 'SCANNER_ALLOWED_HOSTS="${ALLPHA_DOCUMENT_SCANNER_ALLOWED_HOSTS:-}"' in script
+    assert 'remote scanner URL, API key and exact hostname allowlist are all required' in script
+    assert "RemoteDocumentScanner.from_environment()" in script
+
+
+
+def test_shared_worker_scanner_startup_failure_isolated_from_other_consumers():
+    script = (
+        Path(__file__).resolve().parents[1]
+        / "docker" / "shared-worker-entrypoint.sh"
+    ).read_text(encoding="utf-8")
+    assert "timeout 60s freshclam --quiet || return 1" in script
+    assert "elif ! start_local_clamav; then" in script
+    assert "only the Knowledge document consumer will be disabled" in script
+    assert "other shared consumers will continue" in script
