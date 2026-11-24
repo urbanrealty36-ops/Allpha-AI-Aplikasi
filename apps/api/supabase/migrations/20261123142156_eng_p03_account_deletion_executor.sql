@@ -653,5 +653,3 @@ grant execute on function public.fail_account_deletion_storage_job(uuid,uuid,tex
 grant execute on function public.execute_account_deletion_execution_job(uuid,uuid) to service_role;
 grant execute on function public.fail_account_deletion_execution_job(uuid,uuid,text,integer) to service_role;
 grant execute on function public.cancel_my_account_deletion(uuid) to authenticated;
-commit;
-;
