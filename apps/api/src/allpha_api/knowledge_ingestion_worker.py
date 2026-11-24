@@ -34,6 +34,10 @@ class KnowledgeStorageObjectMissing(RuntimeError):
     pass
 
 
+class KnowledgeStorageObjectTooLarge(RuntimeError):
+    pass
+
+
 class KnowledgeStorageIdentityMismatch(RuntimeError):
     """A persisted object path does not belong to the leased owner/Agent/source."""
     pass
@@ -103,18 +107,42 @@ class SupabaseKnowledgeStorage:
             raise KnowledgeStorageObjectMissing("Knowledge storage path is invalid")
         url = f"{self.supabase_url.rstrip('/')}/storage/v1/object/{self.bucket}/{quote(storage_path, safe='/')}"
         headers = {"apikey": self.service_key, "Authorization": f"Bearer {self.service_key}"}
+        headers["Accept-Encoding"] = "identity"
+        chunks: list[bytes] = []
+        total = 0
         try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(self.timeout_seconds, connect=4)) as client:
-                response = await client.get(url, headers=headers)
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(self.timeout_seconds, connect=4),
+                follow_redirects=False,
+                trust_env=False,
+            ) as client:
+                async with client.stream("GET", url, headers=headers) as response:
+                    if response.status_code == 404:
+                        raise KnowledgeStorageObjectMissing("Knowledge source object is missing")
+                    if response.status_code in (408, 425, 429) or response.status_code >= 500:
+                        raise KnowledgeStorageUnavailable(f"Knowledge Storage returned {response.status_code}")
+                    if response.status_code != 200:
+                        raise WorkerConfigurationError(
+                            f"Knowledge Storage rejected service access ({response.status_code})"
+                        )
+                    declared = response.headers.get("content-length")
+                    if declared is not None and (
+                        not declared.isdigit() or int(declared) > 15 * 1024 * 1024
+                    ):
+                        raise KnowledgeStorageObjectTooLarge("Knowledge source object exceeds the 15 MiB limit")
+                    async for chunk in response.aiter_bytes():
+                        total += len(chunk)
+                        if total > 15 * 1024 * 1024:
+                            raise KnowledgeStorageObjectTooLarge(
+                                "Knowledge source object exceeds the 15 MiB limit"
+                            )
+                        chunks.append(chunk)
+        except (KnowledgeStorageObjectMissing, KnowledgeStorageObjectTooLarge,
+                KnowledgeStorageUnavailable, WorkerConfigurationError):
+            raise
         except httpx.HTTPError as exc:
             raise KnowledgeStorageUnavailable("Knowledge Storage request failed") from exc
-        if response.status_code == 404:
-            raise KnowledgeStorageObjectMissing("Knowledge source object is missing")
-        if response.status_code in (408, 425, 429) or response.status_code >= 500:
-            raise KnowledgeStorageUnavailable(f"Knowledge Storage returned {response.status_code}")
-        if response.status_code != 200:
-            raise WorkerConfigurationError(f"Knowledge Storage rejected service access ({response.status_code})")
-        return response.content
+        return b"".join(chunks)
 
 
 @dataclass
@@ -165,6 +193,8 @@ class KnowledgeDocumentWorker:
                 else "document_parse_failed"
             )
             await self._fail(job, code, stage, retryable, 60 if retryable else 0)
+        except KnowledgeStorageObjectTooLarge:
+            await self._fail(job, "KNOWLEDGE_STORAGE_OBJECT_TOO_LARGE", "document_parse_failed", False, 0)
         except KnowledgeStorageObjectMissing:
             await self._fail(job, "KNOWLEDGE_STORAGE_OBJECT_MISSING", "document_parse_failed", False, 0)
         except KnowledgeStorageUnavailable:
