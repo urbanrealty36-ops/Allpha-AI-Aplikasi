@@ -567,3 +567,85 @@ def test_signed_resumable_upload_token_uses_service_credentials_and_direct_stora
     assert "/object/upload/sign/content-media/owner-a/content-a/media-a.mp4" in captured["url"]
     assert captured["headers"]["Authorization"] == "Bearer server-only-test-key"
     assert captured["json"] == {"upsert": False}
+
+
+def test_resumable_media_init_accepts_server_computed_hash_mode(monkeypatch):
+    media_id = "00000000-0000-0000-0000-000000000306"
+    captured = {}
+
+    async def fake_owner(*args, **kwargs):
+        return {"id": CONTENT_ID, "owner_id": "owner-a", "status": "draft"}
+
+    async def fake_db(method, table, **kwargs):
+        if method == "GET" and table == "content_media":
+            return []
+        if method == "POST" and table == "content_media":
+            captured["body"] = kwargs["body"]
+            return [{"id": media_id, **kwargs["body"]}]
+        raise AssertionError((method, table, kwargs))
+
+    async def fake_token(_path):
+        return "signed-token", "https://project.storage.supabase.co/storage/v1/upload/resumable"
+
+    monkeypatch.setattr(content_api, "_owner_content", fake_owner)
+    monkeypatch.setattr(content_api, "_server_db", fake_db)
+    monkeypatch.setattr(content_api, "_create_resumable_upload_token", fake_token)
+    app.dependency_overrides[current_user] = auth_as("owner-a")
+    try:
+        response = client.post(
+            f"/v1/content/{CONTENT_ID}/media/resumable",
+            headers={"Idempotency-Key": media_id},
+            json={"filename": "movie.mp4", "media_type": "video/mp4", "size_bytes": 16},
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 201
+    assert len(captured["body"]["sha256"]) == 64
+    assert captured["body"]["sha256"] == content_api._resumable_upload_fingerprint(
+        "owner-a", CONTENT_ID, media_id, "movie.mp4", "video/mp4", 16
+    )
+
+
+def test_resumable_media_complete_replaces_reservation_fingerprint_with_server_sha256(monkeypatch):
+    import hashlib
+
+    media_id = "00000000-0000-0000-0000-000000000307"
+    data = b"\x00\x00\x00\x18ftypisomtest"
+    actual = hashlib.sha256(data).hexdigest()
+    reservation = content_api._resumable_upload_fingerprint(
+        "owner-a", CONTENT_ID, media_id, "movie.mp4", "video/mp4", len(data)
+    )
+    captured = {}
+
+    async def fake_owner(*args, **kwargs):
+        return {"id": CONTENT_ID, "status": "draft", "content_type": "video", "version": 1}
+
+    async def fake_db(method, table, **kwargs):
+        if method == "GET" and table == "content_media":
+            return [{
+                "id": media_id, "content_id": CONTENT_ID, "owner_id": "owner-a",
+                "bucket_id": "content-media", "storage_path": "owner-a/media/movie.mp4",
+                "filename": "movie.mp4", "media_type": "video/mp4", "size_bytes": len(data),
+                "sha256": reservation, "status": "uploading",
+            }]
+        if method == "PATCH" and table == "content_media":
+            captured["body"] = kwargs["body"]
+            return [{"id": media_id, "status": "uploaded", **kwargs["body"]}]
+        raise AssertionError((method, table, kwargs))
+
+    class Stored:
+        content = data
+
+    async def fake_storage(*args, **kwargs):
+        return Stored()
+
+    monkeypatch.setattr(content_api, "_owner_content", fake_owner)
+    monkeypatch.setattr(content_api, "_server_db", fake_db)
+    monkeypatch.setattr(content_api, "_storage", fake_storage)
+    app.dependency_overrides[current_user] = auth_as("owner-a")
+    try:
+        response = client.post(f"/v1/content/{CONTENT_ID}/media/{media_id}/complete")
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 200
+    assert captured["body"] == {"status": "uploaded", "sha256": actual}
