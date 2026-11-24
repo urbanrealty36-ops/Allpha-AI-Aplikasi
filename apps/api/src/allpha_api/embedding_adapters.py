@@ -99,6 +99,8 @@ class OpenAICompatibleEmbeddingAdapter:
             async with httpx.AsyncClient(
                 timeout=httpx.Timeout(request.timeout_ms / 1000, connect=min(5.0, request.timeout_ms / 1000)),
                 transport=self._transport,
+                follow_redirects=False,
+                trust_env=False,
             ) as client:
                 response = await client.post(
                     self._url,
@@ -109,13 +111,40 @@ class OpenAICompatibleEmbeddingAdapter:
                     },
                     json=body,
                 )
+        except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+            # A connection was not established, so the provider could not have
+            # accepted this request. This is the only transport failure safe to retry.
+            raise ModelRouterTransient(
+                "embedding provider connection was not established",
+                safe_to_retry=True,
+            ) from exc
         except httpx.TimeoutException as exc:
-            raise ModelRouterTransient("embedding provider timed out") from exc
+            raise ModelRouterTransient(
+                "embedding provider response timed out; execution outcome is unknown",
+                safe_to_retry=False,
+            ) from exc
         except httpx.RequestError as exc:
-            raise ModelRouterTransient("embedding provider transport failed") from exc
+            raise ModelRouterTransient(
+                "embedding provider transport outcome is unknown",
+                safe_to_retry=False,
+            ) from exc
 
-        if response.status_code in {408, 425, 429} or response.status_code >= 500:
-            raise ModelRouterTransient(f"embedding provider returned retryable HTTP {response.status_code}")
+        if response.status_code == 429:
+            retry_after = response.headers.get("Retry-After", "")
+            try:
+                retry_after_ms = int(float(retry_after) * 1000) if retry_after else 1000
+            except ValueError:
+                retry_after_ms = 1000
+            raise ModelRouterTransient(
+                "embedding provider explicitly rate-limited the request",
+                safe_to_retry=True,
+                retry_after_ms=retry_after_ms,
+            )
+        if response.status_code in {408, 425} or response.status_code >= 500:
+            raise ModelRouterTransient(
+                f"embedding provider returned HTTP {response.status_code}; execution outcome is unknown",
+                safe_to_retry=False,
+            )
         if response.status_code < 200 or response.status_code >= 300:
             raise ModelRouterRejected(EmbeddingFailure(
                 task_id=request.task_id,
