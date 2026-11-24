@@ -197,16 +197,7 @@ async def run_once(store: AgentRuntimeStore) -> int:
     return processed
 
 
-async def serve() -> None:
-    if not _enabled():
-        logger.warning(
-            "Agent Runtime worker is deployed in disabled/idle mode; "
-            "set ALLPHA_AGENT_RUNTIME_WORKER_ENABLED=true only after schema and policy gates pass"
-        )
-        # Keep the Railway process healthy without opening a database connection
-        # or claiming work. A variable change triggers a redeploy to activate it.
-        await asyncio.Event().wait()
-        return
+async def _serve_runtime_enabled() -> None:
     store = AgentRuntimeStore.from_environment()
     interval = _poll_seconds()
     logger.info("Agent Runtime worker started; poll_seconds=%s batch_size=%s", interval, _batch_size())
@@ -220,6 +211,32 @@ async def serve() -> None:
         except Exception:
             logger.exception("Agent Runtime worker loop failed")
             await asyncio.sleep(interval)
+
+
+async def serve() -> None:
+    """Host independent runtime and workflow consumers without merging their state machines."""
+    from allpha_api import workflow_worker_host
+
+    runtime_enabled = _enabled()
+    workflow_enabled = workflow_worker_host.enabled()
+    consumers: list[asyncio.Task[Any]] = []
+    if runtime_enabled:
+        consumers.append(asyncio.create_task(_serve_runtime_enabled(), name="agent-runtime-worker"))
+    if workflow_enabled:
+        consumers.append(asyncio.create_task(workflow_worker_host.serve_enabled(), name="workflow-worker"))
+
+    if not consumers:
+        logger.warning(
+            "Allpha worker container is healthy but idle; Agent Runtime and Workflow consumers are disabled"
+        )
+        await asyncio.Event().wait()
+        return
+
+    logger.info(
+        "Allpha shared worker host started; agent_runtime=%s workflow=%s",
+        runtime_enabled, workflow_enabled,
+    )
+    await asyncio.gather(*consumers)
 
 
 def main() -> None:
