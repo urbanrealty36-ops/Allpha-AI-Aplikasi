@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import time
 
 import pytest
@@ -225,4 +226,71 @@ def test_consumer_generation_fails_closed_before_provider_call(changes, match):
             agent_version=3, skill_id="skill-1", skill_version=2, skill_published=True,
             policy_version="public-v1", router=None, request=None,
             consumer_authorization=auth,
+        ))
+
+
+
+def test_runtime_carries_valid_content_free_knowledge_citations_in_result():
+    refs = ({
+        "source_id": "11111111-1111-4111-8111-111111111111",
+        "source_version": 3,
+        "chunk_id": "22222222-2222-4222-8222-222222222222",
+        "source_location": {"kind": "page", "index": 2},
+        "sensitivity": "internal",
+        "content_sha256": "a" * 64,
+        "retrieved_content_sha256": "b" * 64,
+        "retrieval_method": "keyword",
+        "score": 0.5,
+        "provider_id": None,
+        "model_id": None,
+        "model_version": None,
+        "index_generation": None,
+    },)
+    digest = hashlib.sha256(b"knowledge-context").hexdigest()
+    task = AgentTask(envelope(
+        knowledge_context_refs=refs,
+        knowledge_context_sha256=digest,
+        knowledge_context_state="available",
+    ))
+    result = asyncio.run(AgentRuntime().execute_tool(
+        task, authorization(), tool_key="text.normalize", inputs={"text": "hello"},
+    ))
+    assert result["knowledge_context_refs"] == list(refs)
+    assert result["knowledge_context_sha256"] == digest
+    assert result["knowledge_context_state"] == "available"
+
+
+def test_runtime_rejects_raw_document_content_in_knowledge_provenance():
+    refs = ({
+        "source_id": "11111111-1111-4111-8111-111111111111",
+        "source_version": 3,
+        "chunk_id": "22222222-2222-4222-8222-222222222222",
+        "source_location": {"kind": "page", "index": 2},
+        "sensitivity": "internal",
+        "content_sha256": "a" * 64,
+        "retrieved_content_sha256": "b" * 64,
+        "retrieval_method": "keyword",
+        "score": 0.5,
+        "content": "private raw document text",
+    },)
+    task = AgentTask(envelope(
+        knowledge_context_refs=refs,
+        knowledge_context_sha256=hashlib.sha256(b"knowledge-context").hexdigest(),
+        knowledge_context_state="available",
+    ))
+    with pytest.raises(AgentRuntimeBlocked, match="content-free"):
+        asyncio.run(AgentRuntime().execute_tool(
+            task, authorization(), tool_key="text.normalize", inputs={"text": "hello"},
+        ))
+
+
+def test_runtime_rejects_noncanonical_digest_for_empty_knowledge_context():
+    task = AgentTask(envelope(
+        knowledge_context_refs=(),
+        knowledge_context_sha256="a" * 64,
+        knowledge_context_state="empty",
+    ))
+    with pytest.raises(AgentRuntimeBlocked, match="non-empty digest"):
+        asyncio.run(AgentRuntime().execute_tool(
+            task, authorization(), tool_key="text.normalize", inputs={"text": "hello"},
         ))
