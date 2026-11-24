@@ -218,11 +218,12 @@ select public.agent_memory_transition('expire_item','{OWNER}','{AGENT}',
  '{{}}'::jsonb);
 do $do$
 begin
- if not exists(select 1 from public.agent_memory_items where owner_user_id='{OWNER}' and source_ref='{{}}'::jsonb and status='expired' and content='') then
-  raise exception 'owner immediate expiry did not clear private Memory content';
- end if;
- if not exists(select 1 from public.agent_memory_events where owner_user_id='{OWNER}' and event_type='item_expired' and details->>'owner_requested'='true') then
-  raise exception 'owner immediate expiry audit event missing';
+ if not exists(
+  select 1 from public.agent_memory_events e join public.agent_memory_items i on i.id=e.item_id
+  where e.owner_user_id='{OWNER}' and e.event_type='item_expired' and e.details->>'owner_requested'='true'
+    and i.status='expired' and i.content='' and i.pinned_at is null
+ ) then
+  raise exception 'owner immediate expiry did not clear content, pin state and preserve its audit event';
  end if;
 end $do$;
 select public.agent_memory_transition('delete','{OWNER}','{AGENT}',
