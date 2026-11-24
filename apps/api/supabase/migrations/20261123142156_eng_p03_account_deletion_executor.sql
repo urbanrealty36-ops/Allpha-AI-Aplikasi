@@ -1,9 +1,8 @@
--- Restored 2026-11-24 from the original Supabase Postgres migration statement log.
--- The log truncated at the final CREATE TRIGGER; its remaining function call was verified
--- against pg_get_triggerdef('public.account_legal_holds'::regclass trigger metadata).
+-- Restored 2026-11-24 from the original Supabase Postgres statement log.
+-- The log capped the final trigger statement at 80,000 characters; the exact remainder
+-- was recovered from pg_stat_statements. Explicit nested BEGIN/COMMIT wrappers are omitted.
 -- ENG-P03: executable, lease-fenced account deletion with explicit data-class
 -- and FK dependency policy. No retention values or destructive mappings are seeded.
-begin;
 
 alter table public.account_deletion_requests
   drop constraint if exists account_deletion_requests_status_check;
@@ -1293,5 +1292,3 @@ $fn$;
 drop trigger if exists account_legal_hold_subject_lock on public.account_legal_holds;
 create trigger account_legal_hold_subject_lock before insert or update on public.account_legal_holds
 for each row execute function private.lock_account_legal_hold_subject();
-
-commit;
