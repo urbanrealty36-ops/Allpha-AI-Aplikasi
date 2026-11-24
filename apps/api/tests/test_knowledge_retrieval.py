@@ -517,7 +517,7 @@ def test_public_route_fails_closed_on_revoked_knowledge_consent_before_search():
         return {"id": "owner-a"}
 
     class Provider:
-        async def resolve(self, *, owner_id, agent_id):
+        async def resolve(self, *, owner_id, agent_id, audience):
             return KnowledgePolicySnapshot(
                 policy_version="knowledge-policy.v3",
                 owner_id=owner_id,
