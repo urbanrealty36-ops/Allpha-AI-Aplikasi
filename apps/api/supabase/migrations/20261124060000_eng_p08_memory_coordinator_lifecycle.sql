@@ -402,8 +402,10 @@ on conflict(source_key) do update set data_class=excluded.data_class,deletion_ac
 do $schedule$
 begin
  if exists(select 1 from pg_available_extensions where name='pg_cron') then
-  execute 'create extension if not exists pg_cron';
+  execute 'create extension if not exists pg_cron with schema pg_catalog';
   if to_regnamespace('cron') is not null then
+   execute 'grant usage on schema cron to postgres';
+   execute 'grant all privileges on all tables in schema cron to postgres';
    perform cron.schedule(
     'allpha-memory-retention',
     '*/5 * * * *',
