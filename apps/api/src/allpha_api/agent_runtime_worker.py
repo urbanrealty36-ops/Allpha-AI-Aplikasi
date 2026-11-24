@@ -87,13 +87,13 @@ async def _serve_consumer_isolated(name: str, consumer) -> None:
         await consumer
     except asyncio.CancelledError:
         raise
-    except BaseException as exc:
-        # SystemExit may be raised by a consumer's strict environment validation.
+    except SystemExit as exc:
         logger.error(
-            "%s consumer stopped during startup/runtime; sibling consumers remain active: %s",
-            name, type(exc).__name__,
-            exc_info=(type(exc), exc, exc.__traceback__),
+            "%s consumer stopped by strict configuration validation; sibling consumers remain active: %s",
+            name, exc,
         )
+    except Exception:
+        logger.exception("%s consumer stopped; sibling consumers remain active", name)
 
 
 def _concurrency() -> int:
