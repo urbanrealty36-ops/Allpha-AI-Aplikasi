@@ -19,6 +19,7 @@ on:
       - "apps/api/supabase/migrations/20261123181531_eng_p03_legacy_billing_order_rpc_guard.sql"
       - "apps/api/supabase/migrations/20261123182248_eng_p03_governance_policy_gate_and_retry.sql"
       - "apps/api/supabase/migrations/20261124005951_eng_p03_agent_ownership_tombstone_attribution.sql"
+      - "apps/api/supabase/migrations/20261124010254_eng_p03_subject_digest_path_repairs.sql"
       - "apps/api/src/allpha_api/account_lifecycle_api.py"
       - "apps/api/tests/test_account_lifecycle_api.py"
       - "apps/web/app/account/AccountDataLifecyclePanel.tsx"
