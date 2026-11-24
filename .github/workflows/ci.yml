@@ -37,6 +37,8 @@ jobs:
         run: python apps/api/scripts/verify_eng_p08_memory_coordinator.py
       - name: Verify ENG-P09 model policy approval and moderation governance on disposable PostgreSQL 17
         run: python apps/api/scripts/verify_eng_p09_model_policy.py
+      - name: Verify ENG-P10 append-only owner-scoped execution traces on disposable PostgreSQL 17
+        run: python apps/api/scripts/verify_eng_p10_runtime_execution_trace.py
 
   web-build:
     runs-on: ubuntu-latest
