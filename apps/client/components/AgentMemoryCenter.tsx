@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
 type MemoryType="working"|"episodic"|"semantic"|"procedural"|"long_term";
 type MemoryPolicy={id:string;memory_type:MemoryType;enabled:boolean;consent_version?:string|null;allowed_purposes:string[];allowed_sensitivities:string[];retention_days:number;policy_version:number;consent_revoked_at?:string|null};
-type MemoryItem={id:string;memory_type:MemoryType;purpose:string;classification:string;content:string;status:string;confidence?:number|null;retention_expires_at:string;created_at:string;version:number};
+type MemoryItem={id:string;memory_type:MemoryType;purpose:string;classification:string;content:string;status:string;confidence?:number|null;retention_expires_at:string;created_at:string;version:number;pinned_at?:string|null};
 type MemoryEvent={id:string;event_type:string;details:Record<string,unknown>;created_at:string};
 type Props={apiBase:string;agentId:string;getAccessToken:()=>Promise<string>;onBack:()=>void};
 
@@ -111,6 +111,28 @@ export function AgentMemoryCenter({apiBase,agentId,getAccessToken,onBack}:Props)
   }catch(cause){setError(cause instanceof Error?cause.message:"Memory gagal dihapus.");}
   finally{setBusy(false);}
  }
+ async function pin(item:MemoryItem,pinned:boolean){
+  setBusy(true);setError("");setNotice("");
+  try{
+   await request("/v1/memory/items/"+encodeURIComponent(item.id)+"/pin",{method:"POST",body:JSON.stringify({pinned})});
+   setNotice(pinned?"Memory disematkan; retensi tetap berjalan.":"Sematan Memory dilepas.");await load();
+  }catch(cause){setError(cause instanceof Error?cause.message:"Perubahan pin gagal.");}
+  finally{setBusy(false);}
+ }
+
+ function expireItem(item:MemoryItem){
+  Alert.alert("Expire Memory","Konten privat akan dikosongkan sekarang dan tidak dapat dipulihkan. Audit event tetap disimpan.",[
+   {text:"Batal",style:"cancel"},
+   {text:"Expire sekarang",style:"destructive",onPress:()=>{void (async()=>{
+    setBusy(true);setError("");setNotice("");
+    try{
+     await request("/v1/memory/items/"+encodeURIComponent(item.id)+"/expire",{method:"POST"});
+     setNotice("Memory di-expire; konten dikosongkan dan audit dipertahankan.");await load();
+    }catch(cause){setError(cause instanceof Error?cause.message:"Expiry Memory gagal.");}
+    finally{setBusy(false);}
+   })();}},
+  ]);
+ }
 
  async function retrieve(){
   setBusy(true);setError("");setRetrieved([]);
@@ -159,11 +181,11 @@ export function AgentMemoryCenter({apiBase,agentId,getAccessToken,onBack}:Props)
   <View style={card}>
    <View style={{flexDirection:"row",justifyContent:"space-between",alignItems:"center"}}><Text style={{color:"#FFFFFF",fontWeight:"800",fontSize:15}}>Items & proposals</Text>{button("Refresh",()=>void load(),busy)}</View>
    {loading?<ActivityIndicator color="#7DD3FC" style={{margin:16}}/>:items.length===0?<Text style={{color:"#91A0BA",fontSize:12,marginTop:12}}>Belum ada Memory untuk Agent ini.</Text>:items.map(item=><View key={item.id} style={{borderTopWidth:1,borderTopColor:"#303B56",paddingTop:11,marginTop:11}}>
-    <Text style={{color:"#FFFFFF",fontWeight:"700"}}>{LABELS[item.memory_type]} · {item.status} · {item.classification}</Text>
+    <Text style={{color:"#FFFFFF",fontWeight:"700"}}>{LABELS[item.memory_type]} · {item.status} · {item.classification}{item.pinned_at?" · Disematkan":""}</Text>
     <Text style={{color:"#C7D0E0",fontSize:13,lineHeight:19,marginTop:6}}>{item.content||"(konten sudah dihapus sesuai retensi)"}</Text>
     <Text style={{color:"#8190AA",fontSize:10,marginTop:5}}>Versi {item.version} · Retensi {new Date(item.retention_expires_at).toLocaleDateString("id-ID")}</Text>
     {item.status==="pending"&&<View style={{flexDirection:"row",gap:8,marginTop:9}}>{button("Setujui",()=>void decide(item,"approve"),busy)}{button("Tolak",()=>void decide(item,"reject"),busy,true)}</View>}
-    {item.status==="active"&&<><TextInput value={correcting[item.id]??item.content} onChangeText={value=>setCorrecting(current=>({...current,[item.id]:value}))} multiline maxLength={8000} style={[field,{minHeight:64,textAlignVertical:"top"}]}/><View style={{flexDirection:"row",gap:8,marginTop:9}}>{button("Simpan koreksi",()=>void correct(item),busy)}{button("Hapus",()=>void remove(item),busy,true)}</View></>}
+    {item.status==="active"&&<><TextInput value={correcting[item.id]??item.content} onChangeText={value=>setCorrecting(current=>({...current,[item.id]:value}))} multiline maxLength={8000} style={[field,{minHeight:64,textAlignVertical:"top"}]}/><View style={{flexDirection:"row",gap:8,marginTop:9,flexWrap:"wrap"}}>{button(item.pinned_at?"Lepas pin":"Sematkan",()=>void pin(item,!item.pinned_at),busy)}{button("Expire sekarang",()=>expireItem(item),busy,true)}{button("Simpan koreksi",()=>void correct(item),busy)}{button("Hapus",()=>void remove(item),busy,true)}</View></>}
    </View>)}
   </View>
   <View style={card}>
