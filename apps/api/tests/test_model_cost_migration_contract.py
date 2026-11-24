@@ -62,7 +62,7 @@ def test_model_cost_registry_persists_explicit_capability_and_fails_closed_on_un
 
 
 CAPABILITY_SCOPE = ROOT / "supabase" / "migrations" / "20261124073000_eng_p09_model_cost_capability_scope.sql"
-METERING_CAPABILITY = ROOT / "supabase" / "migrations" / "20261124081000_eng_p09_usage_metering_capability.sql"
+METERING_CAPABILITY = ROOT / "supabase" / "migrations" / "20261124081303_eng_p09_usage_metering_capability.sql"
 
 
 def test_model_cost_active_tariffs_are_scoped_by_capability():
