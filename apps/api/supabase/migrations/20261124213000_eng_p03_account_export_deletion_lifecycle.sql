@@ -11,6 +11,9 @@ alter table public.account_data_retention_policies
     'session_scoped','public_catalog','account_export_artifact'
   ]::text[]));
 
+alter table public.account_export_jobs
+  add column if not exists download_confirmed_at timestamptz;
+
 alter table public.account_deletion_requests
   add column if not exists export_job_id uuid,
   add column if not exists idempotency_key text;
@@ -150,7 +153,7 @@ begin
       'export_status',v_export_status,
       'export_required_before_deletion',true,
       'retention_policy_configured',
-        (select count(distinct p.data_class)=7
+        (select count(distinct p.data_class)=6
            from public.account_data_retention_policies p
           where p.active=true and p.retention_days>=0
             and nullif(p.policy_version,'') is not null
@@ -177,16 +180,17 @@ set search_path = ''
 as $function$
 declare
   v_linked_status text;
+  v_download_confirmed_at timestamptz;
+  v_storage_bucket text;
+  v_storage_path text;
   v_pending integer;
-  v_missing_expiry integer;
-  v_expiry timestamptz;
-  v_policy_version text;
 begin
   if p_user_id is null or p_export_job_id is null then
     return jsonb_build_object('ready',false,'code','ACCOUNT_EXPORT_REQUIRED');
   end if;
 
-  select j.status into v_linked_status
+  select j.status,j.download_confirmed_at,j.storage_bucket,j.storage_path
+    into v_linked_status,v_download_confirmed_at,v_storage_bucket,v_storage_path
     from public.account_export_jobs j
    where j.id=p_export_job_id and j.user_id=p_user_id;
   if not found then
@@ -200,23 +204,17 @@ begin
     return jsonb_build_object('ready',false,'code','ACCOUNT_EXPORT_FAILED',
       'export_job_id',p_export_job_id,'export_status',v_linked_status);
   end if;
-  if v_linked_status not in ('succeeded','expired') then
+  if v_linked_status<>'succeeded' then
     return jsonb_build_object('ready',false,'code','ACCOUNT_EXPORT_PENDING',
       'export_job_id',p_export_job_id,'export_status',v_linked_status);
   end if;
-
-  select p.policy_version into v_policy_version
-    from public.account_data_retention_policies p
-   where p.data_class='account_export_artifact'
-     and p.active=true and p.retention_days>=0
-     and nullif(p.policy_version,'') is not null
-     and nullif(p.legal_basis,'') is not null
-     and ((p.decision_source='product_owner_directive' and nullif(p.decision_reference,'') is not null)
-       or (p.decision_source='operator_approval' and p.approved_by is not null and p.approved_at is not null))
-   order by p.updated_at desc,p.id desc
-   limit 1;
-  if v_policy_version is null then
-    return jsonb_build_object('ready',false,'code','ACCOUNT_EXPORT_RETENTION_POLICY_MISSING',
+  if v_download_confirmed_at is null then
+    return jsonb_build_object('ready',false,'code','ACCOUNT_EXPORT_DOWNLOAD_CONFIRMATION_REQUIRED',
+      'export_job_id',p_export_job_id,'export_status',v_linked_status,
+      'storage_bucket',v_storage_bucket,'storage_path_available',coalesce(v_storage_path<>'',false));
+  end if;
+  if v_storage_bucket<>'account-exports' or v_storage_path is null or v_storage_path='' then
+    return jsonb_build_object('ready',false,'code','ACCOUNT_EXPORT_ARTIFACT_MISSING',
       'export_job_id',p_export_job_id,'export_status',v_linked_status);
   end if;
 
@@ -228,26 +226,10 @@ begin
       'pending_export_jobs',v_pending,'export_job_id',p_export_job_id);
   end if;
 
-  select count(*) into v_missing_expiry
-    from public.account_export_jobs j
-   where j.user_id=p_user_id and j.status in ('succeeded','expired') and j.expires_at is null;
-  if v_missing_expiry>0 then
-    return jsonb_build_object('ready',false,'code','ACCOUNT_EXPORT_RETENTION_POLICY_MISSING',
-      'exports_missing_expiry',v_missing_expiry,'export_job_id',p_export_job_id);
-  end if;
-
-  select max(j.expires_at) into v_expiry
-    from public.account_export_jobs j
-   where j.user_id=p_user_id and j.status in ('succeeded','expired');
-  if v_expiry is null then
-    return jsonb_build_object('ready',false,'code','ACCOUNT_EXPORT_RETENTION_POLICY_MISSING',
-      'export_job_id',p_export_job_id);
-  end if;
-
   return jsonb_build_object(
-    'ready',true,'code','ACCOUNT_EXPORT_READY',
+    'ready',true,'code','ACCOUNT_EXPORT_DOWNLOAD_CONFIRMED',
     'export_job_id',p_export_job_id,'export_status',v_linked_status,
-    'retention_policy_version',v_policy_version,'expires_at',v_expiry
+    'download_confirmed_at',v_download_confirmed_at
   );
 end;
 $function$;
@@ -372,12 +354,12 @@ $old$;
     end if;
     return jsonb_build_object('outcome','blocked_dependency','export_gate',v_export_gate);
   end if;
-  v_export_until:=nullif(v_export_gate->>'expires_at','')::timestamptz;
+  v_export_until:=nullif(v_export_gate->>'download_confirmed_at','')::timestamptz;
 
   select array_agg(required.data_class order by required.data_class) into v_missing_classes
 $new$;
   v_old_classes text := $old$('published_knowledge'),('session_scoped'),('public_catalog')) required(data_class)$old$;
-  v_new_classes text := $new$('published_knowledge'),('session_scoped'),('public_catalog'),('account_export_artifact')) required(data_class)$new$;
+  v_new_classes text := $new$('published_knowledge'),('session_scoped'),('public_catalog')) required(data_class)$new$;
   v_old_prepare_retention text := $old$v_retention_until := v_request.requested_at + pg_catalog.make_interval(days=>v_retention_days);$old$;
   v_new_prepare_retention text := $new$v_retention_until := greatest(
       v_request.requested_at + pg_catalog.make_interval(days=>v_retention_days),
@@ -388,8 +370,10 @@ $new$;
     and j.storage_bucket='account-exports' and j.storage_path<>'' and left(j.storage_path,1)<>'/'
 $old$;
   v_new_storage_export text := $new$
-  where j.user_id=v_request.user_id and j.status='succeeded' and j.expires_at is not null
-    and j.expires_at<=pg_catalog.clock_timestamp() and j.storage_path is not null
+  where j.user_id=v_request.user_id and j.status='succeeded'
+    and (j.download_confirmed_at is not null or
+      (j.expires_at is not null and j.expires_at<=pg_catalog.clock_timestamp()))
+    and j.storage_path is not null
     and j.storage_bucket='account-exports' and j.storage_path<>'' and left(j.storage_path,1)<>'/'
 $new$;
   v_old_prepare_metadata text := $old$
@@ -397,7 +381,7 @@ $new$;
 $old$;
   v_new_prepare_metadata text := $new$
       'storage_cleanup_queued',true,'export_job_id',v_request.export_job_id,
-      'export_retention_until',v_export_until,'prepared_at',clock_timestamp()),updated_at=clock_timestamp()
+      'export_download_confirmed_at',v_export_until,'prepared_at',clock_timestamp()),updated_at=clock_timestamp()
 $new$;
 
   v_old_eval_decl text := $old$
@@ -437,7 +421,7 @@ $old$;
       v_blocked:=v_blocked+1;
       continue;
     end if;
-    v_export_until:=nullif(v_export_gate->>'expires_at','')::timestamptz;
+    v_export_until:=nullif(v_export_gate->>'download_confirmed_at','')::timestamptz;
 
     select array_agg(required.data_class order by required.data_class) into v_missing_classes
 $new$;
@@ -452,10 +436,9 @@ $new$;
 $old$;
   v_new_eval_event text := $new$
           jsonb_build_object(
-            'reason_code',case when v_export_until>v_request.requested_at+pg_catalog.make_interval(days=>v_retention_days)
-              then 'EXPORT_ARTIFACT_RETENTION_ACTIVE' else 'RETENTION_PERIOD_ACTIVE' end,
+            'reason_code','RETENTION_PERIOD_ACTIVE',
             'retention_days',v_retention_days,'scheduled_for',v_retention_until,
-            'export_job_id',v_request.export_job_id,'export_expires_at',v_export_until,
+            'export_job_id',v_request.export_job_id,'export_download_confirmed_at',v_export_until,
             'policy_version',v_policy_version));
 $new$;
   v_old_eval_meta text := $old$
@@ -464,7 +447,7 @@ $new$;
 $old$;
   v_new_eval_meta text := $new$
                'retention_days',v_retention_days,'retention_until',v_retention_until,
-               'export_job_id',v_request.export_job_id,'export_retention_until',v_export_until,
+               'export_job_id',v_request.export_job_id,'export_download_confirmed_at',v_export_until,
                'deletion_policy_state',v_policy_state,'legal_hold_active',false,
 $new$;
 begin
@@ -505,3 +488,80 @@ end;
 $patch$;
 
 revoke all on function public.create_account_deletion_request_for_actor(uuid,text) from public,anon,authenticated;
+
+
+create or replace function public.confirm_account_deletion_export_download(
+  p_request_id uuid
+) returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_user_id uuid:=auth.uid();
+  v_request public.account_deletion_requests%rowtype;
+  v_job public.account_export_jobs%rowtype;
+  v_confirmed_at timestamptz;
+begin
+  if v_user_id is null or coalesce(auth.role(),'')<>'authenticated' then
+    raise exception 'authenticated_account_owner_required' using errcode='42501';
+  end if;
+  if p_request_id is null then
+    raise exception 'account_deletion_request_id_required' using errcode='22023';
+  end if;
+
+  select * into v_request
+    from public.account_deletion_requests r
+   where r.id=p_request_id and r.user_id=v_user_id
+   for update;
+  if not found then
+    raise exception 'account_deletion_request_not_found' using errcode='P0002';
+  end if;
+  if v_request.status not in ('awaiting_policy','scheduled','blocked_legal_hold','blocked_dependency') then
+    raise exception 'account_deletion_export_confirmation_closed' using errcode='42501';
+  end if;
+  if v_request.export_job_id is null then
+    raise exception 'account_deletion_export_required' using errcode='23514';
+  end if;
+
+  select * into v_job
+    from public.account_export_jobs j
+   where j.id=v_request.export_job_id and j.user_id=v_user_id
+   for update;
+  if not found or v_job.status<>'succeeded'
+     or v_job.storage_bucket<>'account-exports'
+     or v_job.storage_path is null or v_job.storage_path='' then
+    raise exception 'account_deletion_export_artifact_not_ready' using errcode='23514';
+  end if;
+
+  v_confirmed_at:=coalesce(v_job.download_confirmed_at,clock_timestamp());
+  if v_job.download_confirmed_at is null then
+    update public.account_export_jobs
+       set download_confirmed_at=v_confirmed_at,updated_at=clock_timestamp()
+     where id=v_job.id;
+
+    update public.account_deletion_requests
+       set status='awaiting_policy',scheduled_for=null,error_code=null,
+           request_metadata=coalesce(request_metadata,'{}'::jsonb)||jsonb_build_object(
+             'export_job_id',v_job.id,'export_download_confirmed_at',v_confirmed_at,
+             'export_download_confirmation','user_confirmed'),
+           updated_at=clock_timestamp()
+     where id=v_request.id;
+
+    insert into public.account_lifecycle_events(request_id,user_id,subject_ref,event_type,metadata)
+    values(v_request.id,v_user_id,v_request.subject_ref,'deletion_unblocked',
+      jsonb_build_object(
+        'reason_code','EXPORT_DOWNLOAD_CONFIRMED_REEVALUATION_REQUIRED',
+        'export_job_id',v_job.id,
+        'download_confirmed_at',v_confirmed_at
+      ));
+  end if;
+
+  return jsonb_build_object(
+    'request_id',v_request.id,'export_job_id',v_job.id,
+    'download_confirmed_at',v_confirmed_at,'status','confirmed'
+  );
+end;
+$function$;
+revoke all on function public.confirm_account_deletion_export_download(uuid) from public,anon,service_role;
+grant execute on function public.confirm_account_deletion_export_download(uuid) to authenticated;
