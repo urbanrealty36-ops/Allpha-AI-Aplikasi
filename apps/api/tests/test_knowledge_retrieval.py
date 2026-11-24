@@ -417,8 +417,8 @@ def test_supabase_keyword_repository_rejects_unready_source_even_if_query_adapte
             "owner_id": "owner-a", "chunk_index": 0, "content": "must not leak",
             "source_location": {}, "source_version": 1, "content_sha256": hashlib.sha256(b"must not leak").hexdigest(),
             "agent_knowledge_sources": {
-                "id": "source-unready", "source_version": 1, "status": "processing",
-                "sensitivity": "internal",
+                "id": "source-unready", "owner_id": "owner-a", "agent_id": "agent-a",
+                "source_version": 1, "status": "processing", "sensitivity": "internal",
             },
         }]
     monkeypatch.setattr(auth, "user_db_request", fake_request)
@@ -430,6 +430,8 @@ def test_supabase_keyword_repository_rejects_unready_source_even_if_query_adapte
                 owner_id="owner-a", agent_id="agent-a", query="must not leak",
                 allowed_sensitivities=["internal"], limit=5, trace_id="trace-unready",
             )
+        assert calls[0][2]["agent_knowledge_sources.owner_id"] == "eq.owner-a"
+        assert calls[0][2]["agent_knowledge_sources.agent_id"] == "eq.agent-a"
         assert calls[0][2]["agent_knowledge_sources.status"] == "eq.ready"
     asyncio.run(scenario())
 
