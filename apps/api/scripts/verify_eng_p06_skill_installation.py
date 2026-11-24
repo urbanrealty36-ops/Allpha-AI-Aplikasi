@@ -14,6 +14,8 @@ MIGRATION_FILES = [
     MIGRATIONS / "20261124034103_eng_p06_skill_installation_licensing_runtime_gate.sql",
     MIGRATIONS / "20261124034604_eng_p06_skill_license_expiry_lifecycle.sql",
     MIGRATIONS / "20261124035118_eng_p06_install_idempotency_and_paid_entitlement_guard.sql",
+    MIGRATIONS / "20261124040000_eng_p06_public_skill_projection_service_only.sql",
+    MIGRATIONS / "20261124041000_eng_p06_skill_lifecycle_service_boundary.sql",
 ]
 NAME = "allpha-p06-install-" + uuid.uuid4().hex[:8]
 OWNER = "11111111-1111-4111-8111-111111111111"
