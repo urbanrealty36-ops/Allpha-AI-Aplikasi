@@ -134,7 +134,7 @@ def test_deletion_governance_rechecks_owner_directives_holds_sources_fks_and_tra
     assert "missing_ownership_transfers" in source
     assert "public.prepare_account_deletion_execution_batch" in source
     assert "status in ('awaiting_policy','scheduled','blocked_dependency')" in source
-    assert "scheduled_for<=clock_timestamp()" in source
+    assert "coalesce(scheduled_for,clock_timestamp())<=clock_timestamp()" in source
 
 
 
