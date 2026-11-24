@@ -144,10 +144,32 @@ def _public_job(job: object) -> object:
     return {key: job[key] for key in _PUBLIC_JOB_KEYS if key in job}
 
 
+def _local_scanner_identity_pins() -> tuple[str, str]:
+    """Require immutable deployment pins before trusting a local ClamAV verdict."""
+    scanner_id = os.getenv("ALLPHA_DOCUMENT_SCANNER_ID", "").strip()
+    engine_version = os.getenv("ALLPHA_DOCUMENT_SCANNER_ENGINE_VERSION", "")
+    signature_version = os.getenv("ALLPHA_DOCUMENT_SCANNER_SIGNATURE_VERSION", "")
+    values = (engine_version, signature_version)
+    if (
+        scanner_id != "clamav-local"
+        or any(not value or value != value.strip() or len(value) > 128
+               or any(ord(char) < 0x20 or ord(char) > 0x7e for char in value)
+               for value in values)
+    ):
+        raise DocumentScannerConfigurationError(
+            "local ClamAV requires scanner ID clamav-local and deployment-pinned engine/signature versions"
+        )
+    return engine_version, signature_version
+
+
 async def _scan(data: bytes,filename: str,media_type: str):
     endpoint=os.getenv("ALLPHA_DOCUMENT_SCANNER_URL","").strip()
     mode=os.getenv("ALLPHA_DOCUMENT_SCANNER_MODE","").strip().lower()
     if not endpoint and mode=="clamd":
+        try:
+            expected_engine_version, expected_signature_version = _local_scanner_identity_pins()
+        except DocumentScannerConfigurationError as exc:
+            raise HTTPException(503,detail={"code":"SCANNER_NOT_CONFIGURED","message":"ClamAV memerlukan identitas engine dan signature yang dipin pada deployment."}) from exc
         suffix=os.path.splitext(filename.lower())[1][:12]
         try:
             with tempfile.NamedTemporaryFile(prefix="allpha-knowledge-",suffix=suffix) as source:
@@ -181,10 +203,16 @@ async def _scan(data: bytes,filename: str,media_type: str):
                 raise ValueError("ClamAV engine/signature identity is unavailable")
         except (OSError, asyncio.TimeoutError, ValueError) as exc:
             raise HTTPException(503,detail={"code":"SCANNER_UNAVAILABLE","message":"Versi engine/signature ClamAV tidak dapat diverifikasi; dokumen tetap dikarantina."}) from exc
+        actual_signature_version = version_match.group(2) + "/" + version_match.group(3)
+        if (
+            version_match.group(1) != expected_engine_version
+            or actual_signature_version != expected_signature_version
+        ):
+            raise HTTPException(503,detail={"code":"SCANNER_UNAVAILABLE","message":"Identitas ClamAV aktif tidak sesuai pin deployment; dokumen tetap dikarantina."})
         return {
             "scanner_id": "clamav-local",
             "engine_version": version_match.group(1),
-            "signature_version": version_match.group(2) + "/" + version_match.group(3),
+            "signature_version": actual_signature_version,
             "sha256": hashlib.sha256(data).hexdigest(),
             "contract_version": "allpha.local-clamav.v1",
         }
