@@ -11,6 +11,7 @@ LEGAL_HOLD_REQUEUE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123142930_e
 STORAGE_DISPOSITION_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123143130_eng_p03_storage_disposition_gate.sql"
 SOURCE_METADATA_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123143201_eng_p03_source_registry_metadata.sql"
 SOURCE_CLASSIFICATION_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123165316_eng_p03_source_policy_classification.sql"
+REQUEUE_AUDIT_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124012454_eng_p03_requeue_audit_trail.sql"
 MIGRATION=ROOT/"apps/api/supabase/migrations/20261123192200_eng_p03_deletion_legal_hold_governance_worker.sql"
 SOURCE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123153243_eng_p03_account_deletion_specialized_source_handlers.sql"
 OWNER_SCOPE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123153456_eng_p03_agent_skill_deletion_owner_scope.sql"
@@ -120,13 +121,13 @@ insert into private.account_export_sources(source_key,table_name,filter_kind) va
         for migration in (
             EXECUTOR_MIGRATION,DEPENDENCY_REQUEUE_MIGRATION,RETENTION_CANONICAL_MIGRATION,
             LEGAL_HOLD_REQUEUE_MIGRATION,STORAGE_DISPOSITION_MIGRATION,SOURCE_METADATA_MIGRATION,
-            SOURCE_CLASSIFICATION_MIGRATION,
+            SOURCE_CLASSIFICATION_MIGRATION,REQUEUE_AUDIT_MIGRATION,
         ):
             psql(migration.read_text(encoding="utf-8"))
         psql(MIGRATION.read_text(encoding="utf-8"))
         psql(MIGRATION.read_text(encoding="utf-8")) # repeatable forward migration
         psql(f"""
-insert into auth.users(id) values ('{A}'),('{B}'),('{C}');
+insert into auth.users(id) values ('{A}'),('{B}'),('{C}'),('{D}');
 insert into public.account_legal_holds(subject_ref,reference_code,reason_code,active,created_by)
 values ('{HOLD_A}','CASE-A','legal_preservation',true,'{A}'),
        ('{HOLD_B}','CASE-B','legal_preservation',false,'{B}');
@@ -168,15 +169,37 @@ begin
   end if;
 end $$;
 update public.account_legal_holds set active=false,released_by='{A}',released_at=now() where subject_ref='{HOLD_A}';
-do $$
+do $
 declare v record;
 begin
-  select * into v from public.evaluate_account_deletion_governance(100);
-  if v.unblocked_count<>1 then raise exception 'released legal hold was not reconciled'; end if;
   if (select status from public.account_deletion_requests where subject_ref='{HOLD_A}')<>'awaiting_policy' then
-    raise exception 'request did not return to policy gate after hold release';
+    raise exception 'legal hold release trigger did not requeue request';
   end if;
-end $$;
+  if not exists(select 1 from public.account_lifecycle_events
+    where subject_ref='{HOLD_A}' and event_type='deletion_unblocked'
+      and metadata->>'reason_code'='LEGAL_HOLD_RELEASED_REEVALUATION_REQUIRED') then
+    raise exception 'legal hold release requeue audit event missing';
+  end if;
+  select * into v from public.evaluate_account_deletion_governance(100);
+  if v.unblocked_count<>0 then raise exception 'governance double-counted a trigger-requeued request'; end if;
+end $;
+insert into public.account_deletion_requests(user_id,subject_ref,status,request_metadata)
+values ('{D}','{D}','blocked_dependency','{{}}');
+insert into public.account_deletion_dependency_rules(
+ child_schema,child_table,constraint_name,delete_rule,resolution_action,reason,active
+) values ('public','ci_requeue_test','ci_requeue_test_fkey','RESTRICT','block',
+ 'isolated trigger audit verification',true);
+do $
+begin
+  if (select status from public.account_deletion_requests where subject_ref='{D}')<>'awaiting_policy' then
+    raise exception 'dependency policy change did not requeue blocked request';
+  end if;
+  if not exists(select 1 from public.account_lifecycle_events
+    where subject_ref='{D}' and event_type='deletion_unblocked'
+      and metadata->>'reason_code'='DEPENDENCY_POLICY_CHANGED_REEVALUATION_REQUIRED') then
+    raise exception 'dependency requeue audit event missing';
+  end if;
+end $;
 do $$
 begin
   if has_function_privilege('authenticated','public.evaluate_account_deletion_governance(integer)','EXECUTE')
