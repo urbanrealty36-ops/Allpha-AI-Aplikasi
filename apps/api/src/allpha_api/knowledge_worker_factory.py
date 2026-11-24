@@ -16,6 +16,7 @@ from allpha_api.knowledge_worker import (
 )
 from allpha_api.knowledge_vector_repository import SupabaseKnowledgeVectorRepository
 from allpha_api.knowledge_vector_store import IdempotentKnowledgeVectorSink
+from allpha_api.knowledge_policy import load_policy_resolver_from_environment
 from allpha_api.model_router import ModelRouterUnavailable
 
 
@@ -33,6 +34,10 @@ async def build_worker() -> KnowledgeEmbeddingWorker:
     except ModelRouterUnavailable as exc:
         raise WorkerConfigurationError(f"canonical Model Router is not runtime-ready: {exc}") from exc
 
+    policy_resolver = load_policy_resolver_from_environment()
+    if policy_resolver is None:
+        raise WorkerConfigurationError("canonical Knowledge consent/source-grant provider is not configured")
+
     try:
         repository = SupabaseKnowledgeVectorRepository.from_environment()
         await repository.verify_generation()
@@ -49,4 +54,5 @@ async def build_worker() -> KnowledgeEmbeddingWorker:
         lease_seconds=int(os.getenv("KNOWLEDGE_EMBEDDING_LEASE_SECONDS", "90")),
         batch_size=int(os.getenv("KNOWLEDGE_EMBEDDING_BATCH_SIZE", "32")),
         request_timeout_ms=int(os.getenv("KNOWLEDGE_EMBEDDING_REQUEST_TIMEOUT_MS", "30000")),
+        policy_resolver=policy_resolver,
     )

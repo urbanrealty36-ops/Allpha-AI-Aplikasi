@@ -15,6 +15,7 @@ from fastapi import HTTPException
 
 from allpha_api.document_scanner import DocumentScannerConfigurationError, RemoteDocumentScanner
 from allpha_api.knowledge import _chunk, _extract, _scan
+from allpha_api.knowledge_policy import KNOWLEDGE_INGESTION_PURPOSE, KnowledgePolicyDenied, KnowledgePolicyUnavailable, VersionedKnowledgePolicyResolver, load_policy_resolver_from_environment
 from allpha_api.knowledge_worker import SupabaseKnowledgeJobStore, WorkerConfigurationError
 from allpha_api.lease_heartbeat import run_with_lease_heartbeat
 
@@ -71,6 +72,7 @@ class KnowledgeDocumentWorker:
     storage: SupabaseKnowledgeStorage
     lease_seconds: int = 120
     batch_size: int = 50
+    policy_resolver: VersionedKnowledgePolicyResolver | None = None
 
     def __post_init__(self) -> None:
         if not 10 <= self.lease_seconds <= 900:
@@ -97,6 +99,10 @@ class KnowledgeDocumentWorker:
                 log.warning("Knowledge document job %s abandoned after lease loss", job_id)
         except KnowledgeJobLeaseLost:
             log.warning("Knowledge document job %s abandoned after source-state lease loss", job_id)
+        except KnowledgePolicyDenied:
+            await self._fail(job, "KNOWLEDGE_CONSENT_OR_GRANT_REVOKED", "knowledge_policy_denied", False, 0)
+        except KnowledgePolicyUnavailable:
+            await self._fail(job, "KNOWLEDGE_POLICY_UNAVAILABLE", "knowledge_policy_retry", True, 60)
         except HTTPException as exc:
             detail = exc.detail if isinstance(exc.detail, dict) else {}
             code = str(detail.get("code") or "DOCUMENT_PROCESSING_FAILED")
@@ -134,6 +140,9 @@ class KnowledgeDocumentWorker:
         if sensitivity not in {"public", "internal", "confidential", "restricted"}:
             await self._fail(job, "SENSITIVITY_CLASSIFICATION_REQUIRED", "document_parse_failed", False, 0)
             return
+        if self.policy_resolver is None:
+            raise WorkerConfigurationError("canonical Knowledge consent/source-grant resolver is not configured")
+        await self.policy_resolver.authorize_source(owner_id=str(job["owner_id"]), agent_id=str(job["agent_id"]), source_id=str(source["id"]), sensitivity=str(sensitivity), purpose=KNOWLEDGE_INGESTION_PURPOSE)
 
         await self._set_processing_state(job, stage="malware_scan")
         data = await self.storage.download(str(source.get("storage_path") or ""))
@@ -159,6 +168,7 @@ class KnowledgeDocumentWorker:
         await self._set_processing_state(job, stage="chunk_persistence")
         total = 0
         for start in range(0, len(chunks), self.batch_size):
+            await self.policy_resolver.authorize_source(owner_id=str(job["owner_id"]), agent_id=str(job["agent_id"]), source_id=str(source["id"]), sensitivity=str(sensitivity), purpose=KNOWLEDGE_INGESTION_PURPOSE)
             batch = [
                 {
                     "chunk_index": start + index,
@@ -172,6 +182,7 @@ class KnowledgeDocumentWorker:
             total += int(persisted or 0)
         if total != len(chunks):
             raise WorkerConfigurationError("persisted Knowledge chunk count differs from parser output")
+        await self.policy_resolver.authorize_source(owner_id=str(job["owner_id"]), agent_id=str(job["agent_id"]), source_id=str(source["id"]), sensitivity=str(sensitivity), purpose=KNOWLEDGE_INGESTION_PURPOSE)
         completed = await self.store.complete_document_parse(job, expected_chunk_count=total)
         if not isinstance(completed, dict) or int(completed.get("chunks_created", -1)) != total:
             raise WorkerConfigurationError("atomic Knowledge parse completion did not confirm all chunks")
@@ -241,6 +252,9 @@ def build_worker_from_environment() -> KnowledgeDocumentWorker:
     scanner_mode = os.getenv("ALLPHA_DOCUMENT_SCANNER_MODE", "").strip().lower()
     if not supabase_url or not service_key:
         raise SystemExit("Knowledge document worker disabled: server-side Supabase credentials are required")
+    policy_resolver = load_policy_resolver_from_environment()
+    if policy_resolver is None:
+        raise SystemExit("Knowledge document worker disabled: canonical Knowledge consent/source-grant provider is required")
     if not scanner_url and scanner_mode != "clamd":
         raise SystemExit("Knowledge document worker disabled: configure ALLPHA_DOCUMENT_SCANNER_URL or local ALLPHA_DOCUMENT_SCANNER_MODE=clamd")
     if scanner_url:
@@ -268,6 +282,7 @@ def build_worker_from_environment() -> KnowledgeDocumentWorker:
         storage=storage,
         lease_seconds=int(os.getenv("KNOWLEDGE_DOCUMENT_LEASE_SECONDS", "120")),
         batch_size=int(os.getenv("KNOWLEDGE_DOCUMENT_BATCH_SIZE", "50")),
+        policy_resolver=policy_resolver,
     )
 
 

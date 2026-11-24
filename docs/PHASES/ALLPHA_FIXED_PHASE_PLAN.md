@@ -1257,7 +1257,7 @@ This is an evidence refresh inside the existing fixed plan. It does not create a
 ## 40.39 — ENG-P07 source-consent enforcement at API boundary (2026-11-24)
 
 - **Implementation:** added canonical purposes `knowledge_ingestion` and `knowledge_embedding`, plus `VersionedKnowledgePolicyResolver.authorize_source()` to revalidate owner/Agent consent, exact source grant and sensitivity. API process/retry now refuses to enqueue unless the server-side provider authorizes that exact source and purpose.
-- **Coverage:** API CHANGE; Web INTEGRATE via unchanged FastAPI contract; Native INTEGRATE via unchanged FastAPI contract; Super Admin NOT AFFECTED. Worker revalidation and atomic DB-level revocation fencing remain subsequent P07 work.
+- **Coverage:** API CHANGE; Web INTEGRATE via unchanged FastAPI contract; Native INTEGRATE via unchanged FastAPI contract; Super Admin NOT AFFECTED. Worker authorization is rechecked at the document and embedding processing boundaries; the dedicated factories fail startup if the canonical provider is absent. Production remains safely disabled until the database provider is implemented and configured. Atomic DB-level revocation fencing remains a P07 blocker.
 - **Tests:** source/sensitivity/purpose authorization and API no-provider/no-enqueue regression added. CI evidence will be recorded against this commit.
 - **Database/Railway:** no production DDL, ledger change, data write, provider credential or worker activation.
 - **Status:** ENG-P07 remains `in_progress`; no production provider, vector retrieval or end-to-end readiness is claimed.

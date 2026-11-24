@@ -5,6 +5,15 @@ from datetime import datetime, timezone
 from allpha_api.embedding_contract import EmbeddingResponse
 from allpha_api.knowledge_worker import KnowledgeEmbeddingWorker
 from allpha_api.model_router import ModelRouterUnavailable
+from allpha_api.knowledge_policy import KnowledgePolicyDenied
+
+
+class FakePolicyResolver:
+    def __init__(self, denied=False): self.denied=denied; self.calls=[]
+    async def authorize_source(self, **kwargs):
+        self.calls.append(kwargs)
+        if self.denied: raise KnowledgePolicyDenied("test revoked grant")
+
 
 
 class FakeStore:
@@ -58,7 +67,7 @@ def test_worker_claims_only_embedding_stage_and_finalizes_pending_qa():
         persisted = []
         async def sink(job, request, response):
             persisted.append((job["id"], request.source_version, response.dimensions))
-        worker = KnowledgeEmbeddingWorker(store, router, sink)
+        worker = KnowledgeEmbeddingWorker(store, router, sink, policy_resolver=FakePolicyResolver())
         assert await worker.process_once() is True
         assert store.claims == [(90, "embedding_indexing")]
         assert len(persisted) == 1
@@ -74,7 +83,7 @@ def test_worker_cancels_stale_source_version_before_router_call():
         router = FakeRouter(result=embedding_response())
         async def sink(*args):
             raise AssertionError("sink must not be called for stale source")
-        await KnowledgeEmbeddingWorker(store, router, sink).process_once()
+        await KnowledgeEmbeddingWorker(store, router, sink, policy_resolver=FakePolicyResolver()).process_once()
         assert router.requests == []
         assert store.finalizations[-1]["error_code"] == "STALE_SOURCE_VERSION"
         assert store.finalizations[-1]["stage"] == "stale_source_version"
@@ -87,7 +96,7 @@ def test_worker_retries_when_router_is_not_configured():
         router = FakeRouter(error=ModelRouterUnavailable("no route"))
         async def sink(*args):
             raise AssertionError("sink must not be called")
-        await KnowledgeEmbeddingWorker(store, router, sink).process_once()
+        await KnowledgeEmbeddingWorker(store, router, sink, policy_resolver=FakePolicyResolver()).process_once()
         final = store.finalizations[-1]
         assert final["outcome"] == "retry"
         assert final["error_code"] == "MODEL_ROUTER_UNAVAILABLE"
@@ -101,7 +110,7 @@ def test_worker_fails_closed_without_sensitivity_classification():
         router = FakeRouter(result=embedding_response())
         async def sink(*args):
             raise AssertionError("sink must not be called")
-        await KnowledgeEmbeddingWorker(store, router, sink).process_once()
+        await KnowledgeEmbeddingWorker(store, router, sink, policy_resolver=FakePolicyResolver()).process_once()
         assert store.finalizations[-1]["error_code"] == "KNOWLEDGE_WORKER_PREREQUISITE_MISSING"
         assert not router.requests
     asyncio.run(scenario())
@@ -118,13 +127,25 @@ def test_worker_fails_closed_when_chunk_hash_does_not_match_content():
         router = FakeRouter(result=embedding_response())
         async def sink(*args):
             raise AssertionError("sink must not be called for tampered content")
-        await KnowledgeEmbeddingWorker(store, router, sink).process_once()
+        await KnowledgeEmbeddingWorker(store, router, sink, policy_resolver=FakePolicyResolver()).process_once()
         assert router.requests == []
         assert store.finalizations[-1]["outcome"] == "failed"
         assert store.finalizations[-1]["error_code"] == "KNOWLEDGE_WORKER_PREREQUISITE_MISSING"
     asyncio.run(scenario())
 
 
+
+
+def test_embedding_worker_does_not_call_provider_after_source_grant_revocation():
+    async def scenario():
+        store=FakeStore(); router=FakeRouter(result=embedding_response())
+        async def forbidden_sink(*args): raise AssertionError("revoked source must not persist")
+        worker=KnowledgeEmbeddingWorker(store,router,forbidden_sink,policy_resolver=FakePolicyResolver(denied=True))
+        await worker.process_once()
+        assert router.requests==[]
+        assert store.finalizations[-1]["error_code"]=="KNOWLEDGE_CONSENT_OR_GRANT_REVOKED"
+        assert store.finalizations[-1]["outcome"]=="failed"
+    asyncio.run(scenario())
 
 def test_worker_wraps_embedding_and_vector_persistence_in_lease_heartbeat(monkeypatch):
     async def scenario():
@@ -143,7 +164,7 @@ def test_worker_wraps_embedding_and_vector_persistence_in_lease_heartbeat(monkey
             return True
 
         monkeypatch.setattr("allpha_api.knowledge_worker.run_with_lease_heartbeat", heartbeat_runner)
-        worker = KnowledgeEmbeddingWorker(store, router, sink)
+        worker = KnowledgeEmbeddingWorker(store, router, sink, policy_resolver=FakePolicyResolver())
         assert await worker.process_once() is True
         assert store.heartbeats == [("job-1", "lease-1", 90)]
         assert persisted == ["job-1"]
@@ -162,7 +183,7 @@ def test_worker_retries_when_vector_persistence_is_temporarily_unavailable():
         async def sink(*args):
             raise VectorPersistenceUnavailable("index RPC unavailable")
 
-        await KnowledgeEmbeddingWorker(store, router, sink).process_once()
+        await KnowledgeEmbeddingWorker(store, router, sink, policy_resolver=FakePolicyResolver()).process_once()
         final = store.finalizations[-1]
         assert final["outcome"] == "retry"
         assert final["stage"] == "embedding_indexing_retry"
@@ -182,7 +203,7 @@ def test_worker_terminalizes_vector_idempotency_conflict_without_replay():
         async def sink(*args):
             raise VectorPersistenceConflict("idempotency key payload conflict")
 
-        await KnowledgeEmbeddingWorker(store, router, sink).process_once()
+        await KnowledgeEmbeddingWorker(store, router, sink, policy_resolver=FakePolicyResolver()).process_once()
         final = store.finalizations[-1]
         assert final["outcome"] == "failed"
         assert final["stage"] == "embedding_indexing_failed"

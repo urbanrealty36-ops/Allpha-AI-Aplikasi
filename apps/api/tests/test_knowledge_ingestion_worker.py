@@ -5,6 +5,15 @@ from fastapi import HTTPException
 
 from allpha_api.knowledge_ingestion_worker import KnowledgeDocumentWorker, main
 from knowledge_worker_fakes import DATA, FakeStorage, FakeStore
+from allpha_api.knowledge_policy import KnowledgePolicyDenied
+
+
+class FakePolicyResolver:
+    def __init__(self, denied=False): self.denied=denied; self.calls=[]
+    async def authorize_source(self, **kwargs):
+        self.calls.append(kwargs)
+        if self.denied: raise KnowledgePolicyDenied("test revoked grant")
+
 
 
 def test_document_worker_scans_parses_persists_and_atomically_hands_off_embedding(monkeypatch):
@@ -20,7 +29,7 @@ def test_document_worker_scans_parses_persists_and_atomically_hands_off_embeddin
     monkeypatch.setattr("allpha_api.knowledge_ingestion_worker._scan",clean_scan)
     monkeypatch.setattr("allpha_api.knowledge_ingestion_worker._extract",
         lambda filename,data:[{"text":"knowledge text","location":{"kind":"page","index":1}}])
-    worker=KnowledgeDocumentWorker(store=store,storage=FakeStorage(),batch_size=1)
+    worker=KnowledgeDocumentWorker(store=store,storage=FakeStorage(),batch_size=1,policy_resolver=FakePolicyResolver())
     assert asyncio.run(worker.process_once()) is True
     assert store.states == [
         ("processing", "malware_scan", None, None),
@@ -37,7 +46,7 @@ def test_document_worker_rejects_storage_hash_mismatch_before_parser(monkeypatch
     store=FakeStore()
     async def clean_scan(*args):raise AssertionError("malware scan must not run after hash mismatch")
     monkeypatch.setattr("allpha_api.knowledge_ingestion_worker._scan",clean_scan)
-    worker=KnowledgeDocumentWorker(store=store,storage=FakeStorage(b"tampered"))
+    worker=KnowledgeDocumentWorker(store=store,storage=FakeStorage(b"tampered"),policy_resolver=FakePolicyResolver())
     assert asyncio.run(worker.process_once()) is True
     assert store.failures==[("KNOWLEDGE_SOURCE_SIZE_MISMATCH","document_parse_failed",False,0)] or store.failures==[("KNOWLEDGE_SOURCE_SHA256_MISMATCH","document_parse_failed",False,0)]
     assert store.batches==[] and store.completed==[]
@@ -48,7 +57,7 @@ def test_document_worker_retries_transient_scanner_unavailability(monkeypatch):
     async def unavailable(*args):
         raise HTTPException(status_code=503,detail={"code":"SCANNER_UNAVAILABLE","message":"scanner down"})
     monkeypatch.setattr("allpha_api.knowledge_ingestion_worker._scan",unavailable)
-    worker=KnowledgeDocumentWorker(store=store,storage=FakeStorage())
+    worker=KnowledgeDocumentWorker(store=store,storage=FakeStorage(),policy_resolver=FakePolicyResolver())
     assert asyncio.run(worker.process_once()) is True
     assert store.failures==[("SCANNER_UNAVAILABLE","malware_scan_retry",True,60)]
     assert store.batches==[] and store.completed==[]
@@ -67,12 +76,22 @@ def test_document_worker_abandons_source_transition_when_job_lease_is_lost(monke
         raise AssertionError("scanner must not run after the lease-fenced stage update fails")
 
     monkeypatch.setattr("allpha_api.knowledge_ingestion_worker._scan", clean_scan)
-    worker = KnowledgeDocumentWorker(store=store, storage=FakeStorage())
+    worker = KnowledgeDocumentWorker(store=store, storage=FakeStorage(), policy_resolver=FakePolicyResolver())
     assert asyncio.run(worker.process_once()) is True
     assert store.failures == []
     assert store.batches == []
     assert store.completed == []
 
+
+
+def test_document_worker_stops_before_scanning_when_source_grant_is_revoked(monkeypatch):
+    store=FakeStore()
+    async def forbidden_scan(*args,**kwargs): raise AssertionError("revoked source must never reach scanner")
+    monkeypatch.setattr("allpha_api.knowledge_ingestion_worker._scan",forbidden_scan)
+    worker=KnowledgeDocumentWorker(store=store,storage=FakeStorage(),policy_resolver=FakePolicyResolver(denied=True))
+    assert asyncio.run(worker.process_once()) is True
+    assert store.failures==[("KNOWLEDGE_CONSENT_OR_GRANT_REVOKED","knowledge_policy_denied",False,0)]
+    assert store.states==[] and store.batches==[] and store.completed==[]
 
 def test_document_worker_entrypoint_respects_disabled_consumer_flag(monkeypatch):
     monkeypatch.setenv("ALLPHA_KNOWLEDGE_DOCUMENT_WORKER_ENABLED", "false")

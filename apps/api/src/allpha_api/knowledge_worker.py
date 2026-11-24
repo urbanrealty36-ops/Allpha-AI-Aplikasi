@@ -20,6 +20,7 @@ import httpx
 
 from allpha_api.embedding_contract import EmbeddingRequest, EmbeddingResponse
 from allpha_api.lease_heartbeat import run_with_lease_heartbeat
+from allpha_api.knowledge_policy import KNOWLEDGE_EMBEDDING_PURPOSE, KnowledgePolicyDenied, KnowledgePolicyUnavailable, VersionedKnowledgePolicyResolver
 from allpha_api.knowledge_vector_store import (
     VectorPersistenceConflict, VectorPersistenceUnavailable,
 )
@@ -60,6 +61,7 @@ class KnowledgeEmbeddingWorker:
     lease_seconds: int = 90
     batch_size: int = 64
     request_timeout_ms: int = 30_000
+    policy_resolver: VersionedKnowledgePolicyResolver | None = None
 
     def __post_init__(self):
         if not 10 <= self.lease_seconds <= 900:
@@ -88,6 +90,10 @@ class KnowledgeEmbeddingWorker:
             )
             if not lease_active:
                 log.warning("Knowledge embedding job %s abandoned after lease loss", job_id)
+        except KnowledgePolicyDenied:
+            await self.store.finalize(job, outcome="failed", stage="knowledge_policy_denied", progress=75, error_code="KNOWLEDGE_CONSENT_OR_GRANT_REVOKED")
+        except KnowledgePolicyUnavailable:
+            await self.store.finalize(job, outcome="retry", stage="knowledge_policy_retry", progress=75, error_code="KNOWLEDGE_POLICY_UNAVAILABLE", retry_delay_seconds=60)
         except ModelRouterUnavailable:
             await self.store.finalize(
                 job, outcome="retry", stage="awaiting_model_router", progress=75,
@@ -147,6 +153,9 @@ class KnowledgeEmbeddingWorker:
         sensitivity = source.get("sensitivity") or (source.get("provenance") or {}).get("sensitivity")
         if sensitivity not in {"public", "internal", "confidential", "restricted"}:
             raise WorkerConfigurationError("source sensitivity classification is absent or invalid")
+        if self.policy_resolver is None:
+            raise WorkerConfigurationError("canonical Knowledge consent/source-grant resolver is not configured")
+        await self.policy_resolver.authorize_source(owner_id=str(job["owner_id"]), agent_id=str(job["agent_id"]), source_id=str(source["id"]), sensitivity=str(sensitivity), purpose=KNOWLEDGE_EMBEDDING_PURPOSE)
         chunks = await self.store.load_chunks(job)
         if not chunks:
             await self.store.finalize(
@@ -156,6 +165,7 @@ class KnowledgeEmbeddingWorker:
             return
         version = int(job["source_version"])
         for start in range(0, len(chunks), self.batch_size):
+            await self.policy_resolver.authorize_source(owner_id=str(job["owner_id"]), agent_id=str(job["agent_id"]), source_id=str(source["id"]), sensitivity=str(sensitivity), purpose=KNOWLEDGE_EMBEDDING_PURPOSE)
             batch = chunks[start:start + self.batch_size]
             inputs = []
             for chunk in batch:
@@ -185,8 +195,8 @@ class KnowledgeEmbeddingWorker:
                 chunks=inputs,
             )
             response = await route_embedding(self.router, request)
-            # Sink must atomically verify source_version and be idempotent. The
-            # database finalizer independently fences stale job completion.
+            # Revalidate after provider execution and immediately before persistence.
+            await self.policy_resolver.authorize_source(owner_id=str(job["owner_id"]), agent_id=str(job["agent_id"]), source_id=str(source["id"]), sensitivity=str(sensitivity), purpose=KNOWLEDGE_EMBEDDING_PURPOSE)
             await self.vector_sink(job, request, response)
         finalized = await self.store.finalize(
             job, outcome="succeeded", stage="embedding_indexed_pending_retrieval_qa",

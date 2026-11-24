@@ -11,6 +11,10 @@ class ReadyRouter:
         return None
 
 
+class ReadyPolicyResolver:
+    async def authorize_source(self, **kwargs): return None
+
+
 class ReadyRepository:
     def __init__(self):
         self.verified = False
@@ -57,6 +61,7 @@ def test_knowledge_embedding_factory_verifies_generation_and_builds_canonical_si
     monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
     monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "service-role-test-key")
     repository = ReadyRepository()
+    monkeypatch.setattr("allpha_api.knowledge_worker_factory.load_policy_resolver_from_environment",lambda:ReadyPolicyResolver())
     monkeypatch.setattr(
         "allpha_api.knowledge_worker_factory.build_embedding_router_from_environment",
         lambda: _ready_router(),
@@ -85,6 +90,7 @@ def test_knowledge_embedding_factory_fails_closed_without_vector_generation(monk
     monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
     monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "service-role-test-key")
     monkeypatch.delenv("ALLPHA_KNOWLEDGE_VECTOR_GENERATION_ID", raising=False)
+    monkeypatch.setattr("allpha_api.knowledge_worker_factory.load_policy_resolver_from_environment",lambda:ReadyPolicyResolver())
     monkeypatch.setattr(
         "allpha_api.knowledge_worker_factory.build_embedding_router_from_environment",
         lambda: _ready_router(),
