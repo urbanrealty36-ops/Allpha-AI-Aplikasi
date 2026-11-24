@@ -52,6 +52,7 @@ def test_supabase_sink_calls_transactional_idempotent_rpc_with_fingerprint():
     assert len(payload["payload_fingerprint"]) == 64
     assert payload["usage_unit"] == "embedding_input_unit"
     assert payload["cost_unit"] == "policy_cost_microunit"
+    assert payload["capability"] == "embedding"
 
 
 def test_supabase_sink_maps_idempotency_conflict_without_exposing_response_body():
@@ -126,6 +127,7 @@ def test_text_generation_metering_persists_approved_billing_account():
     payload = seen["body"]["p_record"]
     assert payload["owner_id"] == "agent-owner"
     assert payload["billing_account_id"] == "consumer-payer"
+    assert payload["capability"] == "text_generation"
     assert payload["task_id"] == "consumer-message:message-1"
     assert payload["idempotency_key"] == "message-agent-reply:message-1"
     assert payload["usage_units"] == 18
