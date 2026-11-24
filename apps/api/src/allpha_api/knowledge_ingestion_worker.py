@@ -233,7 +233,7 @@ class KnowledgeDocumentWorker:
         data = await self.storage.download(storage_path)
         expected_sha = str(source.get("sha256") or "").lower()
         expected_size = int(source.get("size_bytes") or 0)
-        if expected_size <= 0 or expected_size > 15 * 1024 * 1024 or len(data) != expected_size:
+        if expected_size <= 0 or expected_size > MAX_KNOWLEDGE_SOURCE_BYTES or len(data) != expected_size:
             await self._fail(job, "KNOWLEDGE_SOURCE_SIZE_MISMATCH", "document_parse_failed", False, 0)
             return
         if not expected_sha or hashlib.sha256(data).hexdigest() != expected_sha:
