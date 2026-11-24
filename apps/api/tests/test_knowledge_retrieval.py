@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import uuid
 
 import pytest
@@ -268,7 +269,7 @@ def test_supabase_keyword_repository_pushes_security_filters_into_database_query
             "id": "chunk-a", "source_id": "source-a", "agent_id": "agent-a",
             "owner_id": "owner-a", "chunk_index": 0, "content": "private text",
             "source_location": {"kind": "page", "index": 1}, "source_version": 2,
-            "content_sha256": "a" * 64,
+            "content_sha256": hashlib.sha256(b"private text").hexdigest(),
             "agent_knowledge_sources": {
                 "id": "source-a", "source_version": 2, "status": "ready",
                 "sensitivity": "internal",
@@ -302,7 +303,7 @@ def test_supabase_keyword_repository_rejects_source_version_conflict(monkeypatch
         return [{
             "id": "chunk-a", "source_id": "source-a", "agent_id": "agent-a",
             "owner_id": "owner-a", "chunk_index": 0, "content": "private text",
-            "source_location": {}, "source_version": 1, "content_sha256": "a" * 64,
+            "source_location": {}, "source_version": 1, "content_sha256": hashlib.sha256(b"private text").hexdigest(),
             "agent_knowledge_sources": {
                 "id": "source-a", "source_version": 2, "status": "ready",
                 "sensitivity": "internal",
@@ -346,7 +347,7 @@ def test_keyword_only_repository_is_explicitly_keyword_not_hybrid(monkeypatch):
             return [{
                 "id": "chunk-keyword", "source_id": "source-a", "agent_id": "agent-a",
                 "owner_id": "owner-a", "chunk_index": 0, "content": "verified keyword result",
-                "source_location": {}, "source_version": 1, "content_sha256": "b" * 64,
+                "source_location": {}, "source_version": 1, "content_sha256": hashlib.sha256(b"verified keyword result").hexdigest(),
                 "agent_knowledge_sources": {"id": "source-a", "source_version": 1,
                     "status": "ready", "sensitivity": "internal"},
             }]
@@ -412,7 +413,7 @@ def test_supabase_keyword_repository_rejects_unready_source_even_if_query_adapte
         return [{
             "id": "chunk-unready", "source_id": "source-unready", "agent_id": "agent-a",
             "owner_id": "owner-a", "chunk_index": 0, "content": "must not leak",
-            "source_location": {}, "source_version": 1, "content_sha256": "d" * 64,
+            "source_location": {}, "source_version": 1, "content_sha256": hashlib.sha256(b"must not leak").hexdigest(),
             "agent_knowledge_sources": {
                 "id": "source-unready", "source_version": 1, "status": "processing",
                 "sensitivity": "internal",
@@ -525,5 +526,35 @@ def test_public_route_fails_closed_on_revoked_knowledge_consent_before_search():
         assert response.status_code == 503
         assert response.json()["error"]["code"] == "KNOWLEDGE_RETRIEVAL_UNAVAILABLE"
         assert repo.search_args is None
+
+    asyncio.run(scenario())
+
+
+
+def test_supabase_keyword_repository_rejects_content_digest_mismatch(monkeypatch):
+    from allpha_api import auth
+    from allpha_api.knowledge_retrieval import KnowledgeRetrievalUnavailable, SupabaseKeywordKnowledgeRepository
+
+    async def fake_request(method, path, access_token, *, params=None, body=None, prefer=None):
+        return [{
+            "id": "chunk-a", "source_id": "source-a", "agent_id": "agent-a",
+            "owner_id": "owner-a", "chunk_index": 0, "content": "tampered private text",
+            "source_location": {}, "source_version": 2,
+            "content_sha256": hashlib.sha256(b"original private text").hexdigest(),
+            "agent_knowledge_sources": {
+                "id": "source-a", "source_version": 2, "status": "ready",
+                "sensitivity": "internal",
+            },
+        }]
+
+    monkeypatch.setattr(auth, "user_db_request", fake_request)
+
+    async def scenario():
+        repo = SupabaseKeywordKnowledgeRepository(access_token="user-token")
+        with pytest.raises(KnowledgeRetrievalUnavailable, match="content digest"):
+            await repo.search_keyword(
+                owner_id="owner-a", agent_id="agent-a", query="private phrase",
+                allowed_sensitivities=["internal"], limit=5, trace_id="trace-digest",
+            )
 
     asyncio.run(scenario())
