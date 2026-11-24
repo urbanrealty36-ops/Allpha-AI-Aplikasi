@@ -369,17 +369,18 @@ async def _retrieve_agent_knowledge_context(
     if service.policy is None:
         raise KnowledgeRetrievalUnavailable("Knowledge policy provider is not configured")
     resolve_context = getattr(service.policy, "resolve_context", None)
-    resolved_policy = await resolve_context(owner_id=owner_id, agent_id=agent_id) if callable(resolve_context) else None
-    allowed = (
-        list(resolved_policy.allowed_sensitivities)
-        if resolved_policy is not None
-        else await service.policy.allowed_sensitivities(owner_id=owner_id, agent_id=agent_id)
-    )
-    if not allowed or any(value not in {"public", "internal", "confidential", "restricted"} for value in allowed):
-        raise KnowledgeRetrievalUnavailable("Knowledge sensitivity policy is missing or invalid")
+    if not callable(resolve_context):
+        raise KnowledgeRetrievalUnavailable("Knowledge consent and source-grant resolver is unavailable")
+    resolved_policy = await resolve_context(owner_id=owner_id, agent_id=agent_id)
+    allowed = list(resolved_policy.allowed_sensitivities)
+    allowed_source_ids = list(resolved_policy.allowed_source_ids)
+    if (not allowed or any(value not in {"public", "internal", "confidential", "restricted"} for value in allowed)
+            or not allowed_source_ids or len(allowed_source_ids) > 500):
+        raise KnowledgeRetrievalUnavailable("Knowledge sensitivity or source-grant scope is missing or invalid")
     hits = await service.retrieve(RetrievalRequest(
         owner_id=owner_id, agent_id=agent_id, query=query[:4000],
-        allowed_sensitivities=allowed, limit=8, trace_id=trace_id,
+        allowed_sensitivities=allowed, allowed_source_ids=allowed_source_ids,
+        limit=8, trace_id=trace_id,
     ))
     context, references, digest = _knowledge_context_snapshot(hits)
     return context, references, digest, "available" if hits else "empty"
@@ -602,10 +603,12 @@ async def _execute_planned_task(
             }) from exc
         except KnowledgePolicyUnavailable as exc:
             raise AgentRuntimePersistenceError("Knowledge policy cannot be revalidated at task execution") from exc
-        if any(ref["sensitivity"] not in resolved_knowledge_policy.allowed_sensitivities for ref in knowledge_refs):
+        allowed_source_ids = set(resolved_knowledge_policy.allowed_source_ids)
+        if (any(ref["sensitivity"] not in resolved_knowledge_policy.allowed_sensitivities for ref in knowledge_refs)
+                or any(ref["source_id"] not in allowed_source_ids for ref in knowledge_refs)):
             raise HTTPException(status_code=403, detail={
                 "code": "KNOWLEDGE_POLICY_SCOPE_CHANGED",
-                "message": "Klasifikasi Knowledge tidak lagi diizinkan untuk Agent context.",
+                "message": "Klasifikasi atau cakupan sumber Knowledge tidak lagi diizinkan untuk Agent context.",
             })
         if not await store.validate_knowledge_context_refs(owner_id, str(row["agent_id"]), knowledge_refs):
             raise HTTPException(status_code=409, detail={
