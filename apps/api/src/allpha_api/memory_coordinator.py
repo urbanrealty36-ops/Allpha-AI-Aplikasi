@@ -79,6 +79,20 @@ class MemoryCoordinator:
     async def expire(self,owner_id,agent_id):
         return await self.transition("expire",owner_id,agent_id)
 
+    async def expire_due_batch(self, limit=100):
+        """Run one bounded, system-attributed retention batch through canonical Postgres."""
+        if os.getenv("ALLPHA_MEMORY_COORDINATOR_ENABLED","false").lower()!="true":
+            raise MemoryUnavailable("Memory retention is not activated")
+        if type(limit) is not int or not 1 <= limit <= 500:
+            raise MemoryDenied("Memory retention batch limit is invalid")
+        result=await self.db("POST","rpc/expire_agent_memory_items_batch",body={"p_limit":limit})
+        if not isinstance(result,dict):
+            raise MemoryUnavailable("Memory retention RPC returned an invalid result")
+        count=result.get("expired_count")
+        if type(count) is not int or not 0 <= count <= limit:
+            raise MemoryUnavailable("Memory retention RPC returned an invalid expiry count")
+        return {"expired_count":count}
+
     async def expire_all(self):
         if os.getenv("ALLPHA_MEMORY_COORDINATOR_ENABLED","false").lower()!="true":return {"expired_count":0}
         return await self.transition("expire_all",None)
