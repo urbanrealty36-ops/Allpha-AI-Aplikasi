@@ -9,6 +9,7 @@ type T="working"|"episodic"|"semantic"|"procedural"|"long_term";
 type Policy={id:string;memory_type:T;enabled:boolean;retention_days:number;policy_version:number};
 type Item={id:string;memory_type:T;content:string;classification:string;purpose:string;status:string;version:number;retention_expires_at:string};
 type RetrievedItem={id:string;memory_type:T;content:string;classification:string;purpose:string;retrieval_method:"keyword"|"metadata";retrieval_score:number};
+type MemoryEvent={id:string;event_type:string;details:Record<string,unknown>;created_at:string};
 const api=(process.env.NEXT_PUBLIC_API_BASE_URL||(process.env.NODE_ENV==="production"?"https://api.allpha.web.id":"http://localhost:8000")).replace(/\/$/,"");
 const defs:{key:T;title:string;description:string;days:number}[]=[
 {key:"working",title:"Working Memory",description:"Konteks tugas/sesi sementara, maksimum 24 jam.",days:1},
@@ -20,7 +21,7 @@ async function err(r:Response){const b=await r.json().catch(()=>({}));return b?.
 
 export default function AgentMemoryPage(){
  const params=useParams<{agentId:string}>(),agentId=params.agentId,supabase=useMemo(()=>getBrowserSupabase(),[]);
- const [session,setSession]=useState<Session|null>(null),[policies,setPolicies]=useState<Policy[]>([]),[items,setItems]=useState<Item[]>([]);
+ const [session,setSession]=useState<Session|null>(null),[policies,setPolicies]=useState<Policy[]>([]),[items,setItems]=useState<Item[]>([]),[events,setEvents]=useState<MemoryEvent[]>([]);
  const [enabled,setEnabled]=useState<Record<string,boolean>>({}),[retention,setRetention]=useState<Record<string,number>>({}),[consent,setConsent]=useState(false);
  const [loading,setLoading]=useState(true),[saving,setSaving]=useState(""),[error,setError]=useState(""),[notice,setNotice]=useState("");
  const [editing,setEditing]=useState(""),[draft,setDraft]=useState("");
@@ -30,12 +31,13 @@ export default function AgentMemoryPage(){
   setLoading(true);setError("");
   try{
    const h={Authorization:"Bearer "+s.access_token,Accept:"application/json"};
-   const [pr,ir]=await Promise.all([
+   const [pr,ir,er]=await Promise.all([
     fetch(api+"/v1/memory/policies?agent_id="+encodeURIComponent(agentId),{headers:h,cache:"no-store"}),
-    fetch(api+"/v1/memory/items?agent_id="+encodeURIComponent(agentId)+"&limit=100",{headers:h,cache:"no-store"})]);
-   if(!pr.ok)throw new Error(await err(pr));if(!ir.ok)throw new Error(await err(ir));
-   const [p,i]=await Promise.all([pr.json(),ir.json()]),list:Policy[]=Array.isArray(p.items)?p.items:[];
-   setPolicies(list);setItems(Array.isArray(i.items)?i.items:[]);
+    fetch(api+"/v1/memory/items?agent_id="+encodeURIComponent(agentId)+"&limit=100",{headers:h,cache:"no-store"}),
+    fetch(api+"/v1/memory/events?agent_id="+encodeURIComponent(agentId)+"&limit=100",{headers:h,cache:"no-store"})]);
+   if(!pr.ok)throw new Error(await err(pr));if(!ir.ok)throw new Error(await err(ir));if(!er.ok)throw new Error(await err(er));
+   const [p,i,e]=await Promise.all([pr.json(),ir.json(),er.json()]),list:Policy[]=Array.isArray(p.items)?p.items:[];
+   setPolicies(list);setItems(Array.isArray(i.items)?i.items:[]);setEvents(Array.isArray(e.items)?e.items:[]);
    setEnabled(Object.fromEntries(defs.map(d=>[d.key,!!list.find(x=>x.memory_type===d.key)?.enabled])));
    setRetention(Object.fromEntries(defs.map(d=>[d.key,list.find(x=>x.memory_type===d.key)?.retention_days??d.days])));
   }catch(e){setError(e instanceof Error?e.message:"Memory Coordinator tidak dapat dimuat.");}finally{setLoading(false);}
@@ -140,7 +142,7 @@ export default function AgentMemoryPage(){
    <div className="grid gap-3 sm:grid-cols-3">
     <label className="space-y-1 text-xs font-medium text-neutral-600">Kelas Memory<select value={proposalType} onChange={e=>setProposalType(e.target.value as T)} className="w-full rounded-xl border bg-white px-3 py-2 text-sm text-neutral-900">{defs.map(d=><option key={d.key} value={d.key} disabled={!policies.find(p=>p.memory_type===d.key)?.enabled}>{d.title}{policies.find(p=>p.memory_type===d.key)?.enabled?"":" · consent nonaktif"}</option>)}</select></label>
     <label className="space-y-1 text-xs font-medium text-neutral-600">Tujuan<select value={proposalPurpose} onChange={e=>setProposalPurpose(e.target.value)} className="w-full rounded-xl border bg-white px-3 py-2 text-sm text-neutral-900"><option value="agent_generation_context">Generation context</option><option value="agent_runtime_context">Agent runtime context</option></select></label>
-    <label className="space-y-1 text-xs font-medium text-neutral-600">Klasifikasi<select value={proposalClass} onChange={e=>setProposalClass(e.target.value)} className="w-full rounded-xl border bg-white px-3 py-2 text-sm text-neutral-900"><option value="public">Public</option><option value="internal">Internal</option><option value="confidential">Confidential</option><option value="restricted">Restricted</option></select></label>
+    <label className="space-y-1 text-xs font-medium text-neutral-600">Klasifikasi<select value={proposalClass} onChange={e=>setProposalClass(e.target.value)} className="w-full rounded-xl border bg-white px-3 py-2 text-sm text-neutral-900"><option value="public">Public</option><option value="internal">Internal</option><option value="confidential">Confidential</option><option value="confidential">Confidential</option></select></label>
    </div>
    <textarea value={proposalText} onChange={e=>setProposalText(e.target.value)} rows={4} maxLength={8000} placeholder="Tuliskan fakta, preferensi atau kejadian yang ingin diajukan sebagai Memory…" className="w-full rounded-xl border p-3 text-sm"/>
    <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-xs text-neutral-500">{proposalText.length}/8000 karakter · Manual owner input</span><button disabled={saving==="proposal"||!policies.some(p=>p.memory_type===proposalType&&p.enabled)||!proposalText.trim()} onClick={()=>void createProposal()} className="rounded-xl bg-neutral-900 px-4 py-2 text-sm text-white disabled:opacity-50">{saving==="proposal"?"Menyimpan proposal…":"Ajukan untuk persetujuan"}</button></div>
@@ -151,8 +153,12 @@ export default function AgentMemoryPage(){
     <div className="flex flex-wrap items-center justify-between gap-2"><div className="flex flex-wrap items-center gap-2"><strong className="capitalize">{item.memory_type.replace("_"," ")}</strong><span className="rounded-full border px-2 py-0.5 text-xs">{item.status}</span><span className="rounded-full border px-2 py-0.5 text-xs">{item.classification}</span></div><span className="text-xs text-neutral-500">v{item.version}</span></div>
     {editing===item.id?<div className="mt-3 space-y-2"><textarea value={draft} onChange={e=>setDraft(e.target.value)} rows={4} maxLength={8000} className="w-full rounded-xl border p-3 text-sm"/><div className="flex gap-2"><button disabled={saving===item.id} onClick={()=>void correct(item)} className="rounded-lg bg-neutral-900 px-3 py-2 text-xs text-white">Simpan koreksi</button><button onClick={()=>setEditing("")} className="rounded-lg border px-3 py-2 text-xs">Batal</button></div></div>:<p className="mt-3 whitespace-pre-wrap text-sm leading-6">{item.content}</p>}
     <p className="mt-2 text-xs text-neutral-500">Tujuan: {item.purpose} · Kedaluwarsa: {new Date(item.retention_expires_at).toLocaleDateString("id-ID")}</p>
-    <div className="mt-3 flex flex-wrap gap-2">{item.status==="proposed"&&<><button disabled={saving===item.id} onClick={()=>void decide(item,"approve")} className="rounded-lg bg-neutral-900 px-3 py-2 text-xs text-white">Setujui</button><button disabled={saving===item.id} onClick={()=>void decide(item,"reject")} className="rounded-lg border px-3 py-2 text-xs">Tolak</button></>}{item.status==="active"&&<><button onClick={()=>{setEditing(item.id);setDraft(item.content);}} className="rounded-lg border px-3 py-2 text-xs">Koreksi</button><button disabled={saving===item.id} onClick={()=>void remove(item)} className="rounded-lg border border-red-300 px-3 py-2 text-xs text-red-700">Hapus</button></>}</div>
+    <div className="mt-3 flex flex-wrap gap-2">{item.status==="pending"&&<><button disabled={saving===item.id} onClick={()=>void decide(item,"approve")} className="rounded-lg bg-neutral-900 px-3 py-2 text-xs text-white">Setujui</button><button disabled={saving===item.id} onClick={()=>void decide(item,"reject")} className="rounded-lg border px-3 py-2 text-xs">Tolak</button></>}{item.status==="active"&&<><button onClick={()=>{setEditing(item.id);setDraft(item.content);}} className="rounded-lg border px-3 py-2 text-xs">Koreksi</button><button disabled={saving===item.id} onClick={()=>void remove(item)} className="rounded-lg border border-red-300 px-3 py-2 text-xs text-red-700">Hapus</button></>}</div>
    </article>)}
+  </section>
+  <section className="space-y-3 rounded-2xl border p-4 sm:p-5">
+   <div><h2 className="text-lg font-semibold">Riwayat persetujuan dan audit Memory</h2><p className="mt-1 text-sm text-neutral-600">Event hanya menyimpan metadata governance, versi policy dan hash; konten privat tidak disalin ke audit event.</p></div>
+   {events.length===0?<p className="text-xs text-neutral-500">Belum ada event Memory.</p>:<div className="space-y-2">{events.map(event=><article key={event.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border p-3"><div><strong className="text-sm">{event.event_type.replaceAll("_"," ")}</strong><p className="mt-1 text-xs text-neutral-500">{JSON.stringify(event.details)}</p></div><time className="text-xs text-neutral-500">{new Date(event.created_at).toLocaleString("id-ID")}</time></article>)}</div>}
   </section>
  </main>;
 }
