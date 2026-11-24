@@ -607,3 +607,47 @@ def test_agent_ownership_audit_denies_operator_without_security_audit_scope(monk
         assert response.json()["error"]["code"]=="OPERATOR_SCOPE_REQUIRED"
     finally:
         app.dependency_overrides.clear()
+
+
+def test_agent_skill_installation_audit_requires_security_scope_and_returns_pseudonymous_rows(monkeypatch):
+    calls=[]
+    async def fake_db(method,path,token,**kwargs):
+        return [{"id":"grant-1","user_id":"operator","scopes":["platform:security.audit.read"],"status":"active","expires_at":None}]
+    async def fake_audit(request,**kwargs):
+        return None
+    async def fake_privileged(method,table,**kwargs):
+        calls.append((method,table,kwargs))
+        if table=="agent_skill_installations":
+            return [{"id":"installation-1","installer_subject_ref":"a"*64,"license_terms_digest":"b"*64,"status":"active"}]
+        return [{"id":"event-1","actor_subject_ref":"a"*64,"event_type":"installed"}]
+    monkeypatch.setattr(security,"user_db_request",fake_db)
+    monkeypatch.setattr(security,"write_operator_audit",fake_audit)
+    monkeypatch.setattr(security,"privileged_rest_request",fake_privileged)
+    install_auth("operator")
+    try:
+        response=client.get("/v1/admin/operator/agent-skills/installations/audit?limit=500")
+        assert response.status_code==200
+        assert len(response.json()["installations"])==1
+        assert len(response.json()["events"])==1
+        assert len(calls)==2
+        assert all(call[2]["params"]["limit"]=="100" for call in calls)
+        assert "installed_by" not in calls[0][2]["params"]["select"]
+        assert "actor_user_id" not in calls[1][2]["params"]["select"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_agent_skill_installation_audit_denies_operator_without_security_scope(monkeypatch):
+    async def fake_db(method,path,token,**kwargs):
+        return [{"id":"grant-1","user_id":"operator","scopes":["platform:operations.read"],"status":"active","expires_at":None}]
+    async def fake_audit(request,**kwargs):
+        return None
+    monkeypatch.setattr(security,"user_db_request",fake_db)
+    monkeypatch.setattr(security,"write_operator_audit",fake_audit)
+    install_auth("operator")
+    try:
+        response=client.get("/v1/admin/operator/agent-skills/installations/audit")
+        assert response.status_code==403
+        assert response.json()["error"]["code"]=="OPERATOR_SCOPE_REQUIRED"
+    finally:
+        app.dependency_overrides.clear()
