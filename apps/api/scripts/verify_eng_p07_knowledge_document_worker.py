@@ -19,12 +19,14 @@ FILES=[
  MIGRATIONS/"20261124050240_eng_p07_knowledge_source_delete_fence.sql",
  MIGRATIONS/"20261124052416_eng_p07_delete_fence_owner_atomicity.sql",
  MIGRATIONS/"20261124052559_eng_p07_delete_fence_authorize_before_lookup.sql",
+ MIGRATIONS/"20261124075000_eng_p07_knowledge_job_lease_heartbeat.sql",
 ]
 NAME="allpha-p07-knowledge-"+uuid.uuid4().hex[:8]
 OWNER="11111111-1111-4111-8111-111111111111"
 AGENT="22222222-2222-4222-8222-222222222222"
 SOURCE="33333333-3333-4333-8333-333333333333"
 SOURCE_RETRY="44444444-4444-4444-8444-444444444444"
+SOURCE_STALE="55555555-5555-4555-8555-555555555555"
 
 
 def run(args:list[str],sql:str|None=None,check:bool=True)->subprocess.CompletedProcess[str]:
@@ -182,6 +184,40 @@ begin
  end if;
 end $do$;
 """)
+  psql(f"""
+insert into public.agent_knowledge_sources(id,agent_id,owner_id,filename,media_type,size_bytes,sha256,storage_path,status,processing_stage,provenance)
+values('{SOURCE_STALE}','{AGENT}','{OWNER}','stale.txt','text/plain',5,encode(extensions.digest('alpha','sha256'),'hex'),
+ '{OWNER}/{AGENT}/{SOURCE_STALE}/stale.txt','quarantined','awaiting_malware_scan','{{"sensitivity":"internal"}}');
+set role service_role;
+select public.enqueue_agent_knowledge_document_job('{SOURCE_STALE}','{AGENT}','{OWNER}',null);
+select * from public.claim_agent_knowledge_job(90,'awaiting_malware_scan');
+do $do$
+declare v_job public.agent_knowledge_jobs%rowtype; v_old_token uuid; v_new_token uuid;
+begin
+ select * into v_job from public.agent_knowledge_jobs where source_id='{SOURCE_STALE}';
+ v_old_token := v_job.lease_token;
+ if v_job.status<>'processing' or v_old_token is null then
+  raise exception 'Knowledge stale-lease fixture was not claimed';
+ end if;
+ update public.agent_knowledge_jobs set lease_expires_at=clock_timestamp()-interval '1 second' where id=v_job.id;
+ if public.heartbeat_agent_knowledge_job(v_job.id,v_old_token,90) then
+  raise exception 'expired Knowledge lease was incorrectly revived';
+ end if;
+ perform public.claim_agent_knowledge_job(90,'awaiting_malware_scan');
+ select lease_token into v_new_token from public.agent_knowledge_jobs where id=v_job.id;
+ if v_new_token is null or v_new_token=v_old_token then
+  raise exception 'expired Knowledge lease was not recovered with a new fencing token';
+ end if;
+ if not public.heartbeat_agent_knowledge_job(v_job.id,v_new_token,90) then
+  raise exception 'current recovered Knowledge lease could not be renewed';
+ end if;
+ update public.agent_knowledge_sources set source_version=source_version+1 where id='{SOURCE_STALE}';
+ if public.heartbeat_agent_knowledge_job(v_job.id,v_new_token,90) then
+  raise exception 'stale source-version Knowledge lease was incorrectly renewed';
+ end if;
+end $do$;
+reset role;
+""")
   psql("""
 do $do$
 begin
@@ -197,13 +233,15 @@ begin
  if has_function_privilege('authenticated','public.persist_agent_knowledge_chunk_batch(uuid,uuid,integer,boolean,jsonb)','EXECUTE')
     or has_function_privilege('authenticated','public.complete_agent_knowledge_document_parse(uuid,uuid,integer,integer)','EXECUTE')
     or has_function_privilege('authenticated','public.enqueue_agent_knowledge_document_job(uuid,uuid,uuid,text)','EXECUTE')
-    or has_function_privilege('authenticated','public.fail_agent_knowledge_document_job(uuid,uuid,text,text,boolean,integer)','EXECUTE') then
+    or has_function_privilege('authenticated','public.fail_agent_knowledge_document_job(uuid,uuid,text,text,boolean,integer)','EXECUTE')
+    or has_function_privilege('authenticated','public.heartbeat_agent_knowledge_job(uuid,uuid,integer)','EXECUTE') then
   raise exception 'authenticated role can execute privileged Knowledge RPCs';
  end if;
  if not has_function_privilege('service_role','public.persist_agent_knowledge_chunk_batch(uuid,uuid,integer,boolean,jsonb)','EXECUTE')
     or not has_function_privilege('service_role','public.complete_agent_knowledge_document_parse(uuid,uuid,integer,integer)','EXECUTE')
     or not has_function_privilege('service_role','public.enqueue_agent_knowledge_document_job(uuid,uuid,uuid,text)','EXECUTE')
-    or not has_function_privilege('service_role','public.fail_agent_knowledge_document_job(uuid,uuid,text,text,boolean,integer)','EXECUTE') then
+    or not has_function_privilege('service_role','public.fail_agent_knowledge_document_job(uuid,uuid,text,text,boolean,integer)','EXECUTE')
+    or not has_function_privilege('service_role','public.heartbeat_agent_knowledge_job(uuid,uuid,integer)','EXECUTE') then
   raise exception 'service_role cannot execute Knowledge worker RPCs';
  end if;
 end $do$;
