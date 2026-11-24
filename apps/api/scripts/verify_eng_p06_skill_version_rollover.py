@@ -7,6 +7,7 @@ ROOT = Path(__file__).resolve().parents[3]
 MIGRATION = ROOT / "apps/api/supabase/migrations/20261122154257_eng_p06_skill_version_rollover_runtime_pinning.sql"
 INSTALLATION_MIGRATION = ROOT / "apps/api/supabase/migrations/20261124034103_eng_p06_skill_installation_licensing_runtime_gate.sql"
 EXPIRY_MIGRATION = ROOT / "apps/api/supabase/migrations/20261124034604_eng_p06_skill_license_expiry_lifecycle.sql"
+INSTALL_GUARD_MIGRATION = ROOT / "apps/api/supabase/migrations/20261124035118_eng_p06_install_idempotency_and_paid_entitlement_guard.sql"
 NAME = "allpha-p06-" + uuid.uuid4().hex[:8]
 OWNER = "11111111-1111-4111-8111-111111111111"
 AGENT = "22222222-2222-4222-8222-222222222222"
@@ -107,6 +108,7 @@ grant select,insert,update,delete on public.agent_skill_versions to service_role
         psql(MIGRATION.read_text(encoding="utf-8"))
         psql(INSTALLATION_MIGRATION.read_text(encoding="utf-8"))
         psql(EXPIRY_MIGRATION.read_text(encoding="utf-8"))
+        psql(INSTALL_GUARD_MIGRATION.read_text(encoding="utf-8"))
         psql("""
 insert into auth.users(id) values ('11111111-1111-4111-8111-111111111111');
 insert into public.ai_agents(id,visibility,status) values
@@ -192,12 +194,14 @@ end $$;
 set role authenticated;
 select set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',false);
 select set_config('request.jwt.claim.role','authenticated',false);
+update public.ai_agents set visibility='private' where id='22222222-2222-4222-8222-222222222222';
 select public.install_agent_skill(
  '66666666-6666-4666-8666-666666666666',
  '22222222-2222-4222-8222-222222222222',
  '33333333-3333-4333-8333-333333333333',
  5,true,'p06-install-key-0001'
 );
+update public.ai_agents set visibility='public' where id='22222222-2222-4222-8222-222222222222';
 select public.install_agent_skill(
  '66666666-6666-4666-8666-666666666666',
  '22222222-2222-4222-8222-222222222222',
