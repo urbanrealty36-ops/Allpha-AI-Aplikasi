@@ -206,7 +206,7 @@ def test_clamd_scanner_accepts_only_clean_local_verdicts(monkeypatch):
     async def fake_exec(*args,**kwargs):
         calls.append(args)
         assert args[0]=="clamdscan"
-        assert "--fdpass" in args and "--no-summary" in args
+        assert "--fdpass" not in args and "--no-summary" in args
         with open(args[-1],"rb") as source:
             assert source.read()==b"private document"
         return Process()
