@@ -206,3 +206,79 @@ def test_scanner_rejects_non_https_unallowlisted_or_credentialless_endpoint(
         assert FakeAsyncClient.calls == []
 
     asyncio.run(scenario())
+
+
+def configure_local_clamav(monkeypatch, *, engine="1.4.6", signature="27842/Mon Nov 24 12:00:00 2026"):
+    monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_MODE", "clamd")
+    monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_ID", "clamav-local")
+    monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_ENGINE_VERSION", engine)
+    monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_SIGNATURE_VERSION", signature)
+
+
+class FakeClamProcess:
+    def __init__(self, output=b""):
+        self.returncode = 0
+        self.output = output
+
+    async def communicate(self):
+        return self.output, b""
+
+
+def install_clamav_process(monkeypatch, *, engine="1.4.6", signature="27842/Mon Nov 24 12:00:00 2026"):
+    calls = []
+
+    async def create_process(*args, **kwargs):
+        calls.append(args)
+        if args[-1] == "--version":
+            return FakeClamProcess(f"ClamAV {engine}/{signature}".encode())
+        return FakeClamProcess()
+
+    monkeypatch.setattr(knowledge.asyncio, "create_subprocess_exec", create_process)
+    return calls
+
+
+def test_local_clamav_requires_deployment_pinned_identity_before_execution(monkeypatch):
+    monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_MODE", "clamd")
+    calls = install_clamav_process(monkeypatch)
+
+    async def scenario():
+        with pytest.raises(HTTPException) as error:
+            await knowledge._scan(b"sample", "sample.txt", "text/plain")
+        assert error.value.status_code == 503
+        assert error.value.detail["code"] == "SCANNER_NOT_CONFIGURED"
+        assert calls == []
+
+    asyncio.run(scenario())
+
+
+def test_local_clamav_accepts_only_exact_pinned_engine_and_signature(monkeypatch):
+    configure_local_clamav(monkeypatch)
+    calls = install_clamav_process(monkeypatch)
+
+    receipt = asyncio.run(knowledge._scan(b"sample", "sample.txt", "text/plain"))
+    assert receipt["scanner_id"] == "clamav-local"
+    assert receipt["engine_version"] == "1.4.6"
+    assert receipt["signature_version"] == "27842/Mon Nov 24 12:00:00 2026"
+    assert receipt["sha256"] == hashlib.sha256(b"sample").hexdigest()
+    assert receipt["contract_version"] == "allpha.local-clamav.v1"
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize(
+    ("actual_engine", "actual_signature"),
+    [
+        ("1.4.7", "27842/Mon Nov 24 12:00:00 2026"),
+        ("1.4.6", "27843/Mon Nov 24 12:00:00 2026"),
+    ],
+)
+def test_local_clamav_rejects_engine_or_signature_drift(monkeypatch, actual_engine, actual_signature):
+    configure_local_clamav(monkeypatch)
+    install_clamav_process(monkeypatch, engine=actual_engine, signature=actual_signature)
+
+    async def scenario():
+        with pytest.raises(HTTPException) as error:
+            await knowledge._scan(b"sample", "sample.txt", "text/plain")
+        assert error.value.status_code == 503
+        assert error.value.detail["code"] == "SCANNER_UNAVAILABLE"
+
+    asyncio.run(scenario())
