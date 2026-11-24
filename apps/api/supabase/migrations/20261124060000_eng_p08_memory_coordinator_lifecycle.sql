@@ -395,4 +395,22 @@ on conflict(source_key) do update set data_class=excluded.data_class,deletion_ac
  active=true,table_name=excluded.table_name,filter_kind=excluded.filter_kind,owner_columns=excluded.owner_columns,
  decision_source=excluded.decision_source,decision_reference=excluded.decision_reference,updated_at=clock_timestamp();
 
+-- Supabase exposes pg_cron as an optional managed extension. When available,
+-- enforce retention independently of user traffic; the owner-scoped API also
+-- expires its own namespace before listing or retrieval.
+do $schedule$
+begin
+ if exists(select 1 from pg_available_extensions where name='pg_cron') then
+  execute 'create extension if not exists pg_cron';
+  if to_regnamespace('cron') is not null then
+   perform cron.schedule(
+    'allpha-memory-retention',
+    '*/5 * * * *',
+    'select public.agent_memory_transition(''expire_all'',null,null,null,''{}''::jsonb)'
+   );
+  end if;
+ end if;
+end;
+$schedule$;
+
 notify pgrst,'reload schema';
