@@ -386,3 +386,66 @@ def test_text_generation_router_uses_database_policy_approval_not_environment_bo
     assert snapshot["provider_id"]=="provider-test"
     assert snapshot["model_id"]=="model-test"
     assert snapshot["policy_id"]=="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+
+
+def test_approved_runtime_policy_verifier_accepts_only_effective_audited_policy():
+    from allpha_api.text_generation_adapters import SupabaseApprovedRuntimePolicyVerifier
+
+    observed = {}
+    def handler(req: httpx.Request) -> httpx.Response:
+        observed["path"] = req.url.path
+        observed["params"] = dict(req.url.params)
+        observed["authorization"] = req.headers.get("Authorization")
+        return httpx.Response(200, json=[{
+            "id": "policy-1",
+            "policy_version": "v1",
+            "status": "active",
+            "policy_approved": True,
+            "effective_at": "2026-10-16T00:00:00+00:00",
+            "policy_approval_reference": "MODEL-POLICY-APPROVAL-01",
+            "policy_approved_by": "11111111-1111-4111-8111-111111111111",
+            "policy_approved_at": "2026-10-16T00:00:00+00:00",
+        }])
+
+    verifier = SupabaseApprovedRuntimePolicyVerifier(
+        supabase_url="https://db.invalid",
+        service_role_key="service-test",
+        policy_id="policy-1",
+        policy_version="v1",
+        transport=httpx.MockTransport(handler),
+    )
+    asyncio.run(verifier.verify())
+    assert observed["path"] == "/rest/v1/ai_model_cost_configs"
+    assert observed["authorization"] == "Bearer service-test"
+    assert observed["params"]["id"] == "eq.policy-1"
+    assert observed["params"]["policy_version"] == "eq.v1"
+    assert observed["params"]["status"] == "eq.active"
+    assert observed["params"]["policy_approved"] == "eq.true"
+    assert observed["params"]["limit"] == "2"
+
+
+def test_approved_runtime_policy_verifier_rejects_unapproved_or_incomplete_policy():
+    from allpha_api.text_generation_adapters import SupabaseApprovedRuntimePolicyVerifier
+
+    for row in (
+        {
+            "id": "policy-1", "policy_version": "v1", "status": "active",
+            "policy_approved": False, "policy_approval_reference": "MODEL-POLICY-APPROVAL-01",
+            "policy_approved_by": "11111111-1111-4111-8111-111111111111",
+            "policy_approved_at": "2026-10-16T00:00:00+00:00",
+        },
+        {
+            "id": "policy-1", "policy_version": "v1", "status": "active",
+            "policy_approved": True, "policy_approval_reference": "",
+            "policy_approved_by": None, "policy_approved_at": None,
+        },
+    ):
+        verifier = SupabaseApprovedRuntimePolicyVerifier(
+            supabase_url="https://db.invalid",
+            service_role_key="service-test",
+            policy_id="policy-1",
+            policy_version="v1",
+            transport=httpx.MockTransport(lambda req, item=row: httpx.Response(200, json=[item])),
+        )
+        with pytest.raises(RuntimeError):
+            asyncio.run(verifier.verify())
