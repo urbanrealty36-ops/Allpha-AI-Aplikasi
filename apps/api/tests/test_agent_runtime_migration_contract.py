@@ -72,6 +72,9 @@ def test_durable_tool_plan_reservations_are_owner_idempotent_and_do_not_store_ra
     assert "request_fingerprint text not null" in sql
     assert "intent_sha256 text not null" in sql
     assert "memory_context_refs jsonb not null" in sql
+    assert "knowledge_context_refs jsonb not null" in sql
+    assert "knowledge_context_sha256 text not null" in sql
+    assert "knowledge_context_state text not null" in sql
     assert "foreign key (session_id, owner_user_id)" in sql
     assert "foreign key (skill_id, agent_id)" in sql
     assert "enable row level security" in sql
