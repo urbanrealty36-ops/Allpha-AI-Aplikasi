@@ -256,6 +256,8 @@ class SupabaseKeywordKnowledgeRepository:
             ),
             "owner_id": f"eq.{owner_id}",
             "agent_id": f"eq.{agent_id}",
+            "agent_knowledge_sources.owner_id": f"eq.{owner_id}",
+            "agent_knowledge_sources.agent_id": f"eq.{agent_id}",
             "agent_knowledge_sources.status": "eq.ready",
             "agent_knowledge_sources.sensitivity": "in.(" + ",".join(allowed_sensitivities) + ")",
             "search_vector": "fts(simple)." + query,
@@ -272,6 +274,9 @@ class SupabaseKeywordKnowledgeRepository:
             if (
                 row.get("owner_id") != owner_id
                 or row.get("agent_id") != agent_id
+                or source.get("id") != row.get("source_id")
+                or source.get("owner_id") != owner_id
+                or source.get("agent_id") != agent_id
                 or source.get("status") != "ready"
                 or source.get("sensitivity") not in allowed_sensitivities
                 or int(source.get("source_version", -1)) != int(row.get("source_version", -2))
