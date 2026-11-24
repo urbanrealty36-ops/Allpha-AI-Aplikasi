@@ -148,6 +148,7 @@ def test_embedding_router_verifies_policy_routes_provider_and_persists_metering(
         assert observed["provider"]["model"] == "embed-model-1"
         assert observed["metering"]["idempotency_key"] == "knowledge:job-1:v1:batch0"
         assert observed["metering"]["usage_units"] == 10
+        assert observed["metering"]["capability"] == "embedding"
         assert observed["metering"]["cost_microunits"] == 20
         assert observed["metering"]["payload_fingerprint"]
         assert "one private chunk" not in json.dumps(observed["metering"])
