@@ -234,6 +234,17 @@ class FakeRuntimeStore:
         self.tool_plans[plan_id] = row
         return copy.deepcopy(row), True
 
+    async def get_tool_plan(self, owner_id, plan_id):
+        row = self.tool_plans.get(plan_id)
+        return copy.deepcopy(row) if row and row.get("owner_user_id") == owner_id else None
+
+    async def mark_tool_plan_used(self, owner_id, plan_id, task_id):
+        row = self.tool_plans.get(plan_id)
+        if not row or row.get("owner_user_id") != owner_id or row.get("status") != "completed":
+            return None
+        row.update({"status": "used", "task_id": task_id})
+        return copy.deepcopy(row)
+
     async def update_tool_plan(self, owner_id, plan_id, body):
         row = self.tool_plans.get(plan_id)
         if not row or row.get("owner_user_id") != owner_id:
@@ -1056,5 +1067,68 @@ def test_tool_planner_includes_owner_authorized_knowledge_and_content_free_citat
         assert "Owner-authorized Knowledge fact." in text_router.requests[0].prompt
         assert "OWNER-AUTHORIZED KNOWLEDGE CONTEXT" in text_router.requests[0].prompt
         assert payload["planner_evidence"]["knowledge_context_sha256"] == payload["knowledge_context_sha256"]
+    finally:
+        app.dependency_overrides.pop(current_user, None)
+
+
+
+def test_tool_plan_task_envelope_carries_only_validated_knowledge_citations(monkeypatch):
+    c = client(monkeypatch)
+    session_id = create_session(c)
+    plan_id = str(uuid.uuid4())
+    content = "Owner-authorized Knowledge fact."
+    content_sha = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    retrieved_sha = content_sha
+    refs = [{
+        "source_id": "source-knowledge-1",
+        "source_version": 3,
+        "chunk_id": "chunk-knowledge-1",
+        "source_location": {"kind": "page", "index": 2},
+        "sensitivity": "internal",
+        "content_sha256": content_sha,
+        "retrieved_content_sha256": retrieved_sha,
+        "retrieval_method": "keyword",
+        "score": 0.5,
+        "provider_id": None,
+        "model_id": None,
+        "model_version": None,
+        "index_generation": None,
+    }]
+    FakeRuntimeStore.tool_plans[plan_id] = {
+        "id": plan_id,
+        "owner_user_id": OWNER,
+        "agent_id": AGENT,
+        "session_id": session_id,
+        "skill_id": SKILL,
+        "agent_version": 1,
+        "skill_version": 1,
+        "idempotency_key": "knowledge-task-001",
+        "status": "completed",
+        "expires_at": "2099-01-01T00:00:00+00:00",
+        "tool_plan": [{
+            "step_id": "normalize",
+            "tool_key": "text.normalize",
+            "inputs": {"text": "hello"},
+            "bindings": {},
+        }],
+        "planner_evidence": {"knowledge_context_refs": refs},
+        "knowledge_context_refs": refs,
+        "knowledge_context_sha256": hashlib.sha256(b"bounded knowledge context").hexdigest(),
+        "knowledge_context_state": "available",
+    }
+    try:
+        response = c.post("/v1/agent-runtime/tasks", json={
+            "session_id": session_id,
+            "skill_id": SKILL,
+            "tool_plan_id": plan_id,
+            "idempotency_key": "knowledge-task-001",
+        })
+        assert response.status_code == 201, response.text
+        task = response.json()["task"]
+        assert task["input_payload"]["knowledge_context_refs"] == refs
+        assert task["input_payload"]["knowledge_context_sha256"] == FakeRuntimeStore.tool_plans[plan_id]["knowledge_context_sha256"]
+        assert task["input_payload"]["knowledge_context_state"] == "available"
+        assert "content" not in task["input_payload"]["knowledge_context_refs"][0]
+        assert content not in json.dumps(task["input_payload"])
     finally:
         app.dependency_overrides.pop(current_user, None)
