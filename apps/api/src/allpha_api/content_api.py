@@ -493,7 +493,6 @@ async def complete_resumable_media_upload(
 
 
 @router.post("/{content_id}/media", status_code=201)
-async def upload_media@router.post("/{content_id}/media", status_code=201)
 async def upload_media(content_id: uuid.UUID, request: Request, file: UploadFile = File(...), user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     content = await _owner_content(content_id, str(user["id"]))
     if content["status"] not in ("draft", "failed"):
