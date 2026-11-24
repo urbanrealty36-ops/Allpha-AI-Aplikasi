@@ -100,6 +100,10 @@ def test_knowledge_mutations_are_api_only_and_storage_paths_are_scoped():
     assert "urllib.parse import quote" in api
 
 
+
+async def _allow_processing():
+    return None
+
 def test_document_processing_is_queued_through_service_rpc(monkeypatch):
     from allpha_api.knowledge import process_source
     calls=[]
@@ -117,6 +121,7 @@ def test_document_processing_is_queued_through_service_rpc(monkeypatch):
     monkeypatch.setattr("allpha_api.knowledge._owned",fake_owned)
     monkeypatch.setattr("allpha_api.knowledge._source",fake_source)
     monkeypatch.setattr("allpha_api.knowledge._admin_db_request",fake_admin)
+    monkeypatch.setattr("allpha_api.knowledge._authorize_source_processing",lambda **kwargs: _allow_processing())
     monkeypatch.setattr("allpha_api.knowledge._scan",forbidden_scan)
     app.dependency_overrides[current_user]=auth_as("owner-a")
     try:
@@ -129,6 +134,25 @@ def test_document_processing_is_queued_through_service_rpc(monkeypatch):
     assert calls[0][0:2]==("POST","rpc/enqueue_agent_knowledge_document_job")
     assert calls[0][2]["body"]=={"p_source_id":SOURCE,"p_agent_id":AGENT,"p_owner_id":"owner-a","p_reason":None}
 
+
+
+def test_document_processing_does_not_enqueue_without_authoritative_policy_provider(monkeypatch):
+    calls=[]
+    async def fake_owned(agent_id, request, user): return "owner-token"
+    async def fake_source(agent_id, source_id, token, user):
+        return {"id":str(source_id),"agent_id":str(agent_id),"owner_id":user["id"],"status":"quarantined","source_version":1,"sensitivity":"internal","provenance":{"sensitivity":"internal"}}
+    async def fake_admin(method,path,access_token=None,**kwargs):
+        calls.append((method,path)); return {"id":"must-not-enqueue"}
+    monkeypatch.setattr("allpha_api.knowledge._owned",fake_owned)
+    monkeypatch.setattr("allpha_api.knowledge._source",fake_source)
+    monkeypatch.setattr("allpha_api.knowledge._admin_db_request",fake_admin)
+    monkeypatch.setattr("allpha_api.knowledge.load_policy_resolver_from_environment",lambda:None)
+    app.dependency_overrides[current_user]=auth_as("owner-a")
+    try: response=client.post(f"/v1/agents/{AGENT}/knowledge/sources/{SOURCE}/process",headers={"Authorization":"Bearer test"})
+    finally: app.dependency_overrides.clear()
+    assert response.status_code==503
+    assert response.json()["error"]["code"]=="KNOWLEDGE_POLICY_UNAVAILABLE"
+    assert calls==[]
 
 def test_knowledge_storage_requires_server_side_key(monkeypatch):
     from fastapi import HTTPException

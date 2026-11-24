@@ -1253,3 +1253,11 @@ This is an evidence refresh inside the existing fixed plan. It does not create a
 - **Coverage:** API CHANGE (worker lifecycle); API tests add a regression proving disabled mode never constructs the worker; dedicated worker image entrypoint CHANGE. Web and Native INTEGRATE through the unchanged FastAPI contract; Super Admin NOT AFFECTED.
 - **Status:** source implementation committed; phase remains `in_progress` until CI and the dedicated Railway runtime are observed. This change does not activate ingestion, create scanner receipts, or bypass consent, grant, embedding, vector-index or retrieval gates.
 - **Next canonical work:** implement authoritative Knowledge consent/source-grant persistence and API enforcement; then continue scanner/embedding/vector gates under ADR-0003/0004/0005. Do not enable the consumer until all required authorization and processing dependencies are live.
+
+## 40.39 — ENG-P07 source-consent enforcement at API boundary (2026-11-24)
+
+- **Implementation:** added canonical purposes `knowledge_ingestion` and `knowledge_embedding`, plus `VersionedKnowledgePolicyResolver.authorize_source()` to revalidate owner/Agent consent, exact source grant and sensitivity. API process/retry now refuses to enqueue unless the server-side provider authorizes that exact source and purpose.
+- **Coverage:** API CHANGE; Web INTEGRATE via unchanged FastAPI contract; Native INTEGRATE via unchanged FastAPI contract; Super Admin NOT AFFECTED. Worker revalidation and atomic DB-level revocation fencing remain subsequent P07 work.
+- **Tests:** source/sensitivity/purpose authorization and API no-provider/no-enqueue regression added. CI evidence will be recorded against this commit.
+- **Database/Railway:** no production DDL, ledger change, data write, provider credential or worker activation.
+- **Status:** ENG-P07 remains `in_progress`; no production provider, vector retrieval or end-to-end readiness is claimed.

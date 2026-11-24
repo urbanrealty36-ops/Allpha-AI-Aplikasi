@@ -14,6 +14,8 @@ from typing import Callable, Protocol
 
 SENSITIVITIES = frozenset({"public", "internal", "confidential", "restricted"})
 RETRIEVAL_PURPOSE = "agent_context_retrieval"
+KNOWLEDGE_INGESTION_PURPOSE = "knowledge_ingestion"
+KNOWLEDGE_EMBEDDING_PURPOSE = "knowledge_embedding"
 KNOWLEDGE_AUDIENCES = frozenset({"owner_private", "tenant_shared", "published_knowledge", "session_scoped"})
 
 
@@ -194,6 +196,27 @@ class VersionedKnowledgePolicyResolver:
             purpose=purpose,
         )
 
+
+
+    async def authorize_source(
+        self, *, owner_id: str, agent_id: str, source_id: str, sensitivity: str,
+        purpose: str, audience: str = "owner_private",
+    ) -> ResolvedKnowledgePolicy:
+        """Revalidate current consent and exact source/sensitivity scope for a lifecycle action."""
+        try:
+            canonical_source_id = str(uuid.UUID(source_id))
+        except (ValueError, TypeError, AttributeError) as exc:
+            raise KnowledgePolicyUnavailable("knowledge source identity is invalid") from exc
+        if canonical_source_id != source_id.lower():
+            raise KnowledgePolicyUnavailable("knowledge source identity is not canonical")
+        if sensitivity not in SENSITIVITIES:
+            raise KnowledgePolicyUnavailable("knowledge source sensitivity is invalid")
+        resolved = await self.resolve(owner_id=owner_id, agent_id=agent_id, audience=audience, purpose=purpose)
+        if canonical_source_id not in resolved.allowed_source_ids:
+            raise KnowledgePolicyDenied("knowledge grant does not include this source")
+        if sensitivity not in resolved.allowed_sensitivities:
+            raise KnowledgePolicyDenied("knowledge grant does not include this sensitivity")
+        return resolved
 
 class VersionedKnowledgeRetrievalPolicy:
     """Adapter that returns immutable request-local policy snapshots.

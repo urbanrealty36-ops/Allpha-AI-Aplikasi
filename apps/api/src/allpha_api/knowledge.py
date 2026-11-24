@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Uplo
 from pydantic import BaseModel, ConfigDict, Field
 from allpha_api.auth import current_user, user_db_request
 from allpha_api.knowledge_parser import parse_document_isolated
+from allpha_api.knowledge_policy import (KNOWLEDGE_INGESTION_PURPOSE, KnowledgePolicyDenied, KnowledgePolicyUnavailable, load_policy_resolver_from_environment)
 from allpha_api.document_scanner import (
     DocumentMalwareDetected, DocumentScannerConfigurationError,
     DocumentScannerUnavailable, RemoteDocumentScanner,
@@ -241,6 +242,20 @@ async def get_source(agent_id: uuid.UUID,source_id: uuid.UUID,request: Request,u
     jobs=await user_db_request("GET","agent_knowledge_jobs",token,params={"select":JOB_FIELDS,"source_id":f"eq.{source_id}","agent_id":f"eq.{agent_id}","owner_id":f"eq.{user['id']}","order":"created_at.desc","limit":"20"})
     return {"source":_public_source(source),"jobs":[_public_job(job) for job in (jobs or [])]}
 
+
+async def _authorize_source_processing(*, owner_id: str, agent_id: str, source_id: str, sensitivity: str) -> None:
+    """Require current owner consent and exact Agent/source grant before queueing."""
+    resolver = load_policy_resolver_from_environment()
+    if resolver is None:
+        raise HTTPException(503, detail={"code":"KNOWLEDGE_POLICY_UNAVAILABLE","message":"Consent dan grant Knowledge belum tersedia."})
+    try:
+        await resolver.authorize_source(owner_id=owner_id, agent_id=agent_id, source_id=source_id,
+                                        sensitivity=sensitivity, purpose=KNOWLEDGE_INGESTION_PURPOSE)
+    except KnowledgePolicyDenied as exc:
+        raise HTTPException(403, detail={"code":"KNOWLEDGE_ACCESS_DENIED","message":"Consent atau grant tidak mengizinkan pemrosesan sumber ini."}) from exc
+    except KnowledgePolicyUnavailable as exc:
+        raise HTTPException(503, detail={"code":"KNOWLEDGE_POLICY_UNAVAILABLE","message":"Kebijakan consent dan grant Knowledge tidak dapat diverifikasi."}) from exc
+
 async def _enqueue_document_processing(agent_id: uuid.UUID,source_id: uuid.UUID,request: Request,user: dict[str,Any],reason: str | None = None):
     token=await _owned(agent_id,request,user)
     source=await _source(agent_id,source_id,token,user)
@@ -249,6 +264,7 @@ async def _enqueue_document_processing(agent_id: uuid.UUID,source_id: uuid.UUID,
         raise HTTPException(409,detail={"code":"SENSITIVITY_CLASSIFICATION_REQUIRED","message":"Tetapkan klasifikasi sensitivitas secara eksplisit sebelum dokumen diproses."})
     if source["status"] not in ("quarantined","failed"):
         raise HTTPException(409,detail={"code":"SOURCE_STATE_CONFLICT","message":"Sumber tidak berada pada status yang dapat diproses ulang."})
+    await _authorize_source_processing(owner_id=str(user["id"]), agent_id=str(agent_id), source_id=str(source_id), sensitivity=str(sensitivity))
     job=await _admin_db_request(
         "POST","rpc/enqueue_agent_knowledge_document_job",
         body={"p_source_id":str(source_id),"p_agent_id":str(agent_id),"p_owner_id":user["id"],"p_reason":reason},
