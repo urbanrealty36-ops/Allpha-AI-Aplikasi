@@ -628,7 +628,7 @@ export default function AiCinemaCreatorWorkspace() {
     setSaving(true); setError(""); setNotice(""); setUploadProgress(0);
     try {
       const digest = await sha256File(uploadFile);
-      const sessionKey = "allpha:cinema:upload:" + (selectedTitleId || "unassigned");
+      const sessionKey = "allpha:cinema:upload:current";
       let saved: PersistedCinemaUpload | null = null;
       try {
         const raw = window.localStorage.getItem(sessionKey);
