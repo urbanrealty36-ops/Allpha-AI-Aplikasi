@@ -1267,3 +1267,11 @@ This is an evidence refresh inside the existing fixed plan. It does not create a
 - **Correction:** first CI run exposed that the policy fixture did not explicitly permit the new ingestion purpose and legacy document-worker tests lacked the new injected policy resolver. Test fixtures now provide explicit, test-only policy decisions; production code remains fail-closed. Dedicated worker startup tests explicitly verify that a missing provider prevents activation.
 - **Coverage:** API policy and ingestion lifecycle tests; dedicated worker composition/startup tests. No production schema or secrets changed.
 - **Status:** source committed; rerun CI on this commit before claiming the regressions fixed.
+
+## 40.42 — Native Knowledge retrieval client integration (2026-11-24)
+
+- **Implementation:** Native Agent Memory Center now calls the same authenticated FastAPI endpoint used by Web: `POST /v1/agents/{agent_id}/knowledge/retrieve`. The client submits only query and limit; owner identity, source grants, consent and sensitivity remain server-derived. Citation output displays source/version, chunk digest, source location and immutable provider/model/index provenance when present.
+- **Security behavior:** 403/503 are rendered as explicit errors; no sample/fallback result is synthesized. The UI states that unavailable consent, source grant or index keeps retrieval closed.
+- **Coverage:** Native source code CHANGE; Web existing retrieval client unchanged; Super Admin NOT AFFECTED. This is client/API integration source code, not production integration verification while the server-side policy/vector dependencies remain unavailable.
+- **Verification:** pending the commit's Native TypeScript/build workflow. EAS and real-account testing remain DEFERRED.
+- **Status:** ENG-P07 remains `in_progress`; no vector retrieval or production end-to-end claim.

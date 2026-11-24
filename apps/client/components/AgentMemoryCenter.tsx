@@ -5,6 +5,7 @@ type MemoryType="working"|"episodic"|"semantic"|"procedural"|"long_term";
 type MemoryPolicy={id:string;memory_type:MemoryType;enabled:boolean;consent_version?:string|null;allowed_purposes:string[];allowed_sensitivities:string[];retention_days:number;policy_version:number;consent_revoked_at?:string|null};
 type MemoryItem={id:string;memory_type:MemoryType;purpose:string;classification:string;content:string;status:string;confidence?:number|null;retention_expires_at:string;created_at:string;version:number;pinned_at?:string|null};
 type MemoryEvent={id:string;event_type:string;details:Record<string,unknown>;created_at:string};
+type KnowledgeHit={source_id:string;source_version:number;chunk_id:string;content:string;content_sha256:string;source_location:Record<string,unknown>;sensitivity:string;retrieval_method:"vector"|"keyword"|"hybrid";score:number;provider_id?:string|null;model_id?:string|null;model_version?:string|null;index_generation?:string|null};
 type Props={apiBase:string;agentId:string;getAccessToken:()=>Promise<string>;onBack:()=>void};
 
 const TYPES:MemoryType[]=["working","episodic","semantic","procedural","long_term"];
@@ -23,6 +24,11 @@ export function AgentMemoryCenter({apiBase,agentId,getAccessToken,onBack}:Props)
  const [proposal,setProposal]=useState("");
  const [query,setQuery]=useState("");
  const [retrieved,setRetrieved]=useState<MemoryItem[]>([]);
+ const [knowledgeQuery,setKnowledgeQuery]=useState("");
+ const [knowledgeHits,setKnowledgeHits]=useState<KnowledgeHit[]>([]);
+ const [knowledgeTrace,setKnowledgeTrace]=useState("");
+ const [knowledgeBusy,setKnowledgeBusy]=useState(false);
+ const [knowledgeError,setKnowledgeError]=useState("");
  const [correcting,setCorrecting]=useState<Record<string,string>>({});
 
  const request=useCallback(async(path:string,init:RequestInit={})=>{
@@ -134,6 +140,21 @@ export function AgentMemoryCenter({apiBase,agentId,getAccessToken,onBack}:Props)
   ]);
  }
 
+
+ async function retrieveKnowledge(){
+  const value=knowledgeQuery.trim();if(!value)return;
+  setKnowledgeBusy(true);setKnowledgeError("");setKnowledgeHits([]);setKnowledgeTrace("");
+  try{
+   const body=await request("/v1/agents/"+encodeURIComponent(agentId)+"/knowledge/retrieve",{
+    method:"POST",body:JSON.stringify({query:value,limit:12}),
+   });
+   setKnowledgeHits(Array.isArray(body?.results)?body.results:[]);
+   setKnowledgeTrace(typeof body?.trace_id==="string"?body.trace_id:"");
+  }catch(cause){
+   setKnowledgeError(cause instanceof Error?cause.message:"Knowledge retrieval belum tersedia.");
+  }finally{setKnowledgeBusy(false);}
+ }
+
  async function retrieve(){
   setBusy(true);setError("");setRetrieved([]);
   try{
@@ -194,6 +215,24 @@ export function AgentMemoryCenter({apiBase,agentId,getAccessToken,onBack}:Props)
    <TextInput value={query} onChangeText={setQuery} placeholder="Cari konteks Memory..." placeholderTextColor="#72809A" style={field}/>
    <View style={{marginTop:10}}>{button("Cari Memory",()=>void retrieve(),busy)}</View>
    {retrieved.map(item=><Text key={item.id} style={{color:"#C7D0E0",fontSize:12,lineHeight:18,marginTop:10}}>{item.content}</Text>)}
+  </View>
+
+  <View style={card}>
+   <Text style={{color:"#FFFFFF",fontWeight:"800",fontSize:15}}>Knowledge & RAG · Agent context</Text>
+   <Text style={{color:"#AAB5CA",fontSize:12,lineHeight:18,marginTop:5}}>Pencarian memakai endpoint Knowledge FastAPI yang sama dengan Web. Owner, Agent, source scope, sensitivitas dan consent ditentukan ulang oleh server; aplikasi tidak mengirim owner ID atau izin sensitivitas.</Text>
+   <TextInput value={knowledgeQuery} onChangeText={setKnowledgeQuery} multiline maxLength={4000} placeholder="Cari konteks dari dokumen Agent..." placeholderTextColor="#72809A" style={[field,{minHeight:72,textAlignVertical:"top"}]}/>
+   <View style={{marginTop:10}}>{button(knowledgeBusy?"Mengambil konteks...":"Cari Knowledge",()=>void retrieveKnowledge(),knowledgeBusy||!knowledgeQuery.trim())}</View>
+   {!!knowledgeError&&<Text accessibilityRole="alert" style={{color:"#FDA4AF",fontSize:12,marginTop:10}}>{knowledgeError} Tidak ada hasil contoh yang ditampilkan; retrieval tetap tertutup jika consent, source grant atau index belum tersedia.</Text>}
+   {!!knowledgeTrace&&<Text style={{color:"#8190AA",fontSize:10,marginTop:9}}>Trace {knowledgeTrace}</Text>}
+   {knowledgeHits.length===0&&!knowledgeBusy&&!knowledgeError&&!!knowledgeTrace&&<Text style={{color:"#91A0BA",fontSize:12,marginTop:8}}>Tidak ada potongan yang diizinkan untuk query ini.</Text>}
+   {knowledgeHits.map((hit,index)=><View key={hit.chunk_id} style={{borderTopWidth:1,borderTopColor:"#303B56",paddingTop:10,marginTop:10}}>
+    <Text style={{color:"#FFFFFF",fontWeight:"700"}}>Citation {index+1} · source {hit.source_id} · v{hit.source_version}</Text>
+    <Text style={{color:"#91A0BA",fontSize:10,marginTop:4}}>{hit.retrieval_method} · {hit.sensitivity} · score {Number.isFinite(hit.score)?hit.score.toFixed(3):"—"}</Text>
+    <Text style={{color:"#C7D0E0",fontSize:12,lineHeight:18,marginTop:7}}>{hit.content}</Text>
+    <Text style={{color:"#8190AA",fontSize:10,marginTop:5}}>Chunk {hit.chunk_id} · SHA-256 {hit.content_sha256}</Text>
+    <Text style={{color:"#8190AA",fontSize:10,marginTop:3}}>Lokasi {JSON.stringify(hit.source_location)}</Text>
+    {(hit.provider_id||hit.model_id||hit.model_version||hit.index_generation)&&<Text style={{color:"#8190AA",fontSize:10,marginTop:3}}>Index { [hit.provider_id,hit.model_id,hit.model_version,hit.index_generation].filter(Boolean).join(" · ") }</Text>}
+   </View>)}
   </View>
   <View style={card}>
    <Text style={{color:"#FFFFFF",fontWeight:"800",fontSize:15}}>Audit events</Text>
