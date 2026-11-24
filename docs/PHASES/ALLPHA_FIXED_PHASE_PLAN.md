@@ -1344,6 +1344,17 @@ This is an evidence refresh inside the existing fixed plan. It does not create a
 - **Status:** Railway source deployment and health-check observation verified for `547f728`; workflow worker polling is verified but no real workflow candidates were present. Knowledge/Agent Runtime production execution remains NOT VERIFIED and consumers remain disabled. No Supabase schema/data changes.
 - **Next canonical work:** continue ENG-P07. A successful deployment or idle polling does not satisfy Knowledge ingestion, embedding, retrieval, or durable Agent Runtime execution DoD.
 
+
+
+## 40.51 — AI Cinema Creator Studio / Viewer Catalog route separation (2026-11-24)
+
+- **Implementation:** /ai-cinema is now the viewer/catalog surface only: it loads the published catalog and playback/entitlement experience. The former in-page scroll jump to Creator Studio now navigates to /ai-cinema/creator.
+- **Creator surface:** added a dedicated /ai-cinema/creator route that mounts the existing authenticated Creator Workspace independently and provides a return path to the viewer catalog. Existing Creator API contracts and server-side authorization remain authoritative; this route does not grant creator permissions.
+- **Coverage:** Web CHANGE. FastAPI, Supabase, Native Client and Super Admin NOT AFFECTED by this route-only separation; existing backend authorization and media lifecycle contracts are unchanged.
+- **Verification:** source transformation and route wiring committed. Focused Web tests/build and GitHub Actions are pending; no integration, entitlement, upload-processing or production verification is claimed by this checkpoint.
+- **Database/Storage/Railway:** no migration, production database mutation, Storage mutation, worker activation or deployment performed by this source change.
+- **Status:** route separation implemented; AI Cinema end-to-end remains in progress. ENG-P07 remains in_progress; P08 remains implemented; P09–P11 remain in_progress.
+- **Next:** continue ENG-P07 canonical consent/source-grant provider, scanner and vector generation dependencies; then resume dependent P08–P11 lifecycle work and complete Creator/Viewer backend journeys.
 ## 40.50 — ENG-P08 privileged Memory database transport hardening (2026-11-24)
 
 - **Implementation commit:** `f28ddccd0297a3ef749595cf29b93779b29882be`.

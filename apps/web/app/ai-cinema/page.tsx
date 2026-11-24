@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import AiCinemaView, { AiMovieItem } from "../../components/reference-ui/AiCinemaView";
-import AiCinemaCreatorWorkspace from "../../components/ai-cinema/AiCinemaCreatorWorkspace";
 import AiCinemaPlaybackPanel from "../../components/ai-cinema/AiCinemaPlaybackPanel";
 
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
@@ -67,14 +66,11 @@ export default function AiCinemaPage() {
   }, []);
 
   const openCreatorStudio = () => {
-    document.getElementById("ai-cinema-creator-studio")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    window.location.assign("/ai-cinema/creator");
   };
 
   return <>
     <AiCinemaView userCredits={null} catalogItems={items} catalogState={state} productionMode onOpenCreatorStudio={openCreatorStudio} />
     <AiCinemaPlaybackPanel titles={items.map(item => ({ id: item.id, title: item.title }))} />
-    <section id="ai-cinema-creator-studio" aria-label="Creator Studio" className="scroll-mt-24">
-      <AiCinemaCreatorWorkspace />
-    </section>
   </>;
 }
