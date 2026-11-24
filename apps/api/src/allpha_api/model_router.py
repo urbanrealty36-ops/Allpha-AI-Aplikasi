@@ -33,10 +33,13 @@ class EmbeddingRoute:
     provider_id: str
     model_id: str
     model_version: str
+    dimensions: int | None = None
     max_attempts: int = 3
     def __post_init__(self):
         if not self.provider_id.strip() or not self.model_id.strip() or not self.model_version.strip():
             raise ValueError("embedding route identity fields must be configured")
+        if self.dimensions is not None and not 1 <= self.dimensions <= 8192:
+            raise ValueError("embedding route dimensions must be between 1 and 8192")
         if not 1 <= self.max_attempts <= 8:
             raise ValueError("max_attempts must be between 1 and 8")
 
@@ -106,6 +109,8 @@ class CanonicalModelRouter:
                     raise ModelRouterRejected(EmbeddingFailure(task_id=request.task_id, code="MODEL_ROUTER_ROUTE_IDENTITY_MISMATCH", retryable=False, trace_id=request.trace_id))
                 if response.model_version != route.model_version:
                     raise ModelRouterRejected(EmbeddingFailure(task_id=request.task_id, code="MODEL_ROUTER_MODEL_VERSION_MISMATCH", retryable=False, trace_id=request.trace_id))
+                if route.dimensions is not None and response.dimensions != route.dimensions:
+                    raise ModelRouterRejected(EmbeddingFailure(task_id=request.task_id, code="MODEL_ROUTER_DIMENSION_MISMATCH", retryable=False, trace_id=request.trace_id))
                 try:
                     validate_response_matches_request(request, response)
                 except ValueError as exc:
