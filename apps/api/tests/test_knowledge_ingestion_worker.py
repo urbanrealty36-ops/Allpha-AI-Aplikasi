@@ -42,6 +42,59 @@ def test_document_worker_scans_parses_persists_and_atomically_hands_off_embeddin
     assert store.failures==[]
 
 
+def test_document_worker_rejects_cross_owner_storage_path_before_privileged_download():
+    store = FakeStore()
+    original_load_source = store.load_source
+
+    async def cross_owner_source(job):
+        source = await original_load_source(job)
+        source["storage_path"] = (
+            "99999999-9999-4999-8999-999999999999/"
+            f"{source['agent_id']}/{source['id']}/{source['filename']}"
+        )
+        return source
+
+    store.load_source = cross_owner_source
+    worker = KnowledgeDocumentWorker(
+        store=store, storage=FakeStorage(), policy_resolver=FakePolicyResolver(),
+    )
+
+    async def forbidden_download(path):
+        raise AssertionError("service-role Storage download must not run for a mismatched object key")
+
+    worker.storage.download = forbidden_download
+    assert asyncio.run(worker.process_once()) is True
+    assert store.failures == [
+        ("KNOWLEDGE_STORAGE_PATH_IDENTITY_MISMATCH", "document_parse_failed", False, 0)
+    ]
+    assert store.batches == [] and store.completed == []
+
+
+def test_document_worker_rejects_source_owner_mismatch_before_policy_or_storage():
+    store = FakeStore()
+    original_load_source = store.load_source
+
+    async def wrong_owner_source(job):
+        source = await original_load_source(job)
+        source["owner_id"] = "99999999-9999-4999-8999-999999999999"
+        return source
+
+    store.load_source = wrong_owner_source
+    policy = FakePolicyResolver()
+    worker = KnowledgeDocumentWorker(store=store, storage=FakeStorage(), policy_resolver=policy)
+
+    async def forbidden_download(path):
+        raise AssertionError("Storage download must not run for a source-owner mismatch")
+
+    worker.storage.download = forbidden_download
+    assert asyncio.run(worker.process_once()) is True
+    assert store.failures == [
+        ("KNOWLEDGE_STORAGE_PATH_IDENTITY_MISMATCH", "document_parse_failed", False, 0)
+    ]
+    assert policy.calls == []
+    assert store.batches == [] and store.completed == []
+
+
 def test_document_worker_rejects_storage_hash_mismatch_before_parser(monkeypatch):
     store=FakeStore()
     async def clean_scan(*args):raise AssertionError("malware scan must not run after hash mismatch")
