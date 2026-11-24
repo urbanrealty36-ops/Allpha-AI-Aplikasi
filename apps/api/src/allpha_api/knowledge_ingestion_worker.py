@@ -14,7 +14,7 @@ import httpx
 from fastapi import HTTPException
 
 from allpha_api.document_scanner import DocumentScannerConfigurationError, RemoteDocumentScanner
-from allpha_api.knowledge import _canonical_knowledge_storage_path, _chunk, _extract, _scan
+from allpha_api.knowledge import _canonical_knowledge_storage_path, _chunk, _extract, _local_scanner_identity_pins, _scan
 from allpha_api.knowledge_policy import KNOWLEDGE_INGESTION_PURPOSE, KnowledgePolicyDenied, KnowledgePolicyUnavailable, VersionedKnowledgePolicyResolver, load_policy_resolver_from_environment
 from allpha_api.knowledge_worker import SupabaseKnowledgeJobStore, WorkerConfigurationError
 from allpha_api.lease_heartbeat import run_with_lease_heartbeat
@@ -344,6 +344,10 @@ def build_worker_from_environment() -> KnowledgeDocumentWorker:
         except DocumentScannerConfigurationError as exc:
             raise SystemExit(f"Knowledge document worker disabled: invalid remote scanner configuration ({exc})") from exc
     if not scanner_url and scanner_mode == "clamd":
+        try:
+            _local_scanner_identity_pins()
+        except DocumentScannerConfigurationError as exc:
+            raise SystemExit(f"Knowledge document worker disabled: invalid local ClamAV identity pins ({exc})") from exc
         scanner = shutil.which("clamdscan")
         if not scanner:
             raise SystemExit("Knowledge document worker disabled: clamdscan binary is missing")
