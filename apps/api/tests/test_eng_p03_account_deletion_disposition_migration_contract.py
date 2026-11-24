@@ -57,6 +57,9 @@ GOVERNANCE_RETRY = MIGRATIONS / "20261123182248_eng_p03_governance_policy_gate_a
 AGENT_OWNERSHIP_TOMBSTONE = MIGRATIONS / "20261124005951_eng_p03_agent_ownership_tombstone_attribution.sql"
 API_SOURCE = Path(__file__).parents[1] / "src" / "allpha_api" / "stripe_billing_api.py"
 WORKER_SOURCE = Path(__file__).parents[1] / "src" / "allpha_api" / "account_lifecycle_worker.py"
+LIFECYCLE_API = Path(__file__).parents[1] / "src" / "allpha_api" / "account_lifecycle_api.py"
+WEB_LIFECYCLE = Path(__file__).parents[2] / "web" / "app" / "account" / "AccountDataLifecyclePanel.tsx"
+NATIVE_LIFECYCLE = Path(__file__).parents[2] / "client" / "components" / "AccountDataLifecycleScreen.tsx"
 
 
 def test_financial_fk_references_use_private_pseudonymous_identity_subjects():
@@ -236,3 +239,25 @@ def test_restored_executor_migration_excludes_supabase_history_wrapper():
     assert "track statements in history table" not in source
     assert "ytsndgxguckhfejqyxqw" not in source
     assert not source.rstrip().endswith("commit;")
+
+
+
+def test_export_before_deletion_contract_is_wired_across_api_web_native_and_worker():
+    migration = MIGRATIONS / "20261124015229_eng_p03_account_export_deletion_lifecycle.sql"
+    sql = " ".join(migration.read_text(encoding="utf-8").lower().split())
+    api = " ".join(LIFECYCLE_API.read_text(encoding="utf-8").lower().split())
+    web = " ".join(WEB_LIFECYCLE.read_text(encoding="utf-8").lower().split())
+    native = " ".join(NATIVE_LIFECYCLE.read_text(encoding="utf-8").lower().split())
+    worker = " ".join(WORKER_SOURCE.read_text(encoding="utf-8").lower().split())
+    assert "drop function if exists public.create_account_deletion_request_for_actor(uuid)" in sql
+    assert "create_account_deletion_request_for_actor(" in sql and "p_idempotency_key text" in sql
+    assert "private.account_deletion_export_gate" in sql
+    assert "account_export_download_confirmation_required" in sql
+    assert "public.confirm_account_deletion_export_download" in sql
+    assert '"p_idempotency_key": idempotency_key' in api
+    assert "confirm_account_deletion_export_download" in api
+    assert "/confirm-export-download" in web and "/confirm-export-download" in native
+    assert "claim_account_export_jobs" in worker
+    assert "complete_account_export_job" in worker
+    assert "claim_account_deletion_storage_jobs" in worker
+    assert "execute_account_deletion_execution_job" in worker
