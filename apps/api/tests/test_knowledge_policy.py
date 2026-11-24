@@ -172,3 +172,20 @@ def test_retrieval_policy_maps_verified_consent_denial_to_access_denied():
             await policy.allowed_sensitivities(owner_id="owner-a", agent_id="agent-a")
 
     asyncio.run(scenario())
+
+
+
+def test_versioned_retrieval_policy_returns_request_local_context_without_shared_cache():
+    from allpha_api.knowledge_policy import VersionedKnowledgeRetrievalPolicy
+
+    async def scenario():
+        policy = VersionedKnowledgeRetrievalPolicy(
+            VersionedKnowledgePolicyResolver(Provider(snapshot()))
+        )
+        first = await policy.resolve_context(owner_id="owner-a", agent_id="agent-a")
+        second = await policy.resolve_context(owner_id="owner-a", agent_id="agent-a")
+        assert first.policy_version == "knowledge-policy.v3"
+        assert second.consent_version == "knowledge-consent.v2"
+        assert not hasattr(policy, "last_resolved")
+
+    asyncio.run(scenario())

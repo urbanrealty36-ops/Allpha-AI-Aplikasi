@@ -179,7 +179,15 @@ async def retrieve_knowledge(
     try:
         if service.repository is None or not await service.repository.authorize_agent(owner_id=owner_id, agent_id=agent):
             raise KnowledgeAccessDenied("owner does not have active access to this agent")
-        allowed = await service.policy.allowed_sensitivities(owner_id=owner_id, agent_id=agent) if service.policy else None
+        resolve_context = getattr(service.policy, "resolve_context", None) if service.policy else None
+        resolved_policy = await resolve_context(owner_id=owner_id, agent_id=agent) if callable(resolve_context) else None
+        allowed = (
+            list(resolved_policy.allowed_sensitivities)
+            if resolved_policy is not None
+            else await service.policy.allowed_sensitivities(owner_id=owner_id, agent_id=agent)
+            if service.policy is not None
+            else None
+        )
         if not allowed or any(value not in {"public", "internal", "confidential", "restricted"} for value in allowed):
             raise KnowledgeRetrievalUnavailable("approved sensitivity policy is missing or invalid")
         trace_id = str(getattr(request.state, "request_id", "") or uuid.uuid4())
@@ -217,7 +225,6 @@ async def retrieve_knowledge(
             for hit in hits
         ],
     }
-    resolved_policy = getattr(service.policy, "last_resolved", None)
     if resolved_policy is not None:
         response["policy_version"] = resolved_policy.policy_version
         response["consent_version"] = resolved_policy.consent_version

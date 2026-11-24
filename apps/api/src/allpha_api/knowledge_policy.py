@@ -111,23 +111,27 @@ class VersionedKnowledgePolicyResolver:
 
 
 class VersionedKnowledgeRetrievalPolicy:
-    """Adapter implementing the retrieval service's policy interface."""
+    """Adapter that returns immutable request-local policy snapshots.
+
+    Never cache the last resolved policy on this shared object: concurrent retrievals
+    must not observe another request's consent or grant version.
+    """
 
     def __init__(self, resolver: VersionedKnowledgePolicyResolver):
         self._resolver = resolver
-        self.last_resolved: ResolvedKnowledgePolicy | None = None
 
-    async def allowed_sensitivities(self, *, owner_id: str, agent_id: str) -> list[str]:
+    async def resolve_context(self, *, owner_id: str, agent_id: str) -> ResolvedKnowledgePolicy:
         try:
-            resolved = await self._resolver.resolve(owner_id=owner_id, agent_id=agent_id)
+            return await self._resolver.resolve(owner_id=owner_id, agent_id=agent_id)
         except KnowledgePolicyDenied as exc:
             from allpha_api.knowledge_retrieval import KnowledgeAccessDenied
             raise KnowledgeAccessDenied("knowledge consent or access grant is not active") from exc
         except KnowledgePolicyUnavailable as exc:
-            # Translate policy failure into the retrieval API's stable fail-closed error.
             from allpha_api.knowledge_retrieval import KnowledgeRetrievalUnavailable
             raise KnowledgeRetrievalUnavailable("knowledge policy is unavailable or revoked") from exc
-        self.last_resolved = resolved
+
+    async def allowed_sensitivities(self, *, owner_id: str, agent_id: str) -> list[str]:
+        resolved = await self.resolve_context(owner_id=owner_id, agent_id=agent_id)
         return list(resolved.allowed_sensitivities)
 
 

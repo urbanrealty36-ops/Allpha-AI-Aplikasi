@@ -368,7 +368,13 @@ async def _retrieve_agent_knowledge_context(
         return [], [], empty_digest, "not_configured"
     if service.policy is None:
         raise KnowledgeRetrievalUnavailable("Knowledge policy provider is not configured")
-    allowed = await service.policy.allowed_sensitivities(owner_id=owner_id, agent_id=agent_id)
+    resolve_context = getattr(service.policy, "resolve_context", None)
+    resolved_policy = await resolve_context(owner_id=owner_id, agent_id=agent_id) if callable(resolve_context) else None
+    allowed = (
+        list(resolved_policy.allowed_sensitivities)
+        if resolved_policy is not None
+        else await service.policy.allowed_sensitivities(owner_id=owner_id, agent_id=agent_id)
+    )
     if not allowed or any(value not in {"public", "internal", "confidential", "restricted"} for value in allowed):
         raise KnowledgeRetrievalUnavailable("Knowledge sensitivity policy is missing or invalid")
     hits = await service.retrieve(RetrievalRequest(
