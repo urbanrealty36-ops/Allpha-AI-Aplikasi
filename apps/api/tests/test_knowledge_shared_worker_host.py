@@ -141,3 +141,25 @@ def test_knowledge_document_scanner_uses_same_socket_config_as_readiness_probe()
     assert "timeout 3s gosu worker clamdscan" in entrypoint
     assert "seq 1 30" in entrypoint
     assert '"--fdpass"' not in source
+
+
+
+def test_shared_worker_does_not_start_memory_heavy_clamav_without_explicit_resource_gate():
+    script = (
+        Path(__file__).resolve().parents[1]
+        / "docker" / "shared-worker-entrypoint.sh"
+    ).read_text(encoding="utf-8")
+    assert 'CLAMAV_ENABLED="${ALLPHA_CLAMAV_ENABLED:-false}"' in script
+    assert 'if [ "$SCANNER_MODE" != "clamd" ] || [ "$CLAMAV_ENABLED" != "true" ]; then' in script
+    assert "configure the authenticated remote scanner" in script
+    assert "export ALLPHA_KNOWLEDGE_DOCUMENT_WORKER_ENABLED=false" in script
+
+
+def test_remote_scanner_configuration_skips_local_clamav_bootstrap():
+    script = (
+        Path(__file__).resolve().parents[1]
+        / "docker" / "shared-worker-entrypoint.sh"
+    ).read_text(encoding="utf-8")
+    assert 'if [ "$KNOWLEDGE_ENABLED" = "true" ] && [ -z "$SCANNER_URL" ]; then' in script
+    assert "ALLPHA_DOCUMENT_SCANNER_API_KEY" not in script
+    assert "ALLPHA_DOCUMENT_SCANNER_ALLOWED_HOSTS" not in script
