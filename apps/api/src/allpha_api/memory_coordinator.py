@@ -100,7 +100,7 @@ class MemoryCoordinator:
         if len(str(source_ref).encode())>4096 or len(str(provenance).encode())>4096 or (confidence is not None and not 0<=confidence<=1):
             raise MemoryDenied("Memory provenance or confidence is invalid")
         if agent_id:
-            owned=await self.db("GET","agent_ownerships",params={"select":"agent_id","owner_user_id":f"eq.{owner_id}","agent_id":f"eq.{agent_id}","status":"eq.active","limit":"1"})
+            owned=await self.db("GET","agent_ownerships",params={"select":"agent_id","owner_user_id":f"eq.{owner_id}","agent_id":f"eq.{agent_id}","ownership_role":"eq.owner","status":"eq.active","limit":"1"})
             if not owned: raise MemoryDenied("Agent ownership is no longer active")
         policy=next((p for p in await self.policies(owner_id,agent_id) if p["memory_type"]==memory_type),None)
         if not policy or not policy["enabled"] or policy.get("consent_version")!=CONSENT_VERSION or policy.get("consent_revoked_at"):
@@ -123,6 +123,13 @@ class MemoryCoordinator:
         """Create a pending proposal only when the owner explicitly asks to remember content."""
         if os.getenv("ALLPHA_MEMORY_COORDINATOR_ENABLED","false").lower()!="true":
             return None
+        if agent_id:
+            owned = await self.db("GET","agent_ownerships",params={
+                "select":"agent_id","owner_user_id":f"eq.{owner_id}",
+                "agent_id":f"eq.{agent_id}","ownership_role":"eq.owner","status":"eq.active","limit":"1",
+            })
+            if not owned:
+                raise MemoryDenied("Agent ownership is no longer active")
         if purpose not in {"agent_runtime_context","agent_generation_context"}:
             return None
         source=str(text or "").strip()
@@ -213,7 +220,7 @@ class MemoryCoordinator:
         if max_sensitivity is not None and max_sensitivity not in SENSITIVITIES:return []
         if not isinstance(max_chars,int) or isinstance(max_chars,bool) or max_chars<1:return []
         max_chars=min(max_chars,12000)
-        ownership=await self.db("GET","agent_ownerships",params={"select":"agent_id","owner_user_id":f"eq.{owner_id}","agent_id":f"eq.{agent_id}","status":"eq.active","limit":"1"})
+        ownership=await self.db("GET","agent_ownerships",params={"select":"agent_id","owner_user_id":f"eq.{owner_id}","agent_id":f"eq.{agent_id}","ownership_role":"eq.owner","status":"eq.active","limit":"1"})
         if not ownership:return []
         policies=await self.policies(owner_id,agent_id)
         enabled=[p for p in policies if p["enabled"] and not p.get("consent_revoked_at")
