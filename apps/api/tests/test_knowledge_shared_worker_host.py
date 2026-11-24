@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 import pytest
 
@@ -76,3 +77,17 @@ def test_one_consumer_startup_failure_does_not_cancel_sibling_consumers():
         assert sibling_finished.is_set()
 
     asyncio.run(scenario())
+
+
+
+def test_shared_worker_entrypoint_disables_only_knowledge_when_clamav_is_unavailable():
+    script = (
+        Path(__file__).resolve().parents[1]
+        / "docker" / "shared-worker-entrypoint.sh"
+    ).read_text(encoding="utf-8")
+    start = script.index('if [ "$READY" -ne 1 ]')
+    end = script.index("    fi", start) + len("    fi")
+    failure_branch = script[start:end]
+    assert "Knowledge document consumer disabled" in failure_branch
+    assert "export ALLPHA_KNOWLEDGE_DOCUMENT_WORKER_ENABLED=false" in failure_branch
+    assert "exit 1" not in failure_branch
