@@ -6,10 +6,18 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     ALLPHA_AGENT_RUNTIME_WORKER_ENABLED=false
 
 WORKDIR /app
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends clamav clamav-daemon gosu ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --system --uid 10001 --create-home --groups clamav worker \
+    && mkdir -p /run/clamav \
+    && chown clamav:clamav /run/clamav /var/lib/clamav \
+    && chmod 0770 /run/clamav
 COPY pyproject.toml ./
 COPY src ./src
+COPY docker/shared-worker-entrypoint.sh /usr/local/bin/shared-worker-entrypoint
 RUN pip install --no-cache-dir . \
-    && useradd --system --uid 10001 --create-home worker
-USER 10001:10001
+    && chmod 0755 /usr/local/bin/shared-worker-entrypoint
 
+ENTRYPOINT ["/usr/local/bin/shared-worker-entrypoint"]
 CMD ["allpha-agent-runtime-worker"]
