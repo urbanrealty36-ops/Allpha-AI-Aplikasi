@@ -285,6 +285,9 @@ async def serve_enabled(*, stop_event: asyncio.Event) -> None:
 
 def main() -> None:
     logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
+    if not enabled():
+        log.info("Knowledge document consumer disabled; no jobs will be claimed")
+        return
     worker = build_worker_from_environment()
     asyncio.run(run_forever(worker, poll_seconds=float(os.getenv("KNOWLEDGE_DOCUMENT_POLL_SECONDS", "2"))))
 

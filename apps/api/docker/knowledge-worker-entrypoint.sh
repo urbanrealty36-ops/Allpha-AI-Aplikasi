@@ -1,6 +1,19 @@
 #!/bin/sh
 set -eu
 
+WORKER_ENABLED="$(printf '%s' "${ALLPHA_KNOWLEDGE_DOCUMENT_WORKER_ENABLED:-false}" | tr '[:upper:]' '[:lower:]')"
+case "$WORKER_ENABLED" in
+  true) ;;
+  false)
+    echo "Knowledge document consumer disabled; ClamAV bootstrap and job claims are skipped"
+    exec sleep infinity
+    ;;
+  *)
+    echo "ALLPHA_KNOWLEDGE_DOCUMENT_WORKER_ENABLED must be true or false" >&2
+    exit 1
+    ;;
+esac
+
 mkdir -p /run/clamav
 chown clamav:clamav /run/clamav /var/lib/clamav
 chmod 0770 /run/clamav

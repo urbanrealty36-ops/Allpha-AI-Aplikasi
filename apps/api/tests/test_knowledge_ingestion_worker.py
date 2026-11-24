@@ -3,7 +3,7 @@ import hashlib
 
 from fastapi import HTTPException
 
-from allpha_api.knowledge_ingestion_worker import KnowledgeDocumentWorker
+from allpha_api.knowledge_ingestion_worker import KnowledgeDocumentWorker, main
 from knowledge_worker_fakes import DATA, FakeStorage, FakeStore
 
 
@@ -72,3 +72,16 @@ def test_document_worker_abandons_source_transition_when_job_lease_is_lost(monke
     assert store.failures == []
     assert store.batches == []
     assert store.completed == []
+
+
+def test_document_worker_entrypoint_respects_disabled_consumer_flag(monkeypatch):
+    monkeypatch.setenv("ALLPHA_KNOWLEDGE_DOCUMENT_WORKER_ENABLED", "false")
+
+    def fail_if_built():
+        raise AssertionError("disabled Knowledge consumer must not build or poll the worker")
+
+    monkeypatch.setattr(
+        "allpha_api.knowledge_ingestion_worker.build_worker_from_environment",
+        fail_if_built,
+    )
+    main()
