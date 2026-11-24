@@ -9,6 +9,7 @@ from __future__ import annotations
 import importlib
 import os
 import uuid
+from datetime import datetime, timezone
 from dataclasses import dataclass
 from typing import Callable, Protocol
 
@@ -39,7 +40,9 @@ class KnowledgePolicySnapshot:
     decision_reference: str
     knowledge_consent_granted: bool
     consent_version: str
+    consent_expires_at: str | None
     consent_revoked: bool
+    grant_expires_at: str | None
     allowed_purposes: tuple[str, ...]
     grants_active: bool
     resolved_at_version: str
@@ -60,6 +63,8 @@ class KnowledgePolicySnapshotProvider(Protocol):
 class ResolvedKnowledgePolicy:
     policy_version: str
     consent_version: str
+    consent_expires_at: str | None
+    grant_expires_at: str | None
     allowed_sensitivities: tuple[str, ...]
     allowed_source_ids: tuple[str, ...]
     audience: str
@@ -68,6 +73,20 @@ class ResolvedKnowledgePolicy:
     tenant_id: str | None = None
     session_id: str | None = None
     purpose: str = RETRIEVAL_PURPOSE
+
+
+def _validate_expiry(value: str | None, label: str) -> datetime | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise KnowledgePolicyUnavailable(f"knowledge {label} expiry is invalid")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise KnowledgePolicyUnavailable(f"knowledge {label} expiry is invalid") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise KnowledgePolicyUnavailable(f"knowledge {label} expiry must include a timezone")
+    return parsed.astimezone(timezone.utc)
 
 
 class VersionedKnowledgePolicyResolver:
@@ -148,8 +167,16 @@ class VersionedKnowledgePolicyResolver:
             or type(snapshot.grants_active) is not bool
         ):
             raise KnowledgePolicyUnavailable("knowledge consent or grant state is invalid")
-        if not snapshot.knowledge_consent_granted or snapshot.consent_revoked or not snapshot.grants_active:
-            raise KnowledgePolicyDenied("knowledge consent or access grant is not active")
+        now = datetime.now(timezone.utc)
+        consent_expiry = _validate_expiry(snapshot.consent_expires_at, "consent")
+        grant_expiry = _validate_expiry(snapshot.grant_expires_at, "source-grant")
+        if (
+            not snapshot.knowledge_consent_granted or snapshot.consent_revoked
+            or not snapshot.grants_active
+            or (consent_expiry is not None and consent_expiry <= now)
+            or (grant_expiry is not None and grant_expiry <= now)
+        ):
+            raise KnowledgePolicyDenied("knowledge consent or source grant is inactive, expired or revoked")
         if (
             not isinstance(snapshot.allowed_purposes, (tuple, list))
             or any(not isinstance(value, str) for value in snapshot.allowed_purposes)
@@ -186,6 +213,8 @@ class VersionedKnowledgePolicyResolver:
         return ResolvedKnowledgePolicy(
             policy_version=snapshot.policy_version,
             consent_version=snapshot.consent_version,
+            consent_expires_at=snapshot.consent_expires_at,
+            grant_expires_at=snapshot.grant_expires_at,
             allowed_sensitivities=sensitivities,
             allowed_source_ids=tuple(source_ids),
             audience=snapshot.audience,
