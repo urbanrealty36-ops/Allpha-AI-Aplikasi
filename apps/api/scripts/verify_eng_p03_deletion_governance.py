@@ -88,24 +88,6 @@ create table public.account_export_jobs(
  created_at timestamptz not null default now(),updated_at timestamptz not null default now(),
  unique(user_id,idempotency_key)
 );
-create table public.ai_agents(id uuid primary key, handle text unique, display_name text);
-create table public.agent_ownerships(
- agent_id uuid not null references public.ai_agents(id) on delete cascade,
- owner_user_id uuid not null constraint agent_ownerships_owner_user_id_fkey references auth.users(id) on delete restrict,
- ownership_role text not null default 'owner',status text not null default 'active',
- created_at timestamptz not null default now(),primary key(agent_id,owner_user_id)
-);
-create table public.organizations(
- id uuid primary key,slug text unique,name text not null,
- owner_id uuid not null constraint organizations_owner_id_fkey references auth.users(id) on delete restrict,
- created_at timestamptz not null default now(),updated_at timestamptz not null default now()
-);
-create table public.organization_memberships(
- organization_id uuid not null references public.organizations(id) on delete cascade,
- user_id uuid not null constraint organization_memberships_user_id_fkey references auth.users(id) on delete cascade,
- role text not null default 'member',created_at timestamptz not null default now(),
- primary key(organization_id,user_id)
-);
 create table public.agent_knowledge_sources(owner_id uuid,storage_path text);
 create table public.content_media(owner_id uuid,bucket_id text,storage_path text,derivatives jsonb);
 create table public.generation_artifacts(owner_user_id uuid,storage_bucket text,storage_path text);
@@ -311,7 +293,22 @@ end $$;
         # Exercise the specialized source handlers in an isolated PostgreSQL database.
         psql("""
 grant usage on schema private to service_role;
-create table public.agent_ownerships(agent_id uuid,owner_user_id uuid,ownership_role text,status text);
+create table public.ai_agents(id uuid primary key,handle text unique,display_name text);
+create table public.agent_ownerships(
+ agent_id uuid not null constraint agent_ownerships_agent_id_fkey references public.ai_agents(id) on delete cascade,
+ owner_user_id uuid not null constraint agent_ownerships_owner_user_id_fkey references auth.users(id) on delete restrict,
+ ownership_role text not null,status text not null,primary key(agent_id,owner_user_id)
+);
+create table public.organizations(
+ id uuid primary key,slug text unique,name text not null,
+ owner_id uuid not null constraint organizations_owner_id_fkey references auth.users(id) on delete restrict,
+ created_at timestamptz not null default now(),updated_at timestamptz not null default now()
+);
+create table public.organization_memberships(
+ organization_id uuid not null references public.organizations(id) on delete cascade,
+ user_id uuid not null constraint organization_memberships_user_id_fkey references auth.users(id) on delete cascade,
+ role text not null default 'member',primary key(organization_id,user_id)
+);
 create table public.agent_skills(id uuid primary key,agent_id uuid,created_by uuid);
 create table public.agent_runtime_tasks(id uuid primary key,owner_user_id uuid);
 create table public.agent_runtime_checkpoints(id uuid primary key,task_id uuid);
@@ -358,6 +355,8 @@ begin
 end {dollar_quote};
 """)
         psql(f"""
+insert into public.ai_agents(id,handle,display_name) values
+ ('{A}','agent-a','Agent A'),('{B}','agent-b','Agent B'),('{C}','agent-c','Agent C'),('{D}','agent-d','Agent D'),('{E}','agent-e','Agent E');
 insert into public.agent_ownerships values
  ('{A}','{A}','owner','active'),('{B}','{B}','owner','active'),('{C}','{A}','operator','active'),
  ('{D}','{A}','owner','inactive');
