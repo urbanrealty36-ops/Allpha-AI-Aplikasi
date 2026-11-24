@@ -9,6 +9,7 @@ type ExportJob = {
   progress_percent?: number;
   progress_stage?: string;
   expires_at?: string | null;
+  download_confirmed_at?: string | null;
   completed_at?: string | null;
   error_code?: string | null;
   file_size_bytes?: number | null;
@@ -158,6 +159,19 @@ export default function AccountDataLifecyclePanel({ apiBase, accessToken }: Prop
     } finally { setBusy(false); }
   }
 
+  async function confirmExportDownload(requestId: string) {
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const payload = await request("/v1/me/deletion-requests/" + encodeURIComponent(requestId) + "/confirm-export-download", {
+        method: "POST",
+      });
+      setMessage(payload?.message ?? "Konfirmasi unduhan tersimpan.");
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Konfirmasi unduhan arsip gagal.");
+    } finally { setBusy(false); }
+  }
+
   async function createOwnershipTransfer(requestId: string) {
     setBusy(true); setError(""); setMessage("");
     try {
@@ -244,7 +258,7 @@ export default function AccountDataLifecyclePanel({ apiBase, accessToken }: Prop
 
       <section className="social-interests" aria-labelledby="account-deletion-title">
         <h3 id="account-deletion-title">Permintaan penghapusan akun</h3>
-        <p className="muted">Arsip ekspor dibuat lebih dahulu. Penghapusan menunggu ekspor selesai, masa retensi artefak ekspor berakhir, kebijakan retensi data, legal hold, dan seluruh dependency.</p>
+        <p className="muted">Arsip ekspor dibuat lebih dahulu. Unduh arsip lalu konfirmasikan sebelum penghapusan dilanjutkan; retensi data, legal hold, dan seluruh dependency tetap menjadi gate.</p>
         {deletions.length > 0 && (
           <div className="consent-history-list">
             {deletions.map((item) => (
@@ -254,9 +268,11 @@ export default function AccountDataLifecyclePanel({ apiBase, accessToken }: Prop
                   <p className="muted">Diminta: {new Date(item.requested_at).toLocaleString("id-ID")}</p>
                   {item.policy_version && <small className="muted">Kebijakan: {item.policy_version}</small>}
                   {item.export_job_id && <small className="muted">Export job: {statusLabel(exports.find((job) => job.id === item.export_job_id)?.status ?? "queued")} · {item.export_job_id}</small>}
+                  {item.export_job_id && exports.find((job) => job.id === item.export_job_id)?.download_confirmed_at && <small className="muted">Unduhan arsip dikonfirmasi</small>}
+                  {item.export_job_id && exports.find((job) => job.id === item.export_job_id)?.status === "succeeded" && !exports.find((job) => job.id === item.export_job_id)?.download_confirmed_at && <button type="button" className="button-quiet" disabled={busy} onClick={() => void confirmExportDownload(item.id)}>Saya sudah mengunduh arsip — lanjutkan</button>}
                   {item.error_code && <small className="notice error">{item.error_code}</small>}
                 </div>
-                {item.status === "awaiting_policy" && <button type="button" className="button-quiet" disabled={busy} onClick={() => void cancelDeletion(item.id)}>Batalkan</button>}
+                {["awaiting_policy", "scheduled", "blocked_legal_hold", "blocked_dependency"].includes(item.status) && <button type="button" className="button-quiet" disabled={busy} onClick={() => void cancelDeletion(item.id)}>Batalkan</button>}
               </article>
             ))}
           </div>
