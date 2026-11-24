@@ -1,6 +1,7 @@
 """Canonical authenticated content creation and private media pipeline (ENG-P13)."""
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import uuid
@@ -431,9 +432,9 @@ async def complete_resumable_media_upload(
             f"{media['bucket_id']}/{media['storage_path']}",
         )
     except HTTPException as exc:
-        raise HTTPException(409, detail={
-            "code": "MEDIA_UPLOAD_INCOMPLETE",
-            "message": "Objek Storage belum tersedia; lanjutkan unggah lalu coba konfirmasi kembali.",
+        raise HTTPException(503, detail={
+            "code": "MEDIA_UPLOAD_VERIFICATION_UNAVAILABLE",
+            "message": "Storage belum dapat diverifikasi; sesi tetap aman dan dapat dikonfirmasi ulang.",
         }) from exc
     data = stored.content
     if len(data) != int(media["size_bytes"]):
@@ -441,7 +442,6 @@ async def complete_resumable_media_upload(
             "code": "MEDIA_UPLOAD_SIZE_MISMATCH",
             "message": "Ukuran objek Storage belum sesuai dengan reservasi unggah.",
         })
-    import hashlib
     if hashlib.sha256(data).hexdigest() != media["sha256"]:
         raise HTTPException(422, detail={
             "code": "MEDIA_UPLOAD_HASH_MISMATCH",
@@ -458,19 +458,22 @@ async def complete_resumable_media_upload(
         else "audio" if str(media["media_type"]).startswith("audio/")
         else "image"
     )
-    updated_content = await _server_db("PATCH", "content_items", params={
-        "id": f"eq.{content_id}", "owner_id": f"eq.{user['id']}",
-        "status": "in.(draft,failed)", "version": f"eq.{int(content.get('version') or 1)}",
-        "select": CONTENT_FIELDS,
-    }, body={
-        "status": "draft", "content_type": content_type,
-        "version": int(content.get("version") or 1) + 1,
-    }, prefer="return=representation")
-    if not updated_content:
-        raise HTTPException(409, detail={
-            "code": "CONTENT_UPLOAD_CONFLICT",
-            "message": "Draft berubah saat unggah selesai; muat ulang sebelum konfirmasi.",
-        })
+    if content.get("status") == "draft" and content.get("content_type") == content_type:
+        updated_content = [content]
+    else:
+        updated_content = await _server_db("PATCH", "content_items", params={
+            "id": f"eq.{content_id}", "owner_id": f"eq.{user['id']}",
+            "status": "in.(draft,failed)", "version": f"eq.{int(content.get('version') or 1)}",
+            "select": CONTENT_FIELDS,
+        }, body={
+            "status": "draft", "content_type": content_type,
+            "version": int(content.get("version") or 1) + 1,
+        }, prefer="return=representation")
+        if not updated_content:
+            raise HTTPException(409, detail={
+                "code": "CONTENT_UPLOAD_CONFLICT",
+                "message": "Draft berubah saat unggah selesai; muat ulang sebelum konfirmasi.",
+            })
     updated_media = await _server_db("PATCH", "content_media", params={
         "id": f"eq.{media_id}", "owner_id": f"eq.{user['id']}",
         "status": "eq.uploading", "select": MEDIA_FIELDS,
