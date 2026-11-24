@@ -52,7 +52,7 @@ class ResumableMediaInit(BaseModel):
     filename: str = Field(min_length=1, max_length=120)
     media_type: str = Field(min_length=1, max_length=80)
     size_bytes: int = Field(gt=0, le=VIDEO_LIMIT)
-    sha256: str = Field(pattern="^[0-9a-f]{64}$")
+    sha256: str | None = Field(default=None, pattern="^[0-9a-f]{64}$")
 
 
 class ContentUpdate(BaseModel):
@@ -231,6 +231,15 @@ async def list_content_versions(content_id: uuid.UUID, request: Request, user: d
     return {"items": rows or [], "limit": 50}
 
 
+def _resumable_upload_fingerprint(
+    owner_id: str, content_id: str, media_id: str, filename: str, media_type: str, size_bytes: int,
+) -> str:
+    # Temporary reservation fingerprint only; complete() replaces it with the
+    # server-computed SHA-256 before status becomes uploaded.
+    value = "|".join(("allpha-resumable-v1", owner_id, content_id, media_id, filename, media_type, str(size_bytes)))
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
 async def _create_resumable_upload_token(storage_path: str) -> tuple[str, str]:
     base, key = _config()
     signed_path = (
@@ -338,25 +347,33 @@ async def init_resumable_media_upload(
         "owner_id": f"eq.{user['id']}", "limit": "1",
     })
     prior = existing[0] if existing else None
+    reservation_fingerprint = _resumable_upload_fingerprint(
+        str(user["id"]), str(content_id), media_id, safe_name, media_type, payload.size_bytes,
+    )
     if prior:
         if (
             str(prior.get("content_id")) != str(content_id)
-            or prior.get("sha256") != payload.sha256
             or prior.get("media_type") != media_type
             or int(prior.get("size_bytes") or 0) != payload.size_bytes
             or prior.get("filename") != safe_name
+            or (payload.sha256 is not None and prior.get("sha256") not in (payload.sha256, reservation_fingerprint))
         ):
             raise HTTPException(409, detail={
                 "code": "MEDIA_IDEMPOTENCY_KEY_REUSED",
                 "message": "Idempotency-Key sudah terikat ke file yang berbeda.",
             })
         if prior.get("status") in ("uploaded", "processing", "ready"):
+            if payload.sha256 is not None and prior.get("sha256") != payload.sha256:
+                raise HTTPException(409, detail={
+                    "code": "MEDIA_IDEMPOTENCY_KEY_REUSED",
+                    "message": "Idempotency-Key sudah selesai untuk fingerprint file yang berbeda.",
+                })
             return {"item": prior, "already_uploaded": True}
         if prior.get("status") == "failed":
             reset = await _server_db("PATCH", "content_media", params={
                 "id": f"eq.{media_id}", "owner_id": f"eq.{user['id']}",
                 "status": "eq.failed", "select": MEDIA_FIELDS,
-            }, body={"status": "uploading"}, prefer="return=representation")
+            }, body={"status": "uploading", "sha256": payload.sha256 or reservation_fingerprint}, prefer="return=representation")
             if not reset:
                 raise HTTPException(409, detail={
                     "code": "MEDIA_UPLOAD_STATE_CONFLICT",
@@ -374,7 +391,7 @@ async def init_resumable_media_upload(
             "id": media_id, "content_id": str(content_id), "owner_id": user["id"],
             "bucket_id": "content-media", "storage_path": storage_path,
             "filename": safe_name, "media_type": media_type,
-            "size_bytes": payload.size_bytes, "sha256": payload.sha256,
+            "size_bytes": payload.size_bytes, "sha256": payload.sha256 or reservation_fingerprint,
             "status": "uploading",
         }, prefer="return=representation")
         if not reserved:
@@ -443,10 +460,15 @@ async def complete_resumable_media_upload(
             "code": "MEDIA_UPLOAD_SIZE_MISMATCH",
             "message": "Ukuran objek Storage belum sesuai dengan reservasi unggah.",
         })
-    if hashlib.sha256(data).hexdigest() != media["sha256"]:
+    actual_sha256 = hashlib.sha256(data).hexdigest()
+    reservation_fingerprint = _resumable_upload_fingerprint(
+        str(user["id"]), str(content_id), str(media_id), str(media["filename"]),
+        str(media["media_type"]), int(media["size_bytes"]),
+    )
+    if media["sha256"] != reservation_fingerprint and actual_sha256 != media["sha256"]:
         raise HTTPException(422, detail={
             "code": "MEDIA_UPLOAD_HASH_MISMATCH",
-            "message": "Hash objek Storage tidak sesuai dengan fingerprint unggah.",
+            "message": "Hash objek Storage tidak sesuai dengan fingerprint SHA-256 yang dikirim.",
         })
     if not _media_signature_valid(str(media["media_type"]), data[:32]):
         raise HTTPException(422, detail={
@@ -478,7 +500,7 @@ async def complete_resumable_media_upload(
     updated_media = await _server_db("PATCH", "content_media", params={
         "id": f"eq.{media_id}", "owner_id": f"eq.{user['id']}",
         "status": "eq.uploading", "select": MEDIA_FIELDS,
-    }, body={"status": "uploaded"}, prefer="return=representation")
+    }, body={"status": "uploaded", "sha256": actual_sha256}, prefer="return=representation")
     if not updated_media:
         latest = await _server_db("GET", "content_media", params={
             "select": MEDIA_FIELDS, "id": f"eq.{media_id}",
