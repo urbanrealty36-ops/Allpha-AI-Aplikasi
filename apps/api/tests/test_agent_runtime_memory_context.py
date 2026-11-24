@@ -7,7 +7,7 @@ from fastapi import HTTPException
 
 from allpha_api.agent_runtime_api import (
     _knowledge_context_snapshot, _memory_context_snapshot,
-    _validate_knowledge_context_provenance,
+    _validate_knowledge_context_provenance, _revalidate_knowledge_context_sources,
     _retrieve_agent_knowledge_context,
 )
 from allpha_api.knowledge_retrieval import KnowledgeRetrievalService, RetrievalHit
@@ -271,3 +271,38 @@ def test_task_knowledge_provenance_validator_accepts_not_configured_empty_state(
     assert refs == []
     assert digest == empty_digest
     assert state == "not_configured"
+
+
+
+def test_task_creation_rejects_stale_knowledge_source_version(monkeypatch):
+    hit = knowledge_hit()
+    _, refs, _ = _knowledge_context_snapshot([hit])
+
+    async def fake_user_db_request(method, path, access_token, *, params=None, body=None, prefer=None):
+        assert access_token == "user-token"
+        if path == "agent_knowledge_sources":
+            return [{
+                "id": refs[0]["source_id"], "owner_id": "owner-a", "agent_id": "agent-a",
+                "source_version": 5, "status": "ready", "sensitivity": "internal",
+            }]
+        if path == "agent_knowledge_chunks":
+            return [{
+                "id": refs[0]["chunk_id"], "source_id": refs[0]["source_id"],
+                "owner_id": "owner-a", "agent_id": "agent-a",
+                "source_version": 4, "content_sha256": refs[0]["content_sha256"],
+            }]
+        raise AssertionError(f"unexpected path {path}")
+
+    monkeypatch.setattr("allpha_api.agent_runtime_api.user_db_request", fake_user_db_request)
+
+    async def scenario():
+        request = SimpleNamespace(state=SimpleNamespace(supabase_access_token="user-token"))
+        from fastapi import HTTPException
+        with pytest.raises(HTTPException) as exc:
+            await _revalidate_knowledge_context_sources(
+                request, owner_id="owner-a", agent_id="agent-a", refs=refs,
+            )
+        assert exc.value.status_code == 409
+        assert exc.value.detail["code"] == "TOOL_PLAN_KNOWLEDGE_SNAPSHOT_STALE"
+
+    asyncio.run(scenario())
