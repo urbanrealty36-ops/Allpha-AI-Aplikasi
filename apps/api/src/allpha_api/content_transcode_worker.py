@@ -4,6 +4,8 @@ import asyncio, hashlib, logging, os, signal, time, uuid, socket, struct
 from urllib.parse import quote
 import httpx
 
+from allpha_api.media_scanner import local_scanner_identity_pins, scan_media_bytes
+
 log=logging.getLogger("allpha.content_transcode_worker")
 
 class TranscodeWorker:
@@ -25,12 +27,7 @@ class TranscodeWorker:
   if prefer:h["Prefer"]=prefer
   r=await self.client.request(method,f"{self.base}/rest/v1/{path}",params=params,json=body,headers=h);r.raise_for_status();return r.json() if r.content else None
  def scan(self,data):
-  with socket.create_connection((self.clamav_host,self.clamav_port),timeout=10) as sock:
-   sock.settimeout(60);sock.sendall(b"zINSTREAM\0")
-   for offset in range(0,len(data),64*1024):
-    chunk=data[offset:offset+64*1024];sock.sendall(struct.pack("!I",len(chunk))+chunk)
-   sock.sendall(struct.pack("!I",0));result=sock.recv(4096).decode("utf-8","replace")
-  if not result.strip().endswith("OK") or "FOUND" in result or "ERROR" in result:raise ValueError("MEDIA_SCAN_NOT_CLEAN")
+  return scan_media_bytes(data,self.clamav_host,self.clamav_port)
  async def run_job(self,job):
   jid=str(job["id"]);token=str(job["lease_token"]);mid=str(job["media_id"]);p=job.get("payload") or {}
   try:
@@ -86,6 +83,8 @@ def enabled():
  if raw!="true":return False
  if os.getenv("ALLPHA_CLAMAV_ENABLED","false").strip().lower()!="true":
   raise SystemExit("Content transcode worker requires ALLPHA_CLAMAV_ENABLED=true")
+ try:local_scanner_identity_pins()
+ except RuntimeError as exc:raise SystemExit("Content transcode worker requires pinned ClamAV engine/signature identity") from exc
  required=("SUPABASE_URL","CLAMAV_HOST","CLOUDINARY_CLOUD_NAME","CLOUDINARY_API_KEY","CLOUDINARY_API_SECRET","ALLPHA_CLOUDINARY_CALLBACK_URL")
  missing=[name for name in required if not os.getenv(name)]
  if not (os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SECRET_KEY")):
