@@ -236,7 +236,7 @@ async def execute_agent_task_node(step: dict[str, Any], run: dict[str, Any], own
     if not occurrences:
         raise WorkflowNodeError("schedule occurrence is not owned by workflow owner")
     occurrence = occurrences[0]
-    if (schedule.get("require_approval") and not occurrence.get("approved_at")) or occurrence.get("status") not in {"claimed", "running"}:
+    if (schedule.get("require_approval") and not occurrence.get("approved_at")) or occurrence.get("status") not in {"claimed", "running", "outcome_unknown", "waiting_for_approval"}:
         raise WorkflowNodeError("schedule occurrence has not passed the owner approval gate")
     runtime_task_id = occurrence.get("runtime_task_id")
     try:
@@ -288,6 +288,16 @@ async def execute_agent_task_node(step: dict[str, Any], run: dict[str, Any], own
             "id": f"eq.{schedule_id}", "owner_user_id": f"eq.{owner_id}",
         }, body={"last_runtime_task_id": str(runtime_task_id), "last_run_at": datetime.now(timezone.utc).isoformat(),
                  "updated_at": datetime.now(timezone.utc).isoformat()}, prefer="return=representation")
+        if state in {"waiting_for_approval", "waiting_for_input"}:
+            raise WorkflowApprovalRequired(
+                "Agent Runtime requires its own owner approval/input before this Workflow step can continue.",
+                {
+                    "schedule_run_id": schedule_run_id,
+                    "runtime_task_id": str(runtime_task_id),
+                    "runtime_state": state,
+                    "approval_surface": "agent_runtime",
+                },
+            )
         if state != "succeeded":
             raise WorkflowNodeError(f"Agent Runtime ended in state {state or 'unknown'}")
         return {
@@ -296,13 +306,17 @@ async def execute_agent_task_node(step: dict[str, Any], run: dict[str, Any], own
             "checkpoint": {"node_key": step.get("node_key"), "schedule_run_id": schedule_run_id,
                            "runtime_task_id": str(runtime_task_id), "runtime_state": state},
         }
+    except WorkflowApprovalRequired:
+        raise
+    except WorkflowOutcomeUnknown:
+        raise
     except WorkflowNodeError as exc:
         try:
             latest = await runtime_store.request("GET", "agent_task_schedule_runs", params={
                 "select": "status", "id": f"eq.{schedule_run_id}", "schedule_id": f"eq.{schedule_id}",
                 "owner_user_id": f"eq.{owner_id}", "limit": "1",
             })
-            if latest and latest[0].get("status") in {"claimed", "running"}:
+            if latest and latest[0].get("status") in {"claimed", "running", "outcome_unknown", "waiting_for_approval"}:
                 await runtime_store.request("PATCH", "agent_task_schedule_runs", params={
                     "id": f"eq.{schedule_run_id}", "schedule_id": f"eq.{schedule_id}",
                     "owner_user_id": f"eq.{owner_id}",
@@ -320,7 +334,9 @@ async def execute_agent_task_node(step: dict[str, Any], run: dict[str, Any], own
                 prefer="return=representation")
         except Exception:
             pass
-        raise WorkflowNodeError("Agent Runtime outcome is unknown; automatic side-effect replay is blocked") from exc
+        raise WorkflowOutcomeUnknown(
+            "Agent Runtime outcome is unknown; the same persisted task/idempotency identity must be reconciled after lease expiry",
+        ) from exc
 
 
 async def process_next_step(
