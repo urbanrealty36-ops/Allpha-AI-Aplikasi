@@ -87,7 +87,7 @@ def test_retrieval_scopes_search_and_returns_source_provenance():
     async def scenario():
         repo = Repo(hits=[hit()])
         results = await KnowledgeRetrievalService(repo, Policy()).retrieve(internal_request())
-        assert results[0].source_id == "source-a"
+        assert results[0].source_id == "00000000-0000-0000-0000-0000000000c9"
         assert repo.search_args["owner_id"] == "owner-a"
         assert repo.search_args["agent_id"] == "agent-a"
         assert repo.search_args["allowed_sensitivities"] == ["internal"]
@@ -236,7 +236,10 @@ def test_public_route_returns_empty_results_with_trace_when_no_matches():
             else:
                 app.state.knowledge_retrieval_service = prior
         assert response.status_code == 200
-        assert response.json() == {"trace_id": "trace-empty", "results": []}
+        assert response.json() == {
+            "trace_id": "trace-empty", "results": [],
+            "policy_version": "test-policy.v1", "consent_version": "test-consent.v1",
+        }
 
     asyncio.run(scenario())
 
@@ -262,7 +265,7 @@ def test_public_route_derives_owner_from_authenticated_identity_and_policy():
         assert repo.authorize_calls[0] == ("owner-a", str(uuid.UUID(int=101)))
         assert policy.calls == [("owner-a", str(uuid.UUID(int=101)))]
         assert repo.search_args["owner_id"] == "owner-a"
-        assert response.json()["results"][0]["source_id"] == "source-a"
+        assert response.json()["results"][0]["source_id"] == "00000000-0000-0000-0000-0000000000c9"
     asyncio.run(scenario())
 
 
