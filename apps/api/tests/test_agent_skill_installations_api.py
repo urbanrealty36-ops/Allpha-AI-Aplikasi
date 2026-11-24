@@ -20,16 +20,16 @@ def auth_as(user_id="owner-a"):
 
 def test_public_skill_publication_catalog_is_anonymous_and_paged(monkeypatch):
     calls = []
-    async def fake_db(method, path, token, **kwargs):
-        calls.append((method, path, token, kwargs))
+    async def fake_db(method, table, **kwargs):
+        calls.append((method, table, kwargs))
         return [{"id": SOURCE_SKILL, "agent_id": SOURCE_AGENT, "version": 3, "publication_terms": {"license": "owner"}}]
     monkeypatch.setattr("allpha_api.main.privileged_rest_request", fake_db)
     response = client.get("/v1/agent-skills/publications?agent_id=" + SOURCE_AGENT + "&limit=200&offset=-2")
     assert response.status_code == 200
     assert response.json()["items"][0]["id"] == SOURCE_SKILL
     assert calls[0][0:2] == ("GET", "agent_skill_publications")
-    assert calls[0][3]["params"]["limit"] == "100"
-    assert calls[0][3]["params"]["offset"] == "0"
+    assert calls[0][2]["params"]["limit"] == "100"
+    assert calls[0][2]["params"]["offset"] == "0"
 
 
 def test_agent_skill_installation_list_requires_auth_and_uses_owner_scoped_table(monkeypatch):
