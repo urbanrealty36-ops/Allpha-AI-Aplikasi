@@ -45,6 +45,7 @@ class RetrievalRequest(BaseModel):
     agent_id: str = Field(min_length=1, max_length=128)
     query: str = Field(min_length=1, max_length=4000)
     allowed_sensitivities: list[Sensitivity] = Field(min_length=1, max_length=4)
+    allowed_source_ids: list[str] = Field(min_length=1, max_length=500)
     limit: int = Field(default=8, ge=1, le=50)
     trace_id: str = Field(min_length=1, max_length=128)
 
@@ -72,7 +73,7 @@ class KnowledgeRetrievalRepository(Protocol):
     async def authorize_agent(self, *, owner_id: str, agent_id: str) -> bool: ...
     async def search_hybrid(
         self, *, owner_id: str, agent_id: str, query: str,
-        allowed_sensitivities: list[str], limit: int, trace_id: str,
+        allowed_sensitivities: list[str], allowed_source_ids: list[str], limit: int, trace_id: str,
     ) -> list[RetrievalHit]:
         """Enforce ready-source, owner/agent/sensitivity filters inside SQL/RPC.
 
@@ -84,8 +85,8 @@ class KnowledgeRetrievalRepository(Protocol):
 
 
 class KnowledgeRetrievalPolicy(Protocol):
-    async def allowed_sensitivities(self, *, owner_id: str, agent_id: str) -> list[str]:
-        """Return policy-approved classes for this authenticated owner/agent."""
+    async def resolve_context(self, *, owner_id: str, agent_id: str) -> Any:
+        """Return current owner/Agent consent and exact source-grant scope."""
         ...
 
 
@@ -128,6 +129,7 @@ class KnowledgeRetrievalService:
             agent_id=request.agent_id,
             query=request.query,
             allowed_sensitivities=list(request.allowed_sensitivities),
+            allowed_source_ids=list(request.allowed_source_ids),
             limit=request.limit,
             trace_id=request.trace_id,
         )
@@ -139,6 +141,8 @@ class KnowledgeRetrievalService:
                 raise KnowledgeAccessDenied("retrieval adapter returned cross-owner/agent data")
             if hit.sensitivity not in request.allowed_sensitivities:
                 raise KnowledgeAccessDenied("retrieval adapter returned disallowed sensitivity")
+            if hit.source_id not in set(request.allowed_source_ids):
+                raise KnowledgeAccessDenied("retrieval adapter returned a source outside the active grant scope")
             if not hit.source_id or not hit.chunk_id or not hit.content_sha256:
                 raise KnowledgeRetrievalUnavailable("retrieval result lacks source/chunk provenance")
             if hashlib.sha256(hit.content.encode("utf-8")).hexdigest() != hit.content_sha256:
@@ -180,22 +184,21 @@ async def retrieve_knowledge(
         if service.repository is None or not await service.repository.authorize_agent(owner_id=owner_id, agent_id=agent):
             raise KnowledgeAccessDenied("owner does not have active access to this agent")
         resolve_context = getattr(service.policy, "resolve_context", None) if service.policy else None
-        resolved_policy = await resolve_context(owner_id=owner_id, agent_id=agent) if callable(resolve_context) else None
-        allowed = (
-            list(resolved_policy.allowed_sensitivities)
-            if resolved_policy is not None
-            else await service.policy.allowed_sensitivities(owner_id=owner_id, agent_id=agent)
-            if service.policy is not None
-            else None
-        )
-        if not allowed or any(value not in {"public", "internal", "confidential", "restricted"} for value in allowed):
-            raise KnowledgeRetrievalUnavailable("approved sensitivity policy is missing or invalid")
+        if not callable(resolve_context):
+            raise KnowledgeRetrievalUnavailable("versioned Knowledge consent and source-grant resolver is unavailable")
+        resolved_policy = await resolve_context(owner_id=owner_id, agent_id=agent)
+        allowed = list(resolved_policy.allowed_sensitivities)
+        allowed_source_ids = list(resolved_policy.allowed_source_ids)
+        if (not allowed or any(value not in {"public", "internal", "confidential", "restricted"} for value in allowed)
+                or not allowed_source_ids or len(allowed_source_ids) > 500):
+            raise KnowledgeRetrievalUnavailable("approved Knowledge sensitivity or source-grant scope is missing or invalid")
         trace_id = str(getattr(request.state, "request_id", "") or uuid.uuid4())
         internal = RetrievalRequest(
             owner_id=owner_id,
             agent_id=agent,
             query=payload.query,
             allowed_sensitivities=allowed,
+            allowed_source_ids=allowed_source_ids,
             limit=payload.limit,
             trace_id=trace_id,
         )
@@ -228,6 +231,9 @@ async def retrieve_knowledge(
     if resolved_policy is not None:
         response["policy_version"] = resolved_policy.policy_version
         response["consent_version"] = resolved_policy.consent_version
+        response["grant_version"] = resolved_policy.grant_version
+        response["audience"] = resolved_policy.audience
+        response["decision_reference"] = resolved_policy.decision_reference
     return response
 
 
@@ -265,14 +271,16 @@ class SupabaseKeywordKnowledgeRepository:
         agent_id: str,
         query: str,
         allowed_sensitivities: list[str],
+        allowed_source_ids: list[str],
         limit: int,
         trace_id: str,
     ) -> list[RetrievalHit]:
         from allpha_api.auth import user_db_request
 
-        # PostgREST applies all filters in the database query. Source status and
-        # sensitivity are joined as an inner relation; no unrestricted search followed
-        # by in-memory filtering is permitted.
+        # Apply owner, Agent, exact source-grant scope, readiness and sensitivity
+        # inside PostgREST; never fetch unrestricted candidates and filter afterward.
+        if not allowed_source_ids or len(allowed_source_ids) > 500:
+            raise KnowledgeRetrievalUnavailable("Knowledge source-grant scope is missing or exceeds its bound")
         params = {
             "select": (
                 "id,source_id,agent_id,owner_id,chunk_index,content,source_location,"
@@ -281,6 +289,7 @@ class SupabaseKeywordKnowledgeRepository:
             ),
             "owner_id": f"eq.{owner_id}",
             "agent_id": f"eq.{agent_id}",
+            "source_id": "in.(" + ",".join(sorted(set(allowed_source_ids))) + ")",
             "agent_knowledge_sources.owner_id": f"eq.{owner_id}",
             "agent_knowledge_sources.agent_id": f"eq.{agent_id}",
             "agent_knowledge_sources.status": "eq.ready",
@@ -300,6 +309,7 @@ class SupabaseKeywordKnowledgeRepository:
                 row.get("owner_id") != owner_id
                 or row.get("agent_id") != agent_id
                 or source.get("id") != row.get("source_id")
+                or row.get("source_id") not in allowed_source_ids
                 or source.get("owner_id") != owner_id
                 or source.get("agent_id") != agent_id
                 or source.get("status") != "ready"
@@ -342,10 +352,12 @@ class KeywordOnlyKnowledgeRepository:
         return await self._keyword.authorize_agent(owner_id=owner_id, agent_id=agent_id)
 
     async def search_hybrid(self, *, owner_id: str, agent_id: str, query: str,
-                            allowed_sensitivities: list[str], limit: int, trace_id: str) -> list[RetrievalHit]:
+                            allowed_sensitivities: list[str], allowed_source_ids: list[str],
+                            limit: int, trace_id: str) -> list[RetrievalHit]:
         return await self._keyword.search_keyword(
             owner_id=owner_id, agent_id=agent_id, query=query,
-            allowed_sensitivities=allowed_sensitivities, limit=limit, trace_id=trace_id,
+            allowed_sensitivities=allowed_sensitivities, allowed_source_ids=allowed_source_ids,
+            limit=limit, trace_id=trace_id,
         )
 
 
@@ -391,10 +403,12 @@ class SupabaseServiceRolePublicKeywordKnowledgeRepository:
 
     async def search_hybrid(
         self, *, owner_id: str, agent_id: str, query: str,
-        allowed_sensitivities: list[str], limit: int, trace_id: str,
+        allowed_sensitivities: list[str], allowed_source_ids: list[str], limit: int, trace_id: str,
     ) -> list[RetrievalHit]:
         if allowed_sensitivities != ["public"]:
             raise KnowledgeAccessDenied("external consumer retrieval is restricted to public Knowledge")
+        if not allowed_source_ids or len(allowed_source_ids) > 500:
+            raise KnowledgeRetrievalUnavailable("public Knowledge source-grant scope is missing or exceeds its bound")
         params = {
             "select": (
                 "id,source_id,agent_id,owner_id,chunk_index,content,source_location,"
@@ -402,6 +416,7 @@ class SupabaseServiceRolePublicKeywordKnowledgeRepository:
                 "agent_knowledge_sources!inner(id,owner_id,agent_id,source_version,status,sensitivity)"
             ),
             "owner_id": f"eq.{owner_id}", "agent_id": f"eq.{agent_id}",
+            "source_id": "in.(" + ",".join(sorted(set(allowed_source_ids))) + ")",
             "agent_knowledge_sources.owner_id": f"eq.{owner_id}",
             "agent_knowledge_sources.agent_id": f"eq.{agent_id}",
             "agent_knowledge_sources.status": "eq.ready",
@@ -493,7 +508,7 @@ class HybridKnowledgeRepository:
 
     async def search_hybrid(
         self, *, owner_id: str, agent_id: str, query: str,
-        allowed_sensitivities: list[str], limit: int, trace_id: str,
+        allowed_sensitivities: list[str], allowed_source_ids: list[str], limit: int, trace_id: str,
     ) -> list[RetrievalHit]:
         if self._vector_search is None:
             raise KnowledgeRetrievalUnavailable(
@@ -501,11 +516,13 @@ class HybridKnowledgeRepository:
             )
         keyword_hits = await self._keyword.search_keyword(
             owner_id=owner_id, agent_id=agent_id, query=query,
-            allowed_sensitivities=allowed_sensitivities, limit=limit, trace_id=trace_id,
+            allowed_sensitivities=allowed_sensitivities, allowed_source_ids=allowed_source_ids,
+            limit=limit, trace_id=trace_id,
         )
         vector_hits = await self._vector_search.search(
             owner_id=owner_id, agent_id=agent_id, query=query,
-            allowed_sensitivities=allowed_sensitivities, limit=limit, trace_id=trace_id,
+            allowed_sensitivities=allowed_sensitivities, allowed_source_ids=allowed_source_ids,
+            limit=limit, trace_id=trace_id,
         )
         merged: dict[tuple[str, int, str], RetrievalHit] = {}
         for hit in [*keyword_hits, *vector_hits]:
