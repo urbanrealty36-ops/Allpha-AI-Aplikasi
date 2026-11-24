@@ -18,7 +18,10 @@ def snapshot(**overrides):
         owner_id="owner-a",
         agent_id="agent-a",
         allowed_sensitivities=("internal", "confidential"),
-        knowledge_consent_granted=True,
+        allowed_source_ids=("00000000-0000-0000-0000-0000000000c9",),
+        audience="owner_private", grant_version="knowledge-grant.v1",
+        decision_reference="decision-42",
+        knowledge_consent_granted=True
         consent_version="knowledge-consent.v2",
         consent_revoked=False,
         allowed_purposes=("agent_context_retrieval",),
@@ -48,6 +51,9 @@ def test_versioned_policy_resolves_current_owner_agent_consent_and_sensitivities
         assert resolved.policy_version == "knowledge-policy.v3"
         assert resolved.consent_version == "knowledge-consent.v2"
         assert resolved.allowed_sensitivities == ("internal", "confidential")
+        assert resolved.allowed_source_ids == ("00000000-0000-0000-0000-0000000000c9",)
+        assert resolved.grant_version == "knowledge-grant.v1"
+        assert resolved.audience == "owner_private"
         assert provider.calls == [("owner-a", "agent-a")]
     asyncio.run(scenario())
 
@@ -64,6 +70,11 @@ def test_versioned_policy_resolves_current_owner_agent_consent_and_sensitivities
     {"allowed_purposes": ("analytics",)},
     {"allowed_sensitivities": ()},
     {"allowed_sensitivities": ("internal", "unknown")},
+    {"allowed_source_ids": ()},
+    {"allowed_source_ids": ("not-a-uuid",)},
+    {"audience": ""},
+    {"grant_version": ""},
+    {"decision_reference": ""},
 ])
 def test_versioned_policy_fails_closed_for_invalid_or_revoked_facts(overrides):
     async def scenario():
