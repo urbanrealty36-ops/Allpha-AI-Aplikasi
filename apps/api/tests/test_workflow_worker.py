@@ -401,3 +401,18 @@ def test_agent_task_node_pauses_workflow_for_agent_runtime_approval(monkeypatch)
 
     asyncio.run(scenario())
     assert runtime_store.occurrence["status"] == "waiting_for_approval"
+
+
+
+def test_unknown_agent_runtime_task_outcome_does_not_finalize_workflow_step(monkeypatch):
+    import allpha_api.workflow_worker as worker
+    store = FakeStore(claim=step(node_kind="agent_task"), finalize={"status": "failed"})
+
+    async def unknown(*args):
+        raise WorkflowOutcomeUnknown("Agent Runtime outcome is unknown")
+
+    monkeypatch.setattr(worker, "execute_agent_task_node", unknown)
+
+    with pytest.raises(WorkflowOutcomeUnknown, match="Agent Runtime outcome"):
+        asyncio.run(process_next_step(store, owner_id="owner", run_id="run-1"))
+    assert store.finalize_calls == 0
