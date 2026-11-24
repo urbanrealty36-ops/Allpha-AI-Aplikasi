@@ -106,7 +106,7 @@ def test_tariff_activation_does_not_approve_model_execution_policy(monkeypatch):
     install_operator(["platform:capabilities.review.high_risk"])
     install_grant(monkeypatch, ["platform:capabilities.review.high_risk"])
     draft = {
-        "id": CONFIG_ID, "provider_id": "provider-x", "model_id": "model-x",
+        "id": CONFIG_ID, "capability": "text_generation", "provider_id": "provider-x", "model_id": "model-x",
         "model_version": "v1", "pricing_version": "price-v2", "policy_version": "policy-v2",
         "status": "draft", "policy_approved": False,
     }
