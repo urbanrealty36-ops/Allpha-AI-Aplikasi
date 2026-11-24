@@ -34,6 +34,57 @@ class KnowledgeStorageObjectMissing(RuntimeError):
     pass
 
 
+class KnowledgeStorageIdentityMismatch(RuntimeError):
+    """A persisted object path does not belong to the leased owner/Agent/source."""
+    pass
+
+
+def _validate_source_storage_identity(source: dict, job: dict) -> str:
+    """Bind privileged Storage reads to the exact owner/Agent/source tuple.
+
+    Uploads use the canonical object key:
+      <owner UUID>/<agent UUID>/<source UUID>/<filename>
+    A service-role worker must not trust a database storage_path blindly.
+    """
+    import uuid
+
+    def canonical_uuid(value: object, label: str) -> str:
+        if not isinstance(value, str):
+            raise KnowledgeStorageIdentityMismatch(f"{label} identity is missing")
+        try:
+            canonical = str(uuid.UUID(value))
+        except (ValueError, TypeError, AttributeError) as exc:
+            raise KnowledgeStorageIdentityMismatch(f"{label} identity is invalid") from exc
+        if value.lower() != canonical:
+            raise KnowledgeStorageIdentityMismatch(f"{label} identity is not canonical")
+        return canonical
+
+    owner_id = canonical_uuid(job.get("owner_id"), "job owner")
+    agent_id = canonical_uuid(job.get("agent_id"), "job Agent")
+    source_id = canonical_uuid(job.get("source_id"), "job source")
+    if canonical_uuid(source.get("owner_id"), "source owner") != owner_id:
+        raise KnowledgeStorageIdentityMismatch("source owner does not match the leased job")
+    if canonical_uuid(source.get("agent_id"), "source Agent") != agent_id:
+        raise KnowledgeStorageIdentityMismatch("source Agent does not match the leased job")
+    if canonical_uuid(source.get("id"), "source") != source_id:
+        raise KnowledgeStorageIdentityMismatch("source ID does not match the leased job")
+
+    filename = source.get("filename")
+    if (
+        not isinstance(filename, str)
+        or not filename
+        or filename in {".", ".."}
+        or "/" in filename
+        or "\\\\" in filename
+        or any(ord(char) < 32 or ord(char) == 127 for char in filename)
+    ):
+        raise KnowledgeStorageIdentityMismatch("source filename is not a safe object-key segment")
+    expected_path = f"{owner_id}/{agent_id}/{source_id}/{filename}"
+    if source.get("storage_path") != expected_path:
+        raise KnowledgeStorageIdentityMismatch("Storage object key is not bound to the leased owner/Agent/source")
+    return expected_path
+
+
 @dataclass
 class SupabaseKnowledgeStorage:
     supabase_url: str
@@ -131,8 +182,11 @@ class KnowledgeDocumentWorker:
         if not source:
             await self._fail(job, "KNOWLEDGE_SOURCE_NOT_FOUND", "document_parse_failed", False, 0)
             return
-        if str(source.get("id")) != str(job.get("source_id")):
-            raise WorkerConfigurationError("source identity does not match the leased job")
+        try:
+            storage_path = _validate_source_storage_identity(source, job)
+        except KnowledgeStorageIdentityMismatch:
+            await self._fail(job, "KNOWLEDGE_STORAGE_PATH_IDENTITY_MISMATCH", "document_parse_failed", False, 0)
+            return
         if int(source.get("source_version", 0)) != int(job.get("source_version", -1)):
             await self._fail(job, "STALE_SOURCE_VERSION", "document_parse_failed", False, 0)
             return
@@ -145,7 +199,7 @@ class KnowledgeDocumentWorker:
         await self.policy_resolver.authorize_source(owner_id=str(job["owner_id"]), agent_id=str(job["agent_id"]), source_id=str(source["id"]), sensitivity=str(sensitivity), purpose=KNOWLEDGE_INGESTION_PURPOSE)
 
         await self._set_processing_state(job, stage="malware_scan")
-        data = await self.storage.download(str(source.get("storage_path") or ""))
+        data = await self.storage.download(storage_path)
         expected_sha = str(source.get("sha256") or "").lower()
         expected_size = int(source.get("size_bytes") or 0)
         if expected_size <= 0 or expected_size > 15 * 1024 * 1024 or len(data) != expected_size:
