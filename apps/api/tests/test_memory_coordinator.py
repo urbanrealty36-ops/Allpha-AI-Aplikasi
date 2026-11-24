@@ -170,3 +170,23 @@ def test_owner_immediate_expiry_uses_canonical_memory_transition():
     assert call["body"]["p_action"]=="expire_item"
     assert call["body"]["p_owner_user_id"]==OWNER
     assert call["body"]["p_item_id"]=="memory-1"
+
+
+def test_memory_api_owner_pin_and_expire_routes_use_coordinator(monkeypatch):
+    import uuid
+    from allpha_api import memory_api
+    item_id=uuid.UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+    calls=[]
+    class Store:
+        async def pin(self,owner_id,requested_item_id,pinned):
+            calls.append(("pin",owner_id,requested_item_id,pinned))
+            return {"id":str(requested_item_id),"status":"active","pinned_at":"2026-11-24T00:00:00Z" if pinned else None}
+        async def expire_item(self,owner_id,requested_item_id):
+            calls.append(("expire",owner_id,requested_item_id))
+            return {"id":str(requested_item_id),"status":"expired"}
+    monkeypatch.setattr(memory_api,"_store",lambda:Store())
+    pinned=asyncio.run(memory_api.pin(item_id,memory_api.PinInput(pinned=True),{"id":OWNER}))
+    expired=asyncio.run(memory_api.expire_item(item_id,{"id":OWNER}))
+    assert pinned["pinned_at"]=="2026-11-24T00:00:00Z"
+    assert expired["content_cleared"] is True
+    assert calls==[("pin",OWNER,str(item_id),True),("expire",OWNER,str(item_id))]
