@@ -190,8 +190,6 @@ export default function AiCinemaCreatorWorkspace() {
   const [readyMedia, setReadyMedia] = useState<ReadyMedia[]>([]);
   const [creatorMedia, setCreatorMedia] = useState<CreatorMedia[]>([]);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [uploadDraftId, setUploadDraftId] = useState("");
-  const [uploadIdempotencyKey, setUploadIdempotencyKey] = useState("");
   const [uploadProgress, setUploadProgress] = useState(0);
   const [selectedMediaId, setSelectedMediaId] = useState("");
   const [selectedTitleId, setSelectedTitleId] = useState("");
@@ -651,9 +649,6 @@ export default function AiCinemaCreatorWorkspace() {
         };
         window.localStorage.setItem(sessionKey, JSON.stringify(next));
       }
-      setUploadDraftId(contentId);
-      setUploadIdempotencyKey(mediaId);
-
       const init = await authorizedRequest<ResumableUploadInit>(
         "/v1/content/" + encodeURIComponent(contentId) + "/media/resumable",
         {
@@ -683,7 +678,7 @@ export default function AiCinemaCreatorWorkspace() {
       }
       window.localStorage.removeItem(sessionKey);
       window.localStorage.removeItem("allpha:cinema:tus:" + mediaId);
-      setUploadFile(null); setUploadDraftId(""); setUploadIdempotencyKey(""); setUploadProgress(100);
+      setUploadFile(null); setUploadProgress(100);
       setNotice("Upload resumable tersimpan. Media masuk pipeline scan dan transcode; pilih media setelah status ready dan scan clean.");
       await loadCreatorMedia();
     } catch (cause) {
