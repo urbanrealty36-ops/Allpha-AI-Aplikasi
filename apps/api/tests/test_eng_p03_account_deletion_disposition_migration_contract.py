@@ -261,3 +261,13 @@ def test_export_before_deletion_contract_is_wired_across_api_web_native_and_work
     assert "complete_account_export_job" in worker
     assert "claim_account_deletion_storage_jobs" in worker
     assert "execute_account_deletion_execution_job" in worker
+
+
+
+def test_deletion_request_rpc_qualifies_output_parameter_collisions():
+    migration = MIGRATIONS / "20261124020721_eng_p03_account_deletion_rpc_ambiguity_fix.sql"
+    source = " ".join(migration.read_text(encoding="utf-8").lower().split())
+    assert "where public.account_deletion_requests.id=v_request_id" in source
+    assert "returning public.account_deletion_requests.id into v_request_id" in source
+    assert "where id=v_request_id" not in source
+    assert "returning id into v_request_id" not in source
