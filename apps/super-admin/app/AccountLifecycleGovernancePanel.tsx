@@ -30,6 +30,7 @@ type DependencyDraft = { resolution_action: string; reason: string; active: bool
 type DeletionRequest = {
   id: string; subject_ref: string; status: string; policy_version?: string | null;
   requested_at: string; scheduled_for?: string | null; error_code?: string | null;
+  export_job_id?: string | null;
 };
 
 export default function AccountLifecycleGovernancePanel({ apiBase, getAccessToken }: Props) {
@@ -234,6 +235,7 @@ export default function AccountLifecycleGovernancePanel({ apiBase, getAccessToke
             <option value="published_knowledge">published_knowledge</option>
             <option value="session_scoped">session_scoped</option>
             <option value="public_catalog">public_catalog</option>
+            <option value="account_export_artifact">account_export_artifact</option>
           </select></label>
           <label>Retention days<input type="number" min={0} max={36500} step={1} value={retentionDays} onChange={event => setRetentionDays(event.target.value)} required /></label>
           <label>Policy version<input value={policyVersion} onChange={event => setPolicyVersion(event.target.value)} maxLength={40} required placeholder="referensi versi resmi" /></label>
@@ -324,12 +326,12 @@ export default function AccountLifecycleGovernancePanel({ apiBase, getAccessToke
       </section>
 
       <section className="panel">
-        <header className="panelHead"><div><h3>Permintaan penghapusan akun</h3><p>Daftar permintaan dan status fail-closed. Penjadwalan/penghapusan tidak tersedia selama seluruh kelas data belum memiliki kebijakan aktif dan legal hold belum diperiksa.</p></div>
+        <header className="panelHead"><div><h3>Permintaan penghapusan akun</h3><p>Daftar permintaan dan status fail-closed. Penghapusan menunggu ekspor selesai dan kebijakan account_export_artifact aktif dengan durasi eksplisit; tidak ada durasi default.</p></div>
           <select aria-label="Filter status penghapusan" value={statusFilter} onChange={event => setStatusFilter(event.target.value)}><option value="">Semua status</option><option value="awaiting_policy">awaiting_policy</option><option value="scheduled">scheduled</option><option value="processing">processing</option><option value="blocked_legal_hold">blocked_legal_hold</option><option value="blocked_dependency">blocked_dependency</option><option value="completed">completed</option><option value="cancelled">cancelled</option><option value="failed">failed</option></select>
         </header>
-        <div className="tableWrap"><table><thead><tr><th>Request</th><th>Subject</th><th>Status</th><th>Diminta</th><th>Terjadwal</th><th>Error</th></tr></thead><tbody>
-          {requests.map(item => <tr key={item.id}><td><code>{item.id}</code></td><td><code>{item.subject_ref}</code></td><td><span className="pill warning">{item.status}</span></td><td>{new Date(item.requested_at).toLocaleString("id-ID")}</td><td>{item.scheduled_for ? new Date(item.scheduled_for).toLocaleString("id-ID") : "—"}</td><td>{item.error_code || "—"}</td></tr>)}
-          {!requests.length && <tr><td colSpan={6} className="emptyCell">{loading ? "Memuat permintaan…" : "Tidak ada permintaan pada filter ini."}</td></tr>}
+        <div className="tableWrap"><table><thead><tr><th>Request</th><th>Subject</th><th>Status</th><th>Export job</th><th>Diminta</th><th>Terjadwal</th><th>Error</th></tr></thead><tbody>
+          {requests.map(item => <tr key={item.id}><td><code>{item.id}</code></td><td><code>{item.subject_ref}</code></td><td><span className="pill warning">{item.status}</span></td><td>{item.export_job_id ? <code>{item.export_job_id}</code> : "—"}</td><td>{new Date(item.requested_at).toLocaleString("id-ID")}</td><td>{item.scheduled_for ? new Date(item.scheduled_for).toLocaleString("id-ID") : "—"}</td><td>{item.error_code || "—"}</td></tr>)}
+          {!requests.length && <tr><td colSpan={7} className="emptyCell">{loading ? "Memuat permintaan…" : "Tidak ada permintaan pada filter ini."}</td></tr>}
         </tbody></table></div>
       </section>
       <div className="panelActions"><button className="secondaryButton" disabled={loading || busy} onClick={() => void load()}>Refresh governance data</button><span className="muted">Penghapusan permanen tetap dikunci oleh backend.</span></div>
