@@ -80,8 +80,26 @@ class TranscodeWorker:
     except Exception:log.exception("transcode worker poll failed");n=0
     if n==0:await asyncio.sleep(5)
   finally:await self.client.aclose()
+def enabled():
+ raw=os.getenv("ALLPHA_CONTENT_TRANSCODE_WORKER_ENABLED","false").strip().lower()
+ if raw not in {"true","false"}:raise SystemExit("ALLPHA_CONTENT_TRANSCODE_WORKER_ENABLED must be true or false")
+ if raw!="true":return False
+ if os.getenv("ALLPHA_CLAMAV_ENABLED","false").strip().lower()!="true":
+  raise SystemExit("Content transcode worker requires ALLPHA_CLAMAV_ENABLED=true")
+ required=("SUPABASE_URL","CLAMAV_HOST","CLOUDINARY_CLOUD_NAME","CLOUDINARY_API_KEY","CLOUDINARY_API_SECRET","ALLPHA_CLOUDINARY_CALLBACK_URL")
+ missing=[name for name in required if not os.getenv(name)]
+ if not (os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SECRET_KEY")):
+  missing.append("SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SECRET_KEY")
+ if missing:raise SystemExit("Content transcode worker configuration missing: "+", ".join(missing))
+ callback=os.environ["ALLPHA_CLOUDINARY_CALLBACK_URL"]
+ if not callback.startswith("https://"):raise SystemExit("ALLPHA_CLOUDINARY_CALLBACK_URL must use HTTPS")
+ return True
+
 def main():
  logging.basicConfig(level=os.getenv("LOG_LEVEL","INFO"))
+ if not enabled():
+  log.info("Content transcode worker is disabled")
+  return
  worker=TranscodeWorker();loop=asyncio.new_event_loop();asyncio.set_event_loop(loop)
  for sig in (signal.SIGINT,signal.SIGTERM):loop.add_signal_handler(sig,lambda:setattr(worker,"stopping",True))
  try:loop.run_until_complete(worker.run())
