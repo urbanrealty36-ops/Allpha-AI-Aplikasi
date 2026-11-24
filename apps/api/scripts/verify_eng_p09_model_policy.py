@@ -9,7 +9,7 @@ import uuid
 
 ROOT=Path(__file__).resolve().parents[3]
 MIGRATION=ROOT/"apps/api/supabase/migrations/20261124064458_eng_p09_model_policy_approval_metadata.sql"
-CAPABILITY_SCOPE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124073000_eng_p09_model_cost_capability_scope.sql"
+CAPABILITY_SCOPE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124082219_eng_p09_model_cost_capability_scope.sql"
 CAPABILITY_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124080255_eng_p09_model_capability_contract.sql"
 METERING_CAPABILITY_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124081303_eng_p09_usage_metering_capability.sql"
 NAME="allpha-p09-policy-"+uuid.uuid4().hex[:8]
