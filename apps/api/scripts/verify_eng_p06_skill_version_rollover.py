@@ -46,14 +46,14 @@ create schema private;
 create schema extensions;
 create extension if not exists pgcrypto with schema extensions;
 create table auth.users(id uuid primary key);
-create function auth.uid() returns uuid language sql stable as $ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $;
-create function auth.role() returns text language sql stable as $ select nullif(current_setting('request.jwt.claim.role',true),'') $;
+create function auth.uid() returns uuid language sql stable as $auth_uid$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $auth_uid$;
+create function auth.role() returns text language sql stable as $auth_role$ select nullif(current_setting('request.jwt.claim.role',true),'') $auth_role$;
 grant usage on schema auth,private,extensions to public;
 grant execute on function auth.uid(),auth.role() to public;
 create table public.ai_agents(id uuid primary key,visibility text not null,status text not null);
 create function private.has_agent_ownership(p_agent_id uuid,p_user_id uuid,p_role text)
 returns boolean language sql stable security definer set search_path=''
-as $ select exists(select 1 from public.agent_ownerships o where o.agent_id=p_agent_id and o.owner_user_id=p_user_id and o.ownership_role=p_role and o.status='active') $;
+as $has_owner$ select exists(select 1 from public.agent_ownerships o where o.agent_id=p_agent_id and o.owner_user_id=p_user_id and o.ownership_role=p_role and o.status='active') $has_owner$;
 grant execute on function private.has_agent_ownership(uuid,uuid,text) to public;
 create table private.account_export_sources(source_key text primary key,table_name text not null,filter_kind text not null,owner_columns text[] not null,sort_order integer not null,enabled boolean not null default true);
 create table public.account_deletion_source_policies(source_key text primary key,data_class text not null,deletion_action text not null,dependency_order integer not null,policy_version integer not null,reason text not null,approved_by uuid,approved_at timestamptz,active boolean not null default true,table_name text not null,filter_kind text not null,owner_columns text[] not null,decision_source text not null,decision_reference text not null,updated_at timestamptz not null default now());
@@ -204,7 +204,7 @@ select public.install_agent_skill(
  5,true,'p06-install-key-0001'
 );
 reset role;
-do $
+do $do$
 begin
  if (select count(*) from public.agent_skill_installations where agent_id='66666666-6666-4666-8666-666666666666')<>1 then raise exception 'idempotent Skill install duplicated entitlement'; end if;
  if not exists(select 1 from public.agent_skill_installations where agent_id='66666666-6666-4666-8666-666666666666' and source_version=5 and status='active' and license_terms_digest ~ '^[0-9a-f]{64}
@@ -219,7 +219,7 @@ if __name__ == "__main__":
 ) then raise exception 'license snapshot not persisted'; end if;
  if not exists(select 1 from public.agent_skill_installation_events where event_type='installed') then raise exception 'installation event missing'; end if;
  if not exists(select 1 from public.agent_skills where id=(select installed_skill_id from public.agent_skill_installations where agent_id='66666666-6666-4666-8666-666666666666') and status='draft' and version=1) then raise exception 'installed Skill must start as local draft v1'; end if;
-end $;
+end $do$;
 """)
         psql("""
 set role service_role;
