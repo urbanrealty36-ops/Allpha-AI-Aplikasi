@@ -1080,9 +1080,9 @@ def test_tool_plan_task_envelope_carries_only_validated_knowledge_citations(monk
     content_sha = hashlib.sha256(content.encode("utf-8")).hexdigest()
     retrieved_sha = content_sha
     refs = [{
-        "source_id": "source-knowledge-1",
+        "source_id": "11111111-1111-4111-8111-111111111111",
         "source_version": 3,
-        "chunk_id": "chunk-knowledge-1",
+        "chunk_id": "22222222-2222-4222-8222-222222222222",
         "source_location": {"kind": "page", "index": 2},
         "sensitivity": "internal",
         "content_sha256": content_sha,
@@ -1116,6 +1116,30 @@ def test_tool_plan_task_envelope_carries_only_validated_knowledge_citations(monk
         "knowledge_context_sha256": hashlib.sha256(b"bounded knowledge context").hexdigest(),
         "knowledge_context_state": "available",
     }
+    async def authenticated_user_with_token(request):
+        request.state.supabase_access_token = "test-user-token"
+        return {"id": OWNER}
+
+    async def fake_user_db_request(method, path, access_token, *, params=None, body=None, prefer=None):
+        assert method == "GET"
+        assert access_token == "test-user-token"
+        if path == "agent_knowledge_sources":
+            return [{
+                "id": "11111111-1111-4111-8111-111111111111",
+                "owner_id": OWNER, "agent_id": AGENT, "source_version": 3,
+                "status": "ready", "sensitivity": "internal",
+            }]
+        if path == "agent_knowledge_chunks":
+            return [{
+                "id": "22222222-2222-4222-8222-222222222222",
+                "source_id": "11111111-1111-4111-8111-111111111111",
+                "owner_id": OWNER, "agent_id": AGENT, "source_version": 3,
+                "content_sha256": content_sha,
+            }]
+        raise AssertionError(f"unexpected Knowledge revalidation path: {path}")
+
+    monkeypatch.setattr("allpha_api.agent_runtime_api.user_db_request", fake_user_db_request)
+    app.dependency_overrides[current_user] = authenticated_user_with_token
     try:
         response = c.post("/v1/agent-runtime/tasks", json={
             "session_id": session_id,
