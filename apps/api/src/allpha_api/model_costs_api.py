@@ -5,7 +5,8 @@ never enables a provider route by itself. Provider credentials remain server-sid
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+import os
 from typing import Any, Literal
 from uuid import UUID
 
@@ -65,6 +66,179 @@ class ModelCostApproval(BaseModel):
     model_config = ConfigDict(extra="forbid")
     reason: str = Field(min_length=8, max_length=500)
     approval_reference: str = Field(min_length=8, max_length=200)
+
+class ModerationPolicyCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    policy_version: str = Field(min_length=1, max_length=80, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
+    approval_reference: str = Field(min_length=3, max_length=160)
+    expires_at: datetime | None = None
+
+class ModerationPolicyApproval(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reason: str = Field(min_length=8, max_length=500)
+    approval_reference: str = Field(min_length=3, max_length=160)
+
+
+@router.get("/runtime-status", name="model_router_runtime_status")
+async def model_router_runtime_status(
+    request: Request,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:operations.read")),
+) -> dict[str, Any]:
+    router_instance = getattr(request.app.state, "text_generation_router", None)
+    required = (
+        "ALLPHA_TEXTGEN_BASE_URL","ALLPHA_TEXTGEN_API_KEY","ALLPHA_TEXTGEN_PROVIDER_ID",
+        "ALLPHA_TEXTGEN_MODEL_ID","ALLPHA_TEXTGEN_MODEL_VERSION","ALLPHA_TEXTGEN_POLICY_ID",
+        "ALLPHA_TEXTGEN_POLICY_VERSION","ALLPHA_TEXTGEN_PRICING_VERSION","ALLPHA_TEXTGEN_COST_UNIT",
+        "ALLPHA_TEXTGEN_INPUT_MICRO_COST_PER_TOKEN","ALLPHA_TEXTGEN_OUTPUT_MICRO_COST_PER_TOKEN",
+        "ALLPHA_TEXTGEN_MAX_COST_MICROUNITS","SUPABASE_URL","SUPABASE_SERVICE_ROLE_KEY",
+    )
+    missing = [name for name in required if not os.getenv(name, "").strip()]
+    if router_instance is None:
+        return {"configured": False, "ready": False, "reason": "provider_or_policy_configuration_incomplete",
+                "missing_configuration": missing}
+    try:
+        result = await router_instance.preflight("private")
+        return {"configured": True, "ready": True, "route": result.get("route", {})}
+    except Exception:
+        return {"configured": True, "ready": False, "reason": "model_policy_or_tariff_preflight_failed",
+                "missing_configuration": missing}
+
+
+@router.get("/usage-summary", name="model_usage_summary")
+async def model_usage_summary(
+    since: datetime | None = None,
+    until: datetime | None = None,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:operations.read")),
+) -> dict[str, Any]:
+    now = datetime.now(timezone.utc)
+    start = since or (now - timedelta(days=30))
+    end = until or now
+    if start.tzinfo is None:
+        start = start.replace(tzinfo=timezone.utc)
+    if end.tzinfo is None:
+        end = end.replace(tzinfo=timezone.utc)
+    if start >= end or end - start > timedelta(days=90):
+        raise HTTPException(status_code=422, detail={"code": "MODEL_USAGE_PERIOD_INVALID", "message": "Rentang penggunaan harus positif dan maksimal 90 hari."})
+    result = await privileged_rest_request(
+        "POST", "rpc/get_agent_model_usage_summary",
+        body={"p_since": start.isoformat(), "p_until": end.isoformat()},
+    )
+    if not isinstance(result, dict):
+        raise HTTPException(status_code=503, detail={"code": "MODEL_USAGE_SUMMARY_UNAVAILABLE", "message": "Ringkasan penggunaan belum dapat dikonfirmasi."})
+    return result
+
+
+@router.get("/moderation-policies", name="list_generation_output_moderation_policies")
+async def list_generation_output_moderation_policies(
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:operations.read")),
+) -> dict[str, Any]:
+    rows = await privileged_rest_request(
+        "GET", "generation_output_moderation_policies",
+        params={"select": "policy_version,approval_reference,configuration,status,effective_at,expires_at,approved_by,created_at",
+                "order": "created_at.desc", "limit": "100"},
+    )
+    return {"items": rows or []}
+
+
+@router.post("/moderation-policies", status_code=201, name="create_generation_output_moderation_policy")
+async def create_generation_output_moderation_policy(
+    payload: ModerationPolicyCreate,
+    request: Request,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:capabilities.review")),
+) -> dict[str, Any]:
+    now = datetime.now(timezone.utc)
+    expiry = payload.expires_at
+    if expiry is not None and (expiry.tzinfo is None or expiry <= now):
+        raise HTTPException(status_code=422, detail={"code": "MODERATION_POLICY_EXPIRY_INVALID", "message": "Waktu kedaluwarsa harus menggunakan timezone dan berada di masa depan."})
+    body = {
+        "policy_version": payload.policy_version,
+        "approval_reference": payload.approval_reference.strip(),
+        "configuration": {"mode": "manual_review_only", "manual_review_only": True},
+        "status": "draft",
+        "effective_at": now.isoformat(),
+        "expires_at": expiry.isoformat() if expiry else None,
+        "approved_by": None,
+    }
+    rows = await privileged_rest_request(
+        "POST", "generation_output_moderation_policies",
+        params={"select": "policy_version,approval_reference,configuration,status,effective_at,expires_at,approved_by,created_at"},
+        body=body, prefer="return=representation",
+    )
+    if not rows:
+        raise HTTPException(status_code=503, detail={"code": "MODERATION_POLICY_CREATE_UNCONFIRMED", "message": "Draft moderation policy tidak terkonfirmasi."})
+    item = rows[0]
+    await write_operator_audit(
+        request, actor_user_id=operator["id"], action="generation_moderation_policy.create", outcome="allowed",
+        resource_type="generation_output_moderation_policy", resource_id=item["policy_version"],
+        metadata={"mode": "manual_review_only", "status": "draft", "approval_reference": payload.approval_reference},
+    )
+    return {"item": item, "runtime_enabled": False}
+
+
+@router.post("/moderation-policies/{policy_version}/approve", name="approve_generation_output_moderation_policy")
+async def approve_generation_output_moderation_policy(
+    policy_version: str,
+    payload: ModerationPolicyApproval,
+    request: Request,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:capabilities.review.high_risk")),
+) -> dict[str, Any]:
+    current = await privileged_rest_request(
+        "GET", "generation_output_moderation_policies",
+        params={"select": "policy_version,configuration,status,expires_at",
+                "policy_version": f"eq.{policy_version}", "limit": "1"},
+    )
+    if not current:
+        raise HTTPException(status_code=404, detail={"code": "MODERATION_POLICY_NOT_FOUND", "message": "Draft moderation policy tidak ditemukan."})
+    item = current[0]
+    if item["status"] != "draft" or item["configuration"] != {"mode": "manual_review_only", "manual_review_only": True}:
+        raise HTTPException(status_code=409, detail={"code": "MODERATION_POLICY_NOT_APPROVABLE", "message": "Hanya draft manual-review-only yang dapat disetujui."})
+    now = datetime.now(timezone.utc)
+    expiry = item.get("expires_at")
+    if expiry and datetime.fromisoformat(expiry.replace("Z", "+00:00")) <= now:
+        raise HTTPException(status_code=409, detail={"code": "MODERATION_POLICY_EXPIRED", "message": "Draft moderation policy sudah kedaluwarsa."})
+    rows = await privileged_rest_request(
+        "PATCH", "generation_output_moderation_policies",
+        params={"policy_version": f"eq.{policy_version}", "status": "eq.draft",
+                "select": "policy_version,approval_reference,configuration,status,effective_at,expires_at,approved_by,created_at"},
+        body={"status": "approved", "effective_at": now.isoformat(),
+              "approval_reference": payload.approval_reference.strip(), "approved_by": operator["id"]},
+        prefer="return=representation",
+    )
+    if not rows:
+        raise HTTPException(status_code=409, detail={"code": "MODERATION_POLICY_APPROVAL_CONFLICT", "message": "Status policy berubah; muat ulang."})
+    approved = rows[0]
+    await write_operator_audit(
+        request, actor_user_id=operator["id"], action="generation_moderation_policy.approve", outcome="allowed",
+        resource_type="generation_output_moderation_policy", resource_id=policy_version,
+        metadata={"mode": "manual_review_only", "approval_reference": payload.approval_reference, "reason": payload.reason},
+    )
+    return {"item": approved, "runtime_enabled": False,
+            "message": "Output akan tetap ditahan untuk Human review; policy ini tidak mengaktifkan auto-approval."}
+
+
+@router.post("/moderation-policies/{policy_version}/retire", name="retire_generation_output_moderation_policy")
+async def retire_generation_output_moderation_policy(
+    policy_version: str,
+    payload: ModelCostReason,
+    request: Request,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:capabilities.review.high_risk")),
+) -> dict[str, Any]:
+    rows = await privileged_rest_request(
+        "PATCH", "generation_output_moderation_policies",
+        params={"policy_version": f"eq.{policy_version}", "status": "in.(draft,approved)",
+                "select": "policy_version,approval_reference,configuration,status,effective_at,expires_at,approved_by,created_at"},
+        body={"status": "retired"},
+        prefer="return=representation",
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail={"code": "MODERATION_POLICY_NOT_RETIRABLE", "message": "Moderation policy tidak ditemukan atau sudah retired."})
+    retired = rows[0]
+    await write_operator_audit(
+        request, actor_user_id=operator["id"], action="generation_moderation_policy.retire", outcome="allowed",
+        resource_type="generation_output_moderation_policy", resource_id=policy_version,
+        metadata={"reason": payload.reason},
+    )
+    return {"item": retired, "runtime_enabled": False}
 
 
 @router.get("", name="list_model_cost_configs")
