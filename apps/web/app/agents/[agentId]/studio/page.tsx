@@ -270,7 +270,7 @@ export default function AgentStudioPage() {
       const form = new FormData(); form.append("file", knowledgeFile);
       const response = await fetch(`${apiBase}/v1/agents/${agentId}/knowledge/sources`, { method: "POST", headers: { Authorization: "Bearer " + session.access_token }, body: form });
       if (!response.ok) throw new Error(await readError(response));
-      setKnowledgeFile(null); setNotice("Dokumen masuk karantina privat. Pemrosesan baru dapat dilanjutkan setelah pemindai malware terkonfigurasi.");
+      setKnowledgeFile(null); setNotice("Dokumen masuk karantina privat. Tetapkan klasifikasi sensitivitas, lalu mulai pemrosesan melalui worker.");
       await load(session);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Dokumen gagal diunggah."); }
     finally { setSaving(false); }
