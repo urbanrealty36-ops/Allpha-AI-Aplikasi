@@ -21,7 +21,7 @@ def local_scanner_identity_pins() -> tuple[str, str]:
 
 
 def _parse_version(data: bytes) -> tuple[str, str]:
-    text = data.decode("utf-8", "replace").strip()
+    text = data.decode("utf-8", "replace").replace("\\0", "").strip()
     match = re.search(r"ClamAV\s+([^/\s]+)/([^/\s]+)/(.+)", text)
     if not match:
         raise RuntimeError("MEDIA_SCANNER_VERSION_UNAVAILABLE")
@@ -52,7 +52,7 @@ def scan_media_bytes(data: bytes, host: str, port: int, *, timeout_seconds: int 
             result = sock.recv(4096).decode("utf-8", "replace")
     except OSError as exc:
         raise RuntimeError("MEDIA_SCANNER_UNAVAILABLE") from exc
-    if not result.strip().endswith("OK") or "FOUND" in result or "ERROR" in result:
+    normalized_result = result.replace("\\0", "").strip()\n    if not normalized_result.endswith("OK") or "FOUND" in normalized_result or "ERROR" in normalized_result:
         raise RuntimeError("MEDIA_SCAN_NOT_CLEAN")
     return {
         "scanner_id": "clamav-local",
