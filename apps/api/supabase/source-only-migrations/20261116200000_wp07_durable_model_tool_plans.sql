@@ -47,7 +47,7 @@ create table if not exists public.agent_runtime_tool_plans (
     references public.agent_skills(id, agent_id) on delete restrict,
   check (tool_plan is null or (jsonb_typeof(tool_plan) = 'array' and octet_length(tool_plan::text) <= 65536)),
   check (planner_evidence is null or (jsonb_typeof(planner_evidence) = 'object' and octet_length(planner_evidence::text) <= 32768)),
-  check (status <> 'completed' or (tool_plan is not null and planner_evidence is not null)),
+  check (status <> 'completed' or (tool_plan is not null and planner_evidence is not null))
 );
 
 create index if not exists agent_runtime_tool_plans_owner_status_idx
