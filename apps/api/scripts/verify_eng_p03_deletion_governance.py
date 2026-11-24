@@ -29,6 +29,7 @@ RETENTION_PRECISION_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123170511_
 STORAGE_RETENTION_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123170158_eng_p03_storage_retention_snapshot_gate.sql"
 IDENTITY_TOMBSTONE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123180112_eng_p03_identity_tombstones_and_provider_cancellation.sql"
 EXECUTOR_HARDENING_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123180725_eng_p03_executor_referential_integrity_hardening.sql"
+LEASE_HEARTBEAT_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123152405_eng_p03_deletion_execution_lease_heartbeat.sql"
 OWNERSHIP_TOMBSTONE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124005951_eng_p03_agent_ownership_tombstone_attribution.sql"
 SUBJECT_DIGEST_REPAIR_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124010254_eng_p03_subject_digest_path_repairs.sql"
 RETENTION_METADATA_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124010416_eng_p03_retention_request_metadata_accuracy.sql"
@@ -559,6 +560,7 @@ insert into public.account_data_retention_policies(
             OWNERSHIP_TRANSFER_MIGRATION,
             IDENTITY_TOMBSTONE_MIGRATION,
             EXECUTOR_HARDENING_MIGRATION,
+            LEASE_HEARTBEAT_MIGRATION,
             GOVERNANCE_RETRY_MIGRATION,
             OWNERSHIP_TOMBSTONE_MIGRATION,
             SUBJECT_DIGEST_REPAIR_MIGRATION,
