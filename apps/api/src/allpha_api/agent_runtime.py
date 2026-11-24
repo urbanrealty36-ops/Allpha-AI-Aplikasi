@@ -103,6 +103,9 @@ class AgentTaskEnvelope:
     max_tool_calls: int
     max_runtime_seconds: int
     max_output_bytes: int = 16_384
+    knowledge_context_refs: tuple[dict[str, Any], ...] = ()
+    knowledge_context_sha256: str | None = None
+    knowledge_context_state: str = "not_configured"
 
 
 @dataclass(frozen=True)
@@ -209,6 +212,30 @@ class AgentRuntime:
                 raise AgentRuntimeBlocked(f"tool is not approved by runtime policy: {key}")
             if not set(tool.required_permission_scopes).issubset(auth.granted_scopes):
                 raise AgentRuntimeBlocked(f"required permission scope is missing: {key}")
+        if envelope.knowledge_context_state not in {"not_configured", "empty", "available"}:
+            raise AgentRuntimeBlocked("Knowledge context state is invalid")
+        if len(envelope.knowledge_context_refs) > 8:
+            raise AgentRuntimeBlocked("Knowledge context reference count exceeds runtime limits")
+        if (envelope.knowledge_context_state == "available") != bool(envelope.knowledge_context_refs):
+            raise AgentRuntimeBlocked("Knowledge context state and references are inconsistent")
+        if envelope.knowledge_context_state == "available":
+            digest = envelope.knowledge_context_sha256
+            if not isinstance(digest, str) or len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
+                raise AgentRuntimeBlocked("Knowledge context digest is invalid")
+            for ref in envelope.knowledge_context_refs:
+                if not isinstance(ref, dict) or "content" in ref:
+                    raise AgentRuntimeBlocked("Knowledge context references must be content-free")
+                if (
+                    not isinstance(ref.get("source_id"), str) or not ref["source_id"]
+                    or not isinstance(ref.get("chunk_id"), str) or not ref["chunk_id"]
+                    or not isinstance(ref.get("source_version"), int)
+                    or isinstance(ref.get("source_version"), bool) or ref["source_version"] < 1
+                    or not isinstance(ref.get("content_sha256"), str) or len(ref["content_sha256"]) != 64
+                    or not isinstance(ref.get("retrieved_content_sha256"), str) or len(ref["retrieved_content_sha256"]) != 64
+                ):
+                    raise AgentRuntimeBlocked("Knowledge context citation metadata is invalid")
+        elif envelope.knowledge_context_refs or envelope.knowledge_context_sha256 not in {None, ""}:
+            raise AgentRuntimeBlocked("Empty Knowledge context cannot carry references or digest")
         if time.monotonic() >= envelope.deadline_monotonic:
             raise AgentRuntimeBlocked("task deadline has expired")
 
@@ -285,6 +312,9 @@ class AgentRuntime:
             "events": list(task.events),
             "persistence": "durable_event_sink" if event_sink is not None else "not_configured",
             "provider_execution": False,
+            "knowledge_context_refs": list(task.envelope.knowledge_context_refs),
+            "knowledge_context_sha256": task.envelope.knowledge_context_sha256,
+            "knowledge_context_state": task.envelope.knowledge_context_state,
         }
 
 
