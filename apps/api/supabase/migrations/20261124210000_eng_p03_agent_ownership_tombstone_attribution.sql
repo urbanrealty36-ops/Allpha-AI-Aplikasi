@@ -95,7 +95,7 @@ begin
           update public.agent_ownerships ao
              set owner_user_id=t.successor_user_id
             from public.account_deletion_ownership_transfers t
-$new$;
+$old$;
   v_new:=$new$
           if exists(
             select 1 from public.account_deletion_ownership_transfers t
