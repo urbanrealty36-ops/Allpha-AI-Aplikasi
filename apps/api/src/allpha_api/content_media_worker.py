@@ -148,8 +148,28 @@ class MediaWorker:
             await self.client.aclose()
 
 
+def enabled() -> bool:
+    value = os.getenv("ALLPHA_CONTENT_MEDIA_WORKER_ENABLED", "false").strip().lower()
+    if value not in {"true", "false"}:
+        raise SystemExit("ALLPHA_CONTENT_MEDIA_WORKER_ENABLED must be true or false")
+    if value != "true":
+        return False
+    if os.getenv("ALLPHA_CLAMAV_ENABLED", "false").strip().lower() != "true":
+        raise SystemExit("Content image worker requires ALLPHA_CLAMAV_ENABLED=true")
+    required = ("SUPABASE_URL", "CLAMAV_HOST")
+    missing = [name for name in required if not os.getenv(name)]
+    if not (os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SECRET_KEY")):
+        missing.append("SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SECRET_KEY")
+    if missing:
+        raise SystemExit("Content image worker configuration missing: " + ", ".join(missing))
+    return True
+
+
 def main() -> None:
     logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
+    if not enabled():
+        log.info("Content image worker is disabled")
+        return
     worker = MediaWorker()
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
