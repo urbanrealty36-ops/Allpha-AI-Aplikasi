@@ -20,6 +20,12 @@ class WorkflowDefinitionCreate(BaseModel):
     definition: WorkflowDefinition
 
 
+class WorkflowApprovalDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    approval_id: uuid.UUID
+    decision_note: str | None = Field(default=None, max_length=1000)
+
+
 class WorkflowRunCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     input_payload: dict[str, Any] = Field(default_factory=dict)
@@ -128,3 +134,44 @@ async def cancel_run(run_id: uuid.UUID, user: dict[str, Any] = Depends(current_u
         raise HTTPException(status_code=404, detail={"code": "WORKFLOW_RUN_NOT_FOUND_OR_TERMINAL",
             "message": "Workflow run tidak ditemukan atau sudah terminal."})
     return {"run": row}
+
+
+
+@router.post("/runs/{run_id}/steps/{step_id}/approve")
+async def approve_step(
+    run_id: uuid.UUID,
+    step_id: uuid.UUID,
+    payload: WorkflowApprovalDecision,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    try:
+        row = await _store().approve_step(
+            str(user["id"]), str(run_id), str(step_id),
+            str(payload.approval_id), payload.decision_note,
+        )
+    except WorkflowPersistenceError as exc:
+        raise _storage_error(exc) from exc
+    if not row:
+        raise HTTPException(status_code=409, detail={"code": "WORKFLOW_APPROVAL_NOT_PENDING",
+            "message": "Approval tidak ditemukan, sudah diputuskan, atau bukan milik workflow ini."})
+    return {"step": row}
+
+
+@router.post("/runs/{run_id}/steps/{step_id}/reject")
+async def reject_step(
+    run_id: uuid.UUID,
+    step_id: uuid.UUID,
+    payload: WorkflowApprovalDecision,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    try:
+        row = await _store().reject_step(
+            str(user["id"]), str(run_id), str(step_id),
+            str(payload.approval_id), payload.decision_note,
+        )
+    except WorkflowPersistenceError as exc:
+        raise _storage_error(exc) from exc
+    if not row:
+        raise HTTPException(status_code=409, detail={"code": "WORKFLOW_APPROVAL_NOT_PENDING",
+            "message": "Approval tidak ditemukan, sudah diputuskan, atau bukan milik workflow ini."})
+    return {"step": row}
