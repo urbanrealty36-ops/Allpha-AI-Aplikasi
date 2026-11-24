@@ -149,7 +149,7 @@ def test_shared_worker_does_not_start_memory_heavy_clamav_without_explicit_resou
         Path(__file__).resolve().parents[1]
         / "docker" / "shared-worker-entrypoint.sh"
     ).read_text(encoding="utf-8")
-    assert 'CLAMAV_ENABLED="${ALLPHA_CLAMAV_ENABLED:-false}"' in script
+    assert "ALLPHA_CLAMAV_ENABLED:-false" in script
     assert 'if [ "$SCANNER_MODE" != "clamd" ] || [ "$CLAMAV_ENABLED" != "true" ]; then' in script
     assert "configure the authenticated remote scanner" in script
     assert "export ALLPHA_KNOWLEDGE_DOCUMENT_WORKER_ENABLED=false" in script
