@@ -37,7 +37,7 @@ begin
  end if;
  if p_action='expire_all' then
   with expired as (
-   update public.agent_memory_items i set status='expired',content='',
+   update public.agent_memory_items i set status='expired',content='',pinned_at=null,
     content_sha256=encode(extensions.digest('','sha256'),'hex'),
     source_ref='{}'::jsonb,provenance='{"retention":"expired"}'::jsonb,
     confidence=null,updated_at=clock_timestamp()
@@ -134,7 +134,7 @@ begin
 
  if p_action='expire' then
   with expired as (
-   update public.agent_memory_items i set status='expired',content='',
+   update public.agent_memory_items i set status='expired',content='',pinned_at=null,
     content_sha256=encode(extensions.digest('','sha256'),'hex'),
     source_ref='{}'::jsonb,provenance='{"retention":"expired"}'::jsonb,
     confidence=null,updated_at=clock_timestamp()
@@ -236,7 +236,7 @@ begin
 
  if p_action='expire_item' then
   if v_item.status not in ('pending','active') then return null; end if;
-  update public.agent_memory_items set status='expired',content='',
+  update public.agent_memory_items set status='expired',content='',pinned_at=null,
    content_sha256=encode(extensions.digest('','sha256'),'hex'),
    source_ref='{}'::jsonb,provenance='{"retention":"owner_expired"}'::jsonb,
    confidence=null,updated_at=clock_timestamp()
