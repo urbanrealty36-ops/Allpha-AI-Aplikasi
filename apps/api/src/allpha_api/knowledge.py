@@ -1,6 +1,6 @@
 """Owner-scoped knowledge-source upload and processing lifecycle."""
 from __future__ import annotations
-import hashlib, io, os, re, uuid, zipfile, xml.etree.ElementTree as ET
+import asyncio, hashlib, io, os, re, tempfile, uuid, zipfile, xml.etree.ElementTree as ET
 from typing import Any
 from urllib.parse import quote
 import httpx
@@ -79,7 +79,32 @@ async def _admin_db_request(method: str, path: str, access_token: str | None = N
 
 async def _scan(data: bytes,filename: str,media_type: str):
     endpoint=os.getenv("ALLPHA_DOCUMENT_SCANNER_URL","").strip()
-    if not endpoint: raise HTTPException(503,detail={"code":"SCANNER_NOT_CONFIGURED","message":"Dokumen tetap dikarantina sampai pemindai malware dikonfigurasi."})
+    mode=os.getenv("ALLPHA_DOCUMENT_SCANNER_MODE","").strip().lower()
+    if not endpoint and mode=="clamd":
+        suffix=os.path.splitext(filename.lower())[1][:12]
+        try:
+            with tempfile.NamedTemporaryFile(prefix="allpha-knowledge-",suffix=suffix) as source:
+                source.write(data); source.flush()
+                process=await asyncio.create_subprocess_exec(
+                    "clamdscan","--fdpass","--no-summary",source.name,
+                    stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.PIPE,
+                )
+                try:
+                    stdout,stderr=await asyncio.wait_for(process.communicate(),timeout=20)
+                except asyncio.TimeoutError:
+                    process.kill(); await process.wait()
+                    raise HTTPException(503,detail={"code":"SCANNER_UNAVAILABLE","message":"Pemindai malware melewati batas waktu; dokumen tetap dikarantina."})
+        except FileNotFoundError as exc:
+            raise HTTPException(503,detail={"code":"SCANNER_NOT_CONFIGURED","message":"ClamAV scanner tidak tersedia; dokumen tetap dikarantina."}) from exc
+        except OSError as exc:
+            raise HTTPException(503,detail={"code":"SCANNER_UNAVAILABLE","message":"ClamAV scanner tidak dapat dijalankan; dokumen tetap dikarantina."}) from exc
+        if process.returncode==1:
+            raise HTTPException(422,detail={"code":"MALWARE_SCAN_REJECTED","message":"ClamAV mendeteksi konten berbahaya."})
+        if process.returncode!=0:
+            raise HTTPException(503,detail={"code":"SCANNER_UNAVAILABLE","message":"ClamAV tidak memberikan verdict; dokumen tetap dikarantina."})
+        return
+    if not endpoint:
+        raise HTTPException(503,detail={"code":"SCANNER_NOT_CONFIGURED","message":"Dokumen tetap dikarantina sampai pemindai malware dikonfigurasi."})
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(12,connect=3)) as c: r=await c.post(endpoint,files={"file":(filename,data,media_type)})
     except httpx.HTTPError as exc: raise HTTPException(503,detail={"code":"SCANNER_UNAVAILABLE","message":"Pemindai malware tidak tersedia; dokumen tetap dikarantina."}) from exc
