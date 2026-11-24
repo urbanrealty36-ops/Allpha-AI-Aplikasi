@@ -669,7 +669,7 @@ export default function AiCinemaCreatorWorkspace() {
         const publishableKey = getBrowserSupabasePublishableKey();
         if (!supabase || !publishableKey) throw new Error("Autentikasi Storage belum tersedia.");
         try {
-          await fileWithTus(file, init, publishableKey, mediaId, setUploadProgress);
+          await uploadFileWithTus(file, init, publishableKey, mediaId, setUploadProgress);
         } catch (cause) {
           if (!(cause instanceof Error) || cause.message !== "MEDIA_OBJECT_ALREADY_EXISTS") throw cause;
         }
@@ -680,7 +680,7 @@ export default function AiCinemaCreatorWorkspace() {
       }
       window.localStorage.removeItem(sessionKey);
       window.localStorage.removeItem("allpha:cinema:tus:" + mediaId);
-      setUploadFile(null); setUploadProgress(100);
+      if (kind === "feature") setFeatureFilmFile(null); else setEpisodePartFile(null); setUploadProgress(100);
       setNotice("Upload resumable tersimpan. Media masuk pipeline scan dan transcode; pilih media setelah status ready dan scan clean.");
       await loadCreatorMedia();
     } catch (cause) {
