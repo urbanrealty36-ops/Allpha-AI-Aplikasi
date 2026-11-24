@@ -3,7 +3,7 @@
 alter table public.ai_model_cost_configs
   add column if not exists policy_version text not null default '1',
   add column if not exists policy_approval_reference text,
-  add column if not exists policy_approved_by uuid references auth.users(id) on delete set null,
+  add column if not exists policy_approved_by uuid references auth.users(id) on delete restrict,
   add column if not exists policy_approved_at timestamptz;
 
 alter table public.ai_model_cost_configs
@@ -22,6 +22,12 @@ alter table public.ai_model_cost_configs
       and policy_approved_by is null
       and policy_approved_at is null)
   );
+
+alter table public.ai_model_cost_configs
+  drop constraint if exists ai_model_cost_policy_requires_active;
+alter table public.ai_model_cost_configs
+  add constraint ai_model_cost_policy_requires_active
+  check (policy_approved = false or status = 'active');
 
 alter table public.ai_model_cost_configs
   drop constraint if exists ai_model_cost_policy_version_valid;
