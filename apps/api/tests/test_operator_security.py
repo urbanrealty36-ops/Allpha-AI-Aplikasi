@@ -651,3 +651,43 @@ def test_agent_skill_installation_audit_denies_operator_without_security_scope(m
         assert response.json()["error"]["code"]=="OPERATOR_SCOPE_REQUIRED"
     finally:
         app.dependency_overrides.clear()
+
+
+def test_list_operator_runtime_policies_requires_capability_review_scope(monkeypatch):
+    calls=[]
+    async def fake_db(method,path,token,**kwargs):
+        return [{"id":"grant-1","user_id":"operator","scopes":["platform:capabilities.review"],"status":"active","expires_at":None}]
+    async def fake_audit(request,**kwargs):
+        return None
+    async def fake_privileged(method,table,**kwargs):
+        calls.append((method,table,kwargs))
+        return [{"id":"policy-1","agent_id":"agent-1","policy_version":4,"approved_tool_keys":["web_search"],"required_permission_scopes":["network.read"],"status":"approved"}]
+    monkeypatch.setattr(security,"user_db_request",fake_db)
+    monkeypatch.setattr(security,"write_operator_audit",fake_audit)
+    monkeypatch.setattr(security,"privileged_rest_request",fake_privileged)
+    install_auth("operator")
+    try:
+        response=client.get("/v1/admin/operator/runtime-policies?agent_id=agent-1")
+        assert response.status_code==200
+        assert response.json()["items"][0]["policy_version"]==4
+        assert calls[0][0:2]==("GET","agent_runtime_policies")
+        assert calls[0][2]["params"]["agent_id"]=="eq.agent-1"
+        assert calls[0][2]["params"]["status"]=="eq.approved"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_list_operator_runtime_policies_denies_missing_capability_review_scope(monkeypatch):
+    async def fake_db(method,path,token,**kwargs):
+        return [{"id":"grant-1","user_id":"operator","scopes":["platform:operations.read"],"status":"active","expires_at":None}]
+    async def fake_audit(request,**kwargs):
+        return None
+    monkeypatch.setattr(security,"user_db_request",fake_db)
+    monkeypatch.setattr(security,"write_operator_audit",fake_audit)
+    install_auth("operator")
+    try:
+        response=client.get("/v1/admin/operator/runtime-policies?agent_id=agent-1")
+        assert response.status_code==403
+        assert response.json()["error"]["code"]=="OPERATOR_SCOPE_REQUIRED"
+    finally:
+        app.dependency_overrides.clear()
