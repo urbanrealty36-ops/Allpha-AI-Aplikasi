@@ -570,6 +570,13 @@ async def _execute_planned_task(
     plan = _stored_tool_plan(row)
     if plan is None:
         raise HTTPException(status_code=409, detail={"code": "TASK_PLAN_MISSING", "message": "Rencana tool tidak tersedia."})
+    agent = await store.get_agent(owner_id, str(row["agent_id"]))
+    skill = await store.get_skill(owner_id, str(row["agent_id"]), str(row["skill_id"]), version=int(row.get("skill_version") or 0))
+    if not agent or not skill or skill.get("status") != "published":
+        raise HTTPException(status_code=409, detail={"code": "PINNED_AGENT_SKILL_UNAVAILABLE", "message": "Agent atau Skill tidak lagi tersedia."})
+    if int(agent["version"]) != int(row["agent_version"]) or int(skill["version"]) != int(row["skill_version"]):
+        raise HTTPException(status_code=409, detail={"code": "PINNED_VERSION_CHANGED", "message": "Versi Agent atau Skill berubah; buat task baru."})
+
     task_input_payload = row.get("input_payload") if isinstance(row.get("input_payload"), dict) else {}
     knowledge_refs, knowledge_digest, knowledge_state = _validate_knowledge_context_provenance(
         task_input_payload.get("knowledge_context_refs") or [],
@@ -599,13 +606,6 @@ async def _execute_planned_task(
                 "code": "TOOL_PLAN_KNOWLEDGE_SNAPSHOT_STALE",
                 "message": "Sumber atau chunk Knowledge berubah sebelum eksekusi. Buat rencana baru.",
             })
-    agent = await store.get_agent(owner_id, str(row["agent_id"]))
-    skill = await store.get_skill(owner_id, str(row["agent_id"]), str(row["skill_id"]), version=int(row.get("skill_version") or 0))
-    if not agent or not skill or skill.get("status") != "published":
-        raise HTTPException(status_code=409, detail={"code": "PINNED_AGENT_SKILL_UNAVAILABLE", "message": "Agent atau Skill tidak lagi tersedia."})
-    if int(agent["version"]) != int(row["agent_version"]) or int(skill["version"]) != int(row["skill_version"]):
-        raise HTTPException(status_code=409, detail={"code": "PINNED_VERSION_CHANGED", "message": "Versi Agent atau Skill berubah; buat task baru."})
-
     tool_keys = [step.get("tool_key") for step in plan]
     step_ids = [step.get("step_id") for step in plan]
     if (any(not isinstance(key, str) for key in tool_keys)
