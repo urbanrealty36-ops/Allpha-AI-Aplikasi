@@ -761,6 +761,9 @@ async def _execute_planned_task(
             "state": "cancelled", "tool_plan_version": 1,
             "steps": completed_steps, "trace_id": row["trace_id"],
             "result": outputs.get(str(plan[len(completed_steps) - 1]["step_id"])) if completed_steps else None,
+            "knowledge_context_refs": knowledge_refs,
+            "knowledge_context_sha256": knowledge_digest,
+            "knowledge_context_state": knowledge_state,
         } if completed_steps else None
         cancelled = await store.finalize_task(
             owner_id, task_id, lease_token, int(row["task_version"]),
@@ -846,6 +849,9 @@ async def _execute_planned_task(
             "policy_version": policy["policy_version"], "trace_id": row["trace_id"],
             "idempotency_key": row["idempotency_key"], "events": trace_events,
             "provider_execution": False,
+            "knowledge_context_refs": knowledge_refs,
+            "knowledge_context_sha256": knowledge_digest,
+            "knowledge_context_state": knowledge_state,
         }
         output_bytes = json.dumps(output_payload, ensure_ascii=False, sort_keys=True,
                                   separators=(",", ":"), allow_nan=False).encode("utf-8")
@@ -868,6 +874,9 @@ async def _execute_planned_task(
             "state": "partially_succeeded" if completed_steps else "retrying",
             "tool_plan_version": 1, "steps": completed_steps,
             "trace_id": row["trace_id"], "error_code": retry_code,
+            "knowledge_context_refs": knowledge_refs,
+            "knowledge_context_sha256": knowledge_digest,
+            "knowledge_context_state": knowledge_state,
         } if completed_steps else None
         retried = await store.schedule_retry_task(
             owner_id, task_id, lease_token, int(row["task_version"]),
@@ -883,6 +892,9 @@ async def _execute_planned_task(
             "state": "partially_succeeded" if completed_steps else "failed",
             "tool_plan_version": 1, "steps": completed_steps,
             "trace_id": row["trace_id"], "error_code": "TOOL_PLAN_STEP_FAILED",
+            "knowledge_context_refs": knowledge_refs,
+            "knowledge_context_sha256": knowledge_digest,
+            "knowledge_context_state": knowledge_state,
         } if completed_steps else None
         failed = await store.finalize_task(
             owner_id, task_id, lease_token, int(row["task_version"]),
