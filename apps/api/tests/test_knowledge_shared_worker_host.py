@@ -19,18 +19,18 @@ def test_knowledge_document_consumer_rejects_ambiguous_gate(monkeypatch):
 
 
 def test_knowledge_document_consumer_stops_cleanly_between_batches():
-    class Worker:
-        def __init__(self):
-            self.calls = 0
-
-        async def process_once(self):
-            self.calls += 1
-            stop.set()
-            return False
-
     async def scenario():
-        global stop
         stop = asyncio.Event()
+
+        class Worker:
+            def __init__(self):
+                self.calls = 0
+
+            async def process_once(self):
+                self.calls += 1
+                stop.set()
+                return False
+
         worker = Worker()
         await knowledge_ingestion_worker.run_forever(
             worker, poll_seconds=30, stop_event=stop,
