@@ -78,7 +78,10 @@ def test_durable_tool_plan_reservations_are_owner_idempotent_and_do_not_store_ra
     assert "foreign key (session_id, owner_user_id)" in sql
     assert "foreign key (skill_id, agent_id)" in sql
     assert "enable row level security" in sql
-    assert "grant all on public.agent_runtime_tool_plans to service_role" in sql
+    assert "grant select, insert, update on public.agent_runtime_tool_plans to service_role" in sql
+    assert "revoke all on public.agent_runtime_tool_plans from public, anon, authenticated" in sql
+    assert "agent_runtime_tool_plan_reservation_is_immutable" in sql
+    assert "agent_runtime_tool_plan_terminal_state" in sql
     assert "raw user intent, private memory and knowledge text are not stored" in sql
 
 
