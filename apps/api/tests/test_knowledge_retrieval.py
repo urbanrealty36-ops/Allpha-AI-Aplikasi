@@ -271,8 +271,8 @@ def test_supabase_keyword_repository_pushes_security_filters_into_database_query
             "source_location": {"kind": "page", "index": 1}, "source_version": 2,
             "content_sha256": hashlib.sha256(b"private text").hexdigest(),
             "agent_knowledge_sources": {
-                "id": "source-a", "source_version": 2, "status": "ready",
-                "sensitivity": "internal",
+                "id": "source-a", "owner_id": "owner-a", "agent_id": "agent-a",
+                "source_version": 2, "status": "ready", "sensitivity": "internal",
             },
         }]
     monkeypatch.setattr(auth, "user_db_request", fake_request)
@@ -287,6 +287,8 @@ def test_supabase_keyword_repository_pushes_security_filters_into_database_query
         assert (method, path, token) == ("GET", "agent_knowledge_chunks", "user-token")
         assert params["owner_id"] == "eq.owner-a"
         assert params["agent_id"] == "eq.agent-a"
+        assert params["agent_knowledge_sources.owner_id"] == "eq.owner-a"
+        assert params["agent_knowledge_sources.agent_id"] == "eq.agent-a"
         assert params["agent_knowledge_sources.status"] == "eq.ready"
         assert params["agent_knowledge_sources.sensitivity"] == "in.(internal)"
         assert params["search_vector"] == "fts(simple).private phrase"
@@ -305,8 +307,8 @@ def test_supabase_keyword_repository_rejects_source_version_conflict(monkeypatch
             "owner_id": "owner-a", "chunk_index": 0, "content": "private text",
             "source_location": {}, "source_version": 1, "content_sha256": hashlib.sha256(b"private text").hexdigest(),
             "agent_knowledge_sources": {
-                "id": "source-a", "source_version": 2, "status": "ready",
-                "sensitivity": "internal",
+                "id": "source-a", "owner_id": "owner-a", "agent_id": "agent-a",
+                "source_version": 2, "status": "ready", "sensitivity": "internal",
             },
         }]
     monkeypatch.setattr(auth, "user_db_request", fake_request)
@@ -566,5 +568,35 @@ def test_retrieval_service_rejects_content_digest_mismatch():
         repo = Repo(hits=[hit(content="tampered excerpt", content_sha256=hashlib.sha256(b"original excerpt").hexdigest())])
         with pytest.raises(KnowledgeRetrievalUnavailable, match="content digest"):
             await KnowledgeRetrievalService(repo, Policy()).retrieve(internal_request())
+
+    asyncio.run(scenario())
+
+
+
+def test_supabase_keyword_repository_rejects_cross_owner_source_relation(monkeypatch):
+    from allpha_api import auth
+    from allpha_api.knowledge_retrieval import KnowledgeRetrievalUnavailable, SupabaseKeywordKnowledgeRepository
+
+    async def fake_request(method, path, access_token, *, params=None, body=None, prefer=None):
+        return [{
+            "id": "chunk-a", "source_id": "source-a", "agent_id": "agent-a",
+            "owner_id": "owner-a", "chunk_index": 0, "content": "private text",
+            "source_location": {}, "source_version": 2,
+            "content_sha256": hashlib.sha256(b"private text").hexdigest(),
+            "agent_knowledge_sources": {
+                "id": "source-a", "owner_id": "owner-b", "agent_id": "agent-a",
+                "source_version": 2, "status": "ready", "sensitivity": "internal",
+            },
+        }]
+
+    monkeypatch.setattr(auth, "user_db_request", fake_request)
+
+    async def scenario():
+        repo = SupabaseKeywordKnowledgeRepository(access_token="user-token")
+        with pytest.raises(KnowledgeRetrievalUnavailable, match="owner/source/version"):
+            await repo.search_keyword(
+                owner_id="owner-a", agent_id="agent-a", query="private phrase",
+                allowed_sensitivities=["internal"], limit=5, trace_id="trace-cross-owner",
+            )
 
     asyncio.run(scenario())
