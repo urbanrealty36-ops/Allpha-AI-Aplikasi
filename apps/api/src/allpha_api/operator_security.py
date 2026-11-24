@@ -354,6 +354,27 @@ async def get_agent_social_audit(
     return {"items": rows or [], "limit": min(max(1, limit), 100)}
 
 
+@router.get("/operator/agent-ownership/audit", name="get_agent_ownership_audit")
+async def get_agent_ownership_audit(
+    limit: int = 100,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:security.audit.read")),
+) -> dict[str, Any]:
+    bounded_limit = min(max(1, limit), 100)
+    transfers, consents = await asyncio.gather(
+        privileged_rest_request(
+            "GET", "agent_ownership_transfer_events",
+            params={"select": "id,request_id,agent_id,event_type,from_owner_subject_ref,to_owner_subject_ref,details,created_at",
+                    "order": "created_at.desc", "limit": str(bounded_limit)},
+        ),
+        privileged_rest_request(
+            "GET", "agent_owner_attribution_consent_events",
+            params={"select": "id,agent_id,owner_subject_ref,event_type,consent_version,disclosure_snapshot,created_at",
+                    "order": "created_at.desc", "limit": str(bounded_limit)},
+        ),
+    )
+    return {"ownership_transfers": transfers or [], "passport_consents": consents or [], "limit": bounded_limit}
+
+
 @router.get("/operator/agent-social/governance", name="get_agent_social_governance")
 async def get_agent_social_governance(
     limit: int = 100,
