@@ -259,7 +259,7 @@ class SupabaseApprovedRuntimePolicyVerifier:
         except (httpx.HTTPError, ValueError) as exc:
             raise RuntimeError("approved model runtime policy registry is unavailable") from exc
         if not isinstance(rows, list) or len(rows) != 1:
-            raise RuntimeError("exactly one matching approved runtime policy is required")
+            raise RuntimeError("exactly one matching approved runtime policy and exactly one effective active tariff are required")
         row = rows[0]
         if (not isinstance(row, dict)
                 or row.get("id") != self._policy_id
