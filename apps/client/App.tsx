@@ -1903,7 +1903,7 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
       const response = await fetch(apiBase + "/v1/agents/" + encodeURIComponent(studioAgentId) + "/knowledge/sources", { method: "POST", headers: { Authorization: "Bearer " + session.access_token, Accept: "application/json" }, body: form });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body?.error?.message || body?.detail?.message || "Dokumen gagal diunggah.");
-      setMessage("Dokumen masuk karantina privat; pemrosesan menunggu pemindai malware.");
+      setMessage("Dokumen masuk karantina privat. Tetapkan klasifikasi sensitivitas, lalu mulai pemrosesan melalui worker.");
       await loadKnowledgeSources(studioAgentId);
     } catch (e) { setError(e instanceof Error ? e.message : "Dokumen gagal diunggah."); }
     finally { setBusy(false); }
