@@ -16,6 +16,9 @@ type CreditReservation = { id: string; owner_user_id: string; task_id: string; c
 type EffectReceipt = { id: string; task_id: string; step_key: string; status: string; owner_user_id: string; agent_id: string; approval_id: string; provider_key: string; action_key: string; external_reference?: string | null; evidence_reference?: string | null; started_at: string; completed_at?: string | null };
 type AutomationBudget = { owner_user_id: string; agent_id: string; daily_budget: number; daily_used_or_reserved: number; daily_remaining: number; takeover_active: boolean };
 type Governance = { policies: SocialPolicy[]; approvals: SocialApproval[]; automation_schema_active: boolean; dm_approval_schema_active?: boolean; dispatch_schema_active?: boolean; runtime_enabled?: boolean; effect_receipts_schema_active?: boolean; control_events: ControlEvent[]; automation_grants: AutomationGrant[]; automation_runs: AutomationRun[]; automation_events: AutomationEvent[]; runtime_tasks: RuntimeTask[]; credit_reservations: CreditReservation[]; effect_receipts: EffectReceipt[]; automation_budgets: AutomationBudget[] };
+type OwnershipAudit = { id: string; request_id: string; agent_id: string; event_type: string; from_owner_subject_ref: string; to_owner_subject_ref: string; details: Record<string, unknown>; created_at: string };
+type ConsentAudit = { id: string; agent_id: string; owner_subject_ref: string; event_type: string; consent_version: number; disclosure_snapshot: Record<string, unknown>; created_at: string };
+type OwnershipAuditPayload = { ownership_transfers: OwnershipAudit[]; passport_consents: ConsentAudit[] };
 type Payload = { access_token?: string; refresh_token?: string; expires_in?: number; user?: { id: string; email?: string }; error_description?: string; msg?: string };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 const authUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || "").replace(/\/$/, "");
@@ -39,6 +42,8 @@ export default function AgentSocialAuditPage() {
   const [password,setPassword] = useState("");
   const [items,setItems] = useState<Audit[]>([]);
   const [governance,setGovernance] = useState<Governance|null>(null);
+  const [ownershipAudit,setOwnershipAudit] = useState<OwnershipAudit[]>([]);
+  const [consentAudit,setConsentAudit] = useState<ConsentAudit[]>([]);
   const [busy,setBusy] = useState(false);
   const [error,setError] = useState("");
   const [notice,setNotice] = useState("");
@@ -56,7 +61,15 @@ export default function AgentSocialAuditPage() {
     }
     const governanceBody = await governanceResponse.json().catch(() => ({}));
     if (!governanceResponse.ok) throw new Error(governanceBody?.error?.message || governanceBody?.detail?.message || "Snapshot governance sosial tidak dapat diakses.");
+    let ownershipResponse = await fetch(apiBase + "/v1/admin/operator/agent-ownership/audit?limit=100", { headers: { Authorization: "Bearer " + current.access_token, Accept: "application/json" }, cache: "no-store" });
+    if (ownershipResponse.status === 401) {
+      current = await refresh(current);
+      ownershipResponse = await fetch(apiBase + "/v1/admin/operator/agent-ownership/audit?limit=100", { headers: { Authorization: "Bearer " + current.access_token, Accept: "application/json" }, cache: "no-store" });
+    }
+    const ownershipBody = await ownershipResponse.json().catch(() => ({})) as OwnershipAuditPayload;
+    if (!ownershipResponse.ok) throw new Error("Audit transfer kepemilikan dan Passport tidak dapat diakses.");
     setSession(current); setItems(body.items || []); setGovernance(governanceBody as Governance);
+    setOwnershipAudit(ownershipBody.ownership_transfers || []); setConsentAudit(ownershipBody.passport_consents || []);
   },[]);
   async function login(event: FormEvent) {
     event.preventDefault(); setBusy(true); setError("");
@@ -74,6 +87,12 @@ export default function AgentSocialAuditPage() {
     {error && <p role="alert" className="notice error">{error}</p>}{notice && <p role="status" className="notice">{notice}</p>}
     {!session ? <section className="panel"><h2>Operator authentication</h2><p className="muted">Login Human saja tidak cukup. API memeriksa grant operator dan scope platform:security.audit.read pada setiap request.</p><form onSubmit={login} className="formGrid"><label>Email<input type="email" value={email} onChange={e=>setEmail(e.target.value)} required autoComplete="username"/></label><label>Password<input type="password" value={password} onChange={e=>setPassword(e.target.value)} required autoComplete="current-password"/></label><button type="submit" disabled={busy}>{busy?"Memverifikasi…":"Login & buka audit"}</button></form></section> : <section className="panel"><header className="panelHead"><div><h2>Social action audit events</h2><p className="muted">{items.length} event terbaru · {session.user.email || session.user.id}</p></div><button onClick={reload} disabled={busy}>{busy?"Memuat…":"Refresh"}</button></header>{items.length===0?<p className="muted">Belum ada event audit sosial.</p>:<div className="tableWrap"><table><thead><tr><th>Waktu</th><th>Event</th><th>Outcome</th><th>Owner / Agent</th><th>Approval</th><th>Metadata</th></tr></thead><tbody>{items.map(item=><tr key={item.id}><td>{new Date(item.created_at).toLocaleString("id-ID")}</td><td><strong>{item.event_type}</strong></td><td><span className={"pill "+(item.outcome==="allowed"?"online":item.outcome==="denied"?"warning":"offline")}>{item.outcome}</span></td><td><code>{item.owner_user_id}</code><br/><code>{item.agent_id}</code></td><td><code>{item.approval_id || "—"}</code></td><td><pre>{JSON.stringify(item.metadata,null,2)}</pre></td></tr>)}</tbody></table></div>}</section>}
     {session && governance && <>
+      <section className="panel"><header className="panelHead"><div><h2>Agent Ownership & Passport Consent Audit</h2><p className="muted">Read-only · pseudonymous owner references · {ownershipAudit.length} transfer events · {consentAudit.length} consent events</p></div></header>
+        <h3 className="subhead">Ownership transfer lifecycle</h3>
+        {ownershipAudit.length===0?<p className="muted">Belum ada transfer kepemilikan Agent.</p>:<div className="tableWrap"><table><thead><tr><th>Waktu</th><th>Agent / Request</th><th>Event</th><th>Previous owner ref</th><th>New owner ref</th><th>Effects</th></tr></thead><tbody>{ownershipAudit.map(item=><tr key={item.id}><td>{new Date(item.created_at).toLocaleString("id-ID")}</td><td><code>{item.agent_id}</code><br/><code>{item.request_id}</code></td><td>{item.event_type}</td><td><code>{item.from_owner_subject_ref}</code></td><td><code>{item.to_owner_subject_ref}</code></td><td><pre>{JSON.stringify(item.details,null,2)}</pre></td></tr>)}</tbody></table></div>}
+        <h3 className="subhead">Public Passport owner-attribution consent</h3>
+        {consentAudit.length===0?<p className="muted">Belum ada persetujuan atau pencabutan atribusi Human Owner.</p>:<div className="tableWrap"><table><thead><tr><th>Waktu</th><th>Agent</th><th>Owner subject ref</th><th>Event</th><th>Consent version</th><th>Disclosure snapshot</th></tr></thead><tbody>{consentAudit.map(item=><tr key={item.id}><td>{new Date(item.created_at).toLocaleString("id-ID")}</td><td><code>{item.agent_id}</code></td><td><code>{item.owner_subject_ref}</code></td><td>{item.event_type}</td><td>{item.consent_version}</td><td><pre>{JSON.stringify(item.disclosure_snapshot,null,2)}</pre></td></tr>)}</tbody></table></div>}
+      </section>
       <section className="panel"><header className="panelHead"><div><h2>Owner policies & Agent permissions</h2><p className="muted">{governance.policies.length} policy · read-only snapshot</p></div></header>
         {governance.policies.length===0?<p className="muted">Belum ada policy Agent Social.</p>:<div className="tableWrap"><table><thead><tr><th>Owner / Agent</th><th>Allowed actions</th><th>Approval</th><th>Status</th><th>Version</th><th>Updated</th></tr></thead><tbody>{governance.policies.map(item=><tr key={item.id}><td><code>{item.owner_user_id}</code><br/><code>{item.agent_id}</code></td><td>{item.allowed_actions.join(", ")}</td><td>{item.approval_mode}</td><td><span className={"pill "+(item.is_enabled?"online":"warning")}>{item.is_enabled?"enabled":"disabled"}</span></td><td>{item.version}</td><td>{new Date(item.updated_at).toLocaleString("id-ID")}</td></tr>)}</tbody></table></div>}
       </section>
