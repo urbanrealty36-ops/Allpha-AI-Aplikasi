@@ -22,8 +22,10 @@ Foreground yes
 LogTime yes
 LogVerbose yes
 LogFile /var/log/clamav/clamav.log
-TCPSocket 3310
-TCPAddr 127.0.0.1
+LocalSocket /run/clamav/clamd.ctl
+LocalSocketGroup clamav
+LocalSocketMode 660
+FixStaleSocket yes
 MaxFileSize 10M
 MaxScanSize 20M
 StreamMaxLength 20M
@@ -37,9 +39,8 @@ ConcurrentDatabaseReload no
 SelfCheck 3600
 CLAMD_CONFIG
 
-    cat > /etc/clamav/clamdscan.conf <<'CLAMDSCAN_CONFIG'
-TCPSocket 3310
-TCPAddr 127.0.0.1
+    cat > /run/clamav/clamdscan.conf <<'CLAMDSCAN_CONFIG'
+LocalSocket /run/clamav/clamd.ctl
 CLAMDSCAN_CONFIG
 
     echo "Starting ClamAV daemon for Knowledge document scanning"
@@ -53,7 +54,7 @@ CLAMDSCAN_CONFIG
 
     READY=0
     for attempt in $(seq 1 60); do
-        if gosu worker clamdscan --ping=1 >/dev/null 2>&1; then
+        if gosu worker clamdscan --config-file=/run/clamav/clamdscan.conf --ping=1 >/dev/null 2>&1; then
             READY=1
             break
         fi
