@@ -40,6 +40,7 @@ class OpenAICompatibleEmbeddingAdapter:
         pricing_version: str | None = None,
         cost_unit: str | None = None,
         input_cost_microunits_per_token: int | None = None,
+        max_input_bytes: int | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         parts = urlsplit(base_url.strip())
@@ -63,6 +64,8 @@ class OpenAICompatibleEmbeddingAdapter:
             raise EmbeddingProviderConfigurationError("embedding pricing version, cost unit and input rate must be configured together")
         if input_cost_microunits_per_token is not None and input_cost_microunits_per_token < 0:
             raise EmbeddingProviderConfigurationError("embedding input token rate must be non-negative")
+        if max_input_bytes is not None and not 1 <= max_input_bytes <= 1_000_000:
+            raise EmbeddingProviderConfigurationError("max_input_bytes must be between 1 and 1000000")
 
         self._url = base_url.rstrip("/") + "/embeddings"
         self._api_key = api_key
@@ -72,14 +75,25 @@ class OpenAICompatibleEmbeddingAdapter:
         self._pricing_version = pricing_version
         self._cost_unit = cost_unit
         self._input_rate = input_cost_microunits_per_token
+        self._max_input_bytes = max_input_bytes
         self._transport = transport
 
     async def embed(self, request: EmbeddingRequest, *, model_id: str) -> EmbeddingResponse:
         if not model_id.strip():
             raise EmbeddingProviderConfigurationError("Model Router must supply a model ID")
+        input_texts = [chunk.text for chunk in request.chunks]
+        if self._max_input_bytes is not None:
+            total_input_bytes = sum(len(text.encode("utf-8")) for text in input_texts)
+            if total_input_bytes > self._max_input_bytes:
+                raise ModelRouterRejected(EmbeddingFailure(
+                    task_id=request.task_id,
+                    code="EMBEDDING_INPUT_LIMIT_EXCEEDED",
+                    retryable=False,
+                    trace_id=request.trace_id,
+                ))
         body = {
             "model": model_id,
-            "input": [chunk.text for chunk in request.chunks],
+            "input": input_texts,
         }
         try:
             async with httpx.AsyncClient(
@@ -203,6 +217,11 @@ def build_embedding_adapter_from_environment(
         rate = int(rate_raw) if rate_raw else None
     except ValueError as exc:
         raise EmbeddingProviderConfigurationError("embedding dimensions and token rate must be integers") from exc
+    max_input_bytes_raw = os.getenv("ALLPHA_EMBEDDING_MAX_PROMPT_BYTES", "").strip()
+    try:
+        max_input_bytes = int(max_input_bytes_raw) if max_input_bytes_raw else None
+    except ValueError as exc:
+        raise EmbeddingProviderConfigurationError("ALLPHA_EMBEDDING_MAX_PROMPT_BYTES must be an integer") from exc
     adapter = OpenAICompatibleEmbeddingAdapter(
         base_url=base_url,
         api_key=api_key,
@@ -212,6 +231,7 @@ def build_embedding_adapter_from_environment(
         pricing_version=os.getenv("ALLPHA_EMBEDDING_PRICING_VERSION") or None,
         cost_unit=os.getenv("ALLPHA_EMBEDDING_COST_UNIT") or None,
         input_cost_microunits_per_token=rate,
+        max_input_bytes=max_input_bytes,
         transport=transport,
     )
     return provider_id, adapter
