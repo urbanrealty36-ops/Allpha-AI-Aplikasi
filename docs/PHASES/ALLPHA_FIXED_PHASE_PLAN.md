@@ -1275,3 +1275,13 @@ This is an evidence refresh inside the existing fixed plan. It does not create a
 - **Coverage:** Native source code CHANGE; Web existing retrieval client unchanged; Super Admin NOT AFFECTED. This is client/API integration source code, not production integration verification while the server-side policy/vector dependencies remain unavailable.
 - **Verification:** pending the commit's Native TypeScript/build workflow. EAS and real-account testing remain DEFERRED.
 - **Status:** ENG-P07 remains `in_progress`; no vector retrieval or production end-to-end claim.
+
+## 40.43 — ENG-P07 strict scanner receipt JSON parsing (2026-11-24)
+
+- **Implementation commits:** `22915f33d0598f8e4d9d004aa62f4cb32f9306fb` (reject duplicate JSON object keys) and `a5e8a4f824f4d66a0c1b376c2f5e139175869831` (top-level and nested duplicate-key regression cases).
+- **Defect fixed:** Python's default JSON decoder accepts duplicate object keys and silently keeps one value. A scanner receipt with duplicate `verdict` or nested scanner identity fields could therefore be ambiguous while still passing the strict shape/digest checks.
+- **Implementation:** remote scanner receipt parsing now uses a duplicate-key rejecting object-pairs hook at every nesting level. Ambiguous receipts fail closed as `SCANNER_UNAVAILABLE`; no clean verdict is accepted.
+- **Coverage:** API CHANGE (scanner trust boundary); dedicated scanner negative-path tests added. Web and Native continue through the same Knowledge API; Super Admin NOT AFFECTED.
+- **Verification:** Allpha Smoke `45398603841` was queued/in progress on the implementation commits at the time of this update; no passing result is claimed here. Railway API and shared-worker deployments for the latest commit were queued; no latest-commit runtime deployment is claimed.
+- **Status:** source implementation committed; CI and Railway rollout pending. ENG-P07 remains `in_progress`; this hardening does not provide the remote scanner endpoint/credential/identity pins, authoritative consent/source-grant storage provider, approved embedding profile/vector generation, or end-to-end ingestion-to-citation verification.
+- **Next canonical work:** complete the focused scanner regression/CI and observe the Railway rollout, then continue ENG-P07 against ADR-0003/0004/0005 prerequisites. Keep Knowledge consumers disabled until all authorization, scanner, embedding, vector and retrieval gates are genuinely ready.
