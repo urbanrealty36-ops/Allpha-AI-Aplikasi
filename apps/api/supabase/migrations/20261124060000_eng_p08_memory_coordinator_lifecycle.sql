@@ -157,7 +157,7 @@ begin
   select coalesce(array_agg(distinct value order by value),'{}'::text[]) into v_sensitivities
    from jsonb_array_elements_text(coalesce(p_payload->'allowed_sensitivities','[]'::jsonb)) t(value);
   if v_enabled and (
-   p_payload->>'consent_version'<>'allpha.memory.v1'
+   coalesce(p_payload->>'consent_version','')<>'allpha.memory.v1'
    or cardinality(v_purposes)=0 or cardinality(v_sensitivities)=0
    or exists(select 1 from unnest(v_purposes) x where x not in ('agent_generation_context','agent_runtime_context','workflow_context','personalization_context'))
    or exists(select 1 from unnest(v_sensitivities) x where x not in ('public','internal','confidential','restricted'))
@@ -260,7 +260,7 @@ begin
 
  if p_action='decide' then
   v_decision:=p_payload->>'decision';
-  if v_decision not in ('approve','reject') then raise exception 'MEMORY_DECISION_INVALID' using errcode='22023'; end if;
+  if v_decision is null or v_decision not in ('approve','reject') then raise exception 'MEMORY_DECISION_INVALID' using errcode='22023'; end if;
   select * into v_policy from public.agent_memory_policies p where p.id=v_item.policy_id for update;
   if v_decision='approve' and (
    not found or not v_policy.enabled or v_policy.consent_version<>'allpha.memory.v1'
