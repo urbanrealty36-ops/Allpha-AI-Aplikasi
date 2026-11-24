@@ -141,10 +141,10 @@ class KnowledgeRetrievalService:
                 raise KnowledgeAccessDenied("retrieval adapter returned cross-owner/agent data")
             if hit.sensitivity not in request.allowed_sensitivities:
                 raise KnowledgeAccessDenied("retrieval adapter returned disallowed sensitivity")
-            if hit.source_id not in set(request.allowed_source_ids):
-                raise KnowledgeAccessDenied("retrieval adapter returned a source outside the active grant scope")
             if not hit.source_id or not hit.chunk_id or not hit.content_sha256:
                 raise KnowledgeRetrievalUnavailable("retrieval result lacks source/chunk provenance")
+            if hit.source_id not in set(request.allowed_source_ids):
+                raise KnowledgeAccessDenied("retrieval adapter returned a source outside the active grant scope")
             if hashlib.sha256(hit.content.encode("utf-8")).hexdigest() != hit.content_sha256:
                 raise KnowledgeRetrievalUnavailable("retrieval result content digest does not match citation provenance")
             if (
@@ -231,9 +231,6 @@ async def retrieve_knowledge(
     if resolved_policy is not None:
         response["policy_version"] = resolved_policy.policy_version
         response["consent_version"] = resolved_policy.consent_version
-        response["grant_version"] = resolved_policy.grant_version
-        response["audience"] = resolved_policy.audience
-        response["decision_reference"] = resolved_policy.decision_reference
     return response
 
 
