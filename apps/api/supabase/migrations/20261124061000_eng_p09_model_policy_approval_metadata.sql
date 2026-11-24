@@ -89,3 +89,8 @@ revoke all on function public.get_agent_model_usage_summary(timestamptz,timestam
   from public,anon,authenticated,service_role;
 grant execute on function public.get_agent_model_usage_summary(timestamptz,timestamptz)
   to service_role;
+
+
+-- Only one globally effective generation-output moderation policy may be approved at once.
+create unique index if not exists generation_output_moderation_one_approved
+  on public.generation_output_moderation_policies(status) where status='approved';
