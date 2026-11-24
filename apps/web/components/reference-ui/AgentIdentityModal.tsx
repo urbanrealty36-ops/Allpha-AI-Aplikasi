@@ -74,7 +74,7 @@ export default function AgentIdentityModal({
     setBio(agent.bio);
     setPublicOwnerAttribution(agent.publicOwnerAttribution ?? false);
     setSaveError("");
-  }, [isOpen, agent.id]);
+  }, [isOpen, agent.id, agent.name, agent.handle, agent.bidang, agent.avatar3DCodename, agent.skills, agent.bio, agent.publicOwnerAttribution]);
 
   if (!isOpen) return null;
 
