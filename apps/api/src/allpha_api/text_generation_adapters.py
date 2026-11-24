@@ -213,9 +213,9 @@ class SupabaseTextGenerationMeteringSink:
 class SupabaseActiveModelCostVerifier:
     """Require the active operator-managed tariff to match the approved deployment route.
 
-    The database tariff is authoritative for whether a configured route may run. The
-    independently approved model policy remains deployment-owned; activating a tariff
-    alone never grants model execution permission.
+    The exact database tariff row is also the canonical model execution policy.
+    Pricing activation alone is insufficient: a high-risk operator approval with
+    durable actor, timestamp and reference evidence is required.
     """
 
     def __init__(
@@ -253,6 +253,8 @@ class SupabaseActiveModelCostVerifier:
         now = datetime.now(timezone.utc).isoformat()
         params = {
             "select": ",".join((*self._expected.keys(), "status", "effective_at", "policy_approval_reference", "policy_approved_by", "policy_approved_at")),
+            "id": "eq." + str(self._expected["id"]),
+            "policy_version": "eq." + str(self._expected["policy_version"]),
             "provider_id": "eq." + str(self._expected["provider_id"]),
             "model_id": "eq." + str(self._expected["model_id"]),
             "model_version": "eq." + str(self._expected["model_version"]),
