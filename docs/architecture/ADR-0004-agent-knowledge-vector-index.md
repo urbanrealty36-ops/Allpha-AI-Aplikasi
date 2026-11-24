@@ -63,6 +63,19 @@ The provider/model/model-version, exact dimension, distance metric, index type/p
 Disable the vector adapter and retain explicit keyword-only mode only if ADR-0003 policy is implemented, approved and configured. If neither safe path is available, retrieval returns the stable unavailable error; never fall back to unrestricted retrieval.
 
 
+
+## Source adapter contract — 2026-11-24
+
+The source implementation now uses the following service-only PostgREST RPC boundary. This fixes the persistence API shape without selecting a provider, dimension, metric, physical table, or index:
+
+- `agent_knowledge_vector_generation_readiness(p_generation_id uuid)` returns exactly one JSON receipt containing `ready`, `generation_id`, and `status`. The adapter accepts only `ready=true`, the exact requested generation ID, and a writable `building` or `active` state.
+- `upsert_agent_knowledge_vectors(...)` receives the exact generation, job ID and lease token, owner/Agent/source/version identity, provider/model/version/contract/dimension metadata, stable batch idempotency key, and content-free chunk records (chunk ID, SHA-256, vector values, per-chunk idempotency key).
+- The database RPC must atomically verify the current job lease, owner/Agent/source identity, current source version, generation lifecycle, provider/model/dimension compatibility and payload fingerprint before writing. Same key + same payload is a no-op; same key + different payload is a conflict.
+- The RPC returns `generation_id`, `source_version`, `persisted_count`, and `idempotency_key`; the service adapter rejects any mismatched receipt. Raw chunk text and service-role credentials are never sent to clients or stored in vector records.
+- The canonical source adapter is `apps/api/src/allpha_api/knowledge_vector_repository.py`; `knowledge_worker_factory.py` now composes it with the canonical Model Router and lease-fenced embedding worker. The shared worker host's embedding consumer delegates to this composition root.
+
+**Not yet migrated or active:** neither RPC nor the physical generation/index schema exists in production. The adapter deliberately refuses to start without the readiness RPC and a configured generation UUID. No physical vector migration or provider activation is implied by this source contract.
+
 ## Production capability observation — 2026-11-24
 
 The canonical Supabase project was queried directly. PostgreSQL has the `vector` extension installed at version `0.8.2`. No Knowledge vector table, vector-typed column, vector RPC, or active embedding tariff row is currently present. This confirms the extension prerequisite only; it does not select a provider/model/version, dimension, distance metric, index parameters, active generation, or relevance-evaluation contract. Therefore the physical vector schema and embedding worker remain disabled, and keyword-only retrieval remains distinct from hybrid retrieval.
