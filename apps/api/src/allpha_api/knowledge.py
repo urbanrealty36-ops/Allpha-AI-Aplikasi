@@ -8,6 +8,10 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Uplo
 from pydantic import BaseModel, ConfigDict, Field
 from allpha_api.auth import current_user, user_db_request
 from allpha_api.knowledge_parser import parse_document_isolated
+from allpha_api.document_scanner import (
+    DocumentMalwareDetected, DocumentScannerConfigurationError,
+    DocumentScannerUnavailable, RemoteDocumentScanner,
+)
 
 router = APIRouter(prefix="/v1/agents/{agent_id}/knowledge", tags=["agent-knowledge"])
 MAX_BYTES = 15 * 1024 * 1024
@@ -103,14 +107,15 @@ async def _scan(data: bytes,filename: str,media_type: str):
         if process.returncode!=0:
             raise HTTPException(503,detail={"code":"SCANNER_UNAVAILABLE","message":"ClamAV tidak memberikan verdict; dokumen tetap dikarantina."})
         return
-    if not endpoint:
-        raise HTTPException(503,detail={"code":"SCANNER_NOT_CONFIGURED","message":"Dokumen tetap dikarantina sampai pemindai malware dikonfigurasi."})
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(12,connect=3)) as c: r=await c.post(endpoint,files={"file":(filename,data,media_type)})
-    except httpx.HTTPError as exc: raise HTTPException(503,detail={"code":"SCANNER_UNAVAILABLE","message":"Pemindai malware tidak tersedia; dokumen tetap dikarantina."}) from exc
-    try: verdict=r.json().get("verdict") if r.status_code==200 else None
-    except (ValueError,AttributeError): verdict=None
-    if verdict!="clean": raise HTTPException(422,detail={"code":"MALWARE_SCAN_REJECTED","message":"Dokumen ditolak atau pemindai tidak memberikan verdict clean."})
+        scanner = RemoteDocumentScanner.from_environment()
+        return await scanner.scan(data, filename=filename, media_type=media_type)
+    except DocumentScannerConfigurationError as exc:
+        raise HTTPException(503,detail={"code":"SCANNER_NOT_CONFIGURED","message":"Pemindai malware memerlukan URL HTTPS, credential, dan hostname allowlist yang valid."}) from exc
+    except DocumentMalwareDetected as exc:
+        raise HTTPException(422,detail={"code":"MALWARE_SCAN_REJECTED","message":"Pemindai malware mendeteksi konten berbahaya."}) from exc
+    except DocumentScannerUnavailable as exc:
+        raise HTTPException(503,detail={"code":"SCANNER_UNAVAILABLE","message":"Pemindai malware tidak memberikan verdict tepercaya; dokumen tetap dikarantina."}) from exc
 
 def _extract(filename: str,data: bytes):
     try:
