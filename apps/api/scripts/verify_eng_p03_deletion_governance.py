@@ -71,7 +71,7 @@ create table public.profiles(
 );
 create table public.account_export_jobs(
  id uuid primary key default gen_random_uuid(),
- user_id uuid not null references auth.users(id) on delete cascade,
+ user_id uuid not null constraint account_export_jobs_user_id_fkey references auth.users(id) on delete cascade,
  idempotency_key text not null,
  status text not null default 'queued'
    check(status in ('queued','running','succeeded','failed','cancelled','expired')),
@@ -86,17 +86,81 @@ create table public.account_export_jobs(
  created_at timestamptz not null default now(),updated_at timestamptz not null default now(),
  unique(user_id,idempotency_key)
 );
+create table public.ai_agents(id uuid primary key, handle text unique, display_name text);
+create table public.agent_ownerships(
+ agent_id uuid not null references public.ai_agents(id) on delete cascade,
+ owner_user_id uuid not null constraint agent_ownerships_owner_user_id_fkey references auth.users(id) on delete restrict,
+ ownership_role text not null default 'owner',status text not null default 'active',
+ created_at timestamptz not null default now(),primary key(agent_id,owner_user_id)
+);
+create table public.organizations(
+ id uuid primary key,slug text unique,name text not null,
+ owner_id uuid not null constraint organizations_owner_id_fkey references auth.users(id) on delete restrict,
+ created_at timestamptz not null default now(),updated_at timestamptz not null default now()
+);
+create table public.organization_memberships(
+ organization_id uuid not null references public.organizations(id) on delete cascade,
+ user_id uuid not null constraint organization_memberships_user_id_fkey references auth.users(id) on delete cascade,
+ role text not null default 'member',created_at timestamptz not null default now(),
+ primary key(organization_id,user_id)
+);
+create table public.agent_knowledge_sources(owner_id uuid,storage_path text);
+create table public.content_media(owner_id uuid,bucket_id text,storage_path text,derivatives jsonb);
+create table public.generation_artifacts(owner_user_id uuid,storage_bucket text,storage_path text);
+create table public.generation_artifact_deletion_jobs(owner_user_id uuid,bucket_id text,object_path text,status text,lease_expires_at timestamptz);
+create table public.agent_consumer_grant_events(
+ id uuid primary key default gen_random_uuid(),
+ owner_user_id uuid not null constraint agent_consumer_grant_events_owner_user_id_fkey references auth.users(id) on delete restrict,
+ details jsonb not null default '{}'::jsonb
+);
+create table public.billing_orders(
+ id uuid primary key default gen_random_uuid(),
+ owner_user_id uuid not null constraint billing_orders_owner_user_id_fkey references auth.users(id) on delete restrict,
+ stripe_checkout_url text
+);
+create table public.billing_receipts(
+ id uuid primary key default gen_random_uuid(),
+ owner_user_id uuid not null constraint billing_receipts_owner_user_id_fkey references auth.users(id) on delete restrict,
+ hosted_invoice_url text
+);
+create table public.billing_subscriptions(
+ id uuid primary key default gen_random_uuid(),
+ owner_user_id uuid not null constraint billing_subscriptions_owner_user_id_fkey references auth.users(id) on delete restrict,
+ stripe_subscription_id text,stripe_environment text,
+ status text not null default 'canceled',cancel_at_period_end boolean not null default false,
+ updated_at timestamptz not null default now()
+);
+create table public.content_retention_holds(
+ id uuid primary key default gen_random_uuid(),
+ created_by uuid not null constraint content_retention_holds_created_by_fkey references auth.users(id) on delete restrict,
+ reason text not null default 'retained'
+);
+create table public.credit_ledger_accounts(
+ owner_user_id uuid primary key constraint credit_ledger_accounts_owner_user_id_fkey references auth.users(id) on delete restrict,
+ balance numeric not null default 0
+);
+create table public.playback_entitlements(
+ id uuid primary key default gen_random_uuid(),
+ owner_user_id uuid not null constraint playback_entitlements_owner_user_id_fkey references auth.users(id) on delete restrict,
+ status text not null default 'active',updated_at timestamptz not null default now()
+);
 create function auth.uid() returns uuid language sql stable as $uid$
  select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid
 $uid$;
-create function auth.role() returns text language sql stable as $$
+create function auth.role() returns text language sql stable as $
  select nullif(current_setting('request.jwt.claim.role',true),'')
-$$;
+$;
+create function auth.jwt() returns jsonb language sql stable as $
+ select coalesce(nullif(current_setting('request.jwt.claims',true),'')::jsonb,'{}'::jsonb)
+$;
+create function public.digest(text,text) returns bytea language sql immutable as $
+ select extensions.digest($1,$2)
+$;
 grant usage on schema auth to public;
 grant execute on function auth.role() to public;
 create table public.account_deletion_requests(
  id uuid primary key default gen_random_uuid(),
- user_id uuid not null references auth.users(id),
+ user_id uuid references auth.users(id) on delete set null,
  subject_ref text not null,
  status text not null check(status in ('awaiting_policy','scheduled','processing','blocked_legal_hold','completed','cancelled','failed')),
  policy_version text,
@@ -115,7 +179,7 @@ create table public.account_legal_holds(
  reference_code text not null,
  reason_code text not null,
  active boolean not null default true,
- created_by uuid not null references auth.users(id),
+ created_by uuid references auth.users(id) on delete set null,
  created_at timestamptz not null default now(),
  released_by uuid references auth.users(id),
  released_at timestamptz
@@ -124,7 +188,7 @@ create table public.account_lifecycle_events(
  id uuid primary key default gen_random_uuid(),
  request_id uuid references public.account_deletion_requests(id),
  export_job_id uuid,
- user_id uuid,
+ user_id uuid references auth.users(id) on delete set null,
  subject_ref text not null,
  event_type text not null check(event_type in ('export_requested','export_started','export_completed','export_failed','deletion_requested','deletion_cancelled','deletion_scheduled','deletion_started','deletion_blocked','deletion_unblocked','deletion_policy_pending','deletion_completed','deletion_failed')),
  metadata jsonb not null check(jsonb_typeof(metadata)='object'),
@@ -158,7 +222,7 @@ insert into private.account_export_sources(source_key,table_name,filter_kind) va
         psql(MIGRATION.read_text(encoding="utf-8"))
         psql(MIGRATION.read_text(encoding="utf-8")) # repeatable forward migration
         psql(f"""
-insert into auth.users(id) values ('{A}'),('{B}'),('{C}'),('{D}');
+insert into auth.users(id) values ('{A}'),('{B}'),('{C}'),('{D}'),('{E}'),('{F}');
 insert into public.account_legal_holds(subject_ref,reference_code,reason_code,active,created_by)
 values ('{HOLD_A}','CASE-A','legal_preservation',true,'{A}'),
        ('{HOLD_B}','CASE-B','legal_preservation',false,'{B}');
