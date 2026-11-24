@@ -69,6 +69,7 @@ create schema extensions;
 create schema storage;
 create extension if not exists pgcrypto with schema extensions;
 create function auth.uid() returns uuid language sql stable as $uid$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $uid$;
+create function auth.role() returns text language sql stable as $role$ select nullif(current_setting('request.jwt.claim.role',true),'') $role$;
 create table auth.users(id uuid primary key);
 create table public.ai_agents(id uuid primary key);
 create table public.agent_ownerships(
@@ -114,6 +115,7 @@ insert into public.agent_knowledge_sources(id,agent_id,owner_id,filename,media_t
 values('{SOURCE}','{AGENT}','{OWNER}','notes.txt','text/plain',5,encode(extensions.digest('alpha','sha256'),'hex'),
  '{OWNER}/{AGENT}/{SOURCE}/notes.txt','quarantined','awaiting_malware_scan','{{"sensitivity":"internal"}}');
 set role service_role;
+set request.jwt.claim.role = 'service_role';
 select public.enqueue_agent_knowledge_document_job('{SOURCE}','{AGENT}','{OWNER}',null);
 select public.enqueue_agent_knowledge_document_job('{SOURCE}','{AGENT}','{OWNER}','duplicate request');
 reset role;
@@ -129,9 +131,11 @@ end $do$;
 """)
   psql(f"""
 set role service_role;
+set request.jwt.claim.role = 'service_role';
 select * from public.claim_agent_knowledge_job(90,'awaiting_malware_scan');
 reset role;
 set role service_role;
+set request.jwt.claim.role = 'service_role';
 do $do$
 declare v_job public.agent_knowledge_jobs%rowtype; v_result jsonb;
 begin
@@ -166,6 +170,7 @@ insert into public.agent_knowledge_sources(id,agent_id,owner_id,filename,media_t
 values('{SOURCE_RETRY}','{AGENT}','{OWNER}','retry.txt','text/plain',5,encode(extensions.digest('alpha','sha256'),'hex'),
  '{OWNER}/{AGENT}/{SOURCE_RETRY}/retry.txt','quarantined','awaiting_malware_scan','{{"sensitivity":"internal"}}');
 set role service_role;
+set request.jwt.claim.role = 'service_role';
 select public.enqueue_agent_knowledge_document_job('{SOURCE_RETRY}','{AGENT}','{OWNER}',null);
 select * from public.claim_agent_knowledge_job(90,'awaiting_malware_scan');
 select public.fail_agent_knowledge_document_job(
@@ -190,6 +195,7 @@ insert into public.agent_knowledge_sources(id,agent_id,owner_id,filename,media_t
 values('{SOURCE_STALE}','{AGENT}','{OWNER}','stale.txt','text/plain',5,encode(extensions.digest('alpha','sha256'),'hex'),
  '{OWNER}/{AGENT}/{SOURCE_STALE}/stale.txt','quarantined','awaiting_malware_scan','{{"sensitivity":"internal"}}');
 set role service_role;
+set request.jwt.claim.role = 'service_role';
 select public.enqueue_agent_knowledge_document_job('{SOURCE_STALE}','{AGENT}','{OWNER}',null);
 select * from public.claim_agent_knowledge_job(90,'awaiting_malware_scan');
 do $do$
@@ -249,12 +255,14 @@ end $do$;
 """)
   unauthorized_delete=psql(f"""
 set role service_role;
+set request.jwt.claim.role = 'service_role';
 select public.begin_agent_knowledge_source_delete('{SOURCE_RETRY}','{AGENT}','99999999-9999-4999-8999-999999999999');
 """,check=False)
   if unauthorized_delete.returncode==0 or "AGENT_OWNER_REQUIRED" not in unauthorized_delete.stderr:
    raise RuntimeError("Knowledge source deletion fence accepted a non-owner")
   psql(f"""
 set role service_role;
+set request.jwt.claim.role = 'service_role';
 select public.begin_agent_knowledge_source_delete('{SOURCE}','{AGENT}','{OWNER}');
 reset role;
 do $do$
