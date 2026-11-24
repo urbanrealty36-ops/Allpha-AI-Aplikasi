@@ -162,7 +162,8 @@ def test_verified_knowledge_consent_revocation_is_a_distinct_policy_denial():
 
 
 def test_retrieval_policy_maps_verified_consent_denial_to_access_denied():
-    from allpha_api.knowledge_retrieval import KnowledgeAccessDenied, VersionedKnowledgeRetrievalPolicy
+    from allpha_api.knowledge_retrieval import KnowledgeAccessDenied
+    from allpha_api.knowledge_policy import VersionedKnowledgeRetrievalPolicy
 
     async def scenario():
         resolver = VersionedKnowledgePolicyResolver(Provider(snapshot(grants_active=False)))
