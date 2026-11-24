@@ -43,6 +43,8 @@ jobs:
         run: python apps/api/scripts/verify_eng_p09_model_policy.py
       - name: Verify ENG-P10 append-only owner-scoped execution traces on disposable PostgreSQL 17
         run: python apps/api/scripts/verify_eng_p10_runtime_execution_trace.py
+      - name: Verify WP-07 durable Model Router tool-plan reservations on disposable PostgreSQL 17
+        run: python apps/api/scripts/verify_wp07_durable_model_tool_plans.py
       - name: Verify ENG-P11 workflow lease heartbeat on disposable PostgreSQL 17
         run: python apps/api/scripts/verify_eng_p11_workflow_step_heartbeat.py
       - name: Verify ENG-P11 approval, resume, reject, cancel and timeout lifecycle on disposable PostgreSQL 17
