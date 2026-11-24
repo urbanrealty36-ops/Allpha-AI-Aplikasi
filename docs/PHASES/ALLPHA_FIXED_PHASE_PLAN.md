@@ -1343,3 +1343,14 @@ This is an evidence refresh inside the existing fixed plan. It does not create a
 - **Resource observation (last hour):** Agent Runtime shared worker CPU average approximately 0.0093 vCPU (max 0.034), memory average 0.062 GB (max 0.155 GB) against a 1 GB limit. API CPU average approximately 0.0128 vCPU (max 0.068), memory average 0.095 GB (max 0.224 GB) against a 1 GB limit. No resource exhaustion signal justifies changing limits in this slice. Do not co-locate ClamAV with the shared worker based on these idle metrics.
 - **Status:** Railway source deployment and health-check observation verified for `547f728`; workflow worker polling is verified but no real workflow candidates were present. Knowledge/Agent Runtime production execution remains NOT VERIFIED and consumers remain disabled. No Supabase schema/data changes.
 - **Next canonical work:** continue ENG-P07. A successful deployment or idle polling does not satisfy Knowledge ingestion, embedding, retrieval, or durable Agent Runtime execution DoD.
+
+## 40.50 — ENG-P08 privileged Memory database transport hardening (2026-11-24)
+
+- **Implementation commit:** `f28ddccd0297a3ef749595cf29b93779b29882be`.
+- **Defect fixed:** the MemoryCoordinator used a server-side Supabase service credential through an HTTP client that trusted ambient proxy environment variables. The transport also did not explicitly reject redirects. This created an avoidable credential-egress/redirect risk at the canonical Memory persistence boundary.
+- **Implementation:** the privileged Memory HTTP client now sets `trust_env=False` and `follow_redirects=False`; the coordinator continues to use the configured canonical Supabase URL and server-side credential only. No client, endpoint, schema, lifecycle, or business-policy semantics were changed.
+- **Coverage:** API CHANGE (MemoryCoordinator transport only); Native/Web/Super Admin NOT AFFECTED for this transport-only change; all clients continue to use the existing FastAPI Memory API.
+- **Verification:** GitHub source commit succeeded. Focused test/CI result is pending observation for `f28ddcc`; no test pass is claimed in this checkpoint.
+- **Database/runtime:** no Supabase DDL, data, or migration-ledger change. Railway deployment has not yet been observed for this commit.
+- **Status:** transport hardening implemented; ENG-P08 remains `implemented`, not integration- or production-verified. ENG-P07 remains `in_progress`; this change does not close any P07 dependency or activate Knowledge consumers.
+- **Next canonical work:** continue ENG-P07; separately verify the focused CI result for `f28ddcc` and observe Railway API deployment before describing this change as deployed.
