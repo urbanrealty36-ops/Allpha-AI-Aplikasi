@@ -562,3 +562,14 @@ def test_dependency_rule_rejects_tombstone_for_unregistered_foreign_key(monkeypa
         asyncio.run(governance.update_deletion_dependency_rule(POLICY_ID, payload, _request(), OPERATOR))
     assert error.value.status_code == 409
     assert error.value.detail["code"] == "ACCOUNT_DELETION_DEPENDENCY_ACTION_INCOMPATIBLE"
+
+
+
+def test_retention_policy_api_accepts_explicit_account_export_artifact_class():
+    payload = governance.RetentionPolicyCreate(
+        data_class="account_export_artifact",
+        retention_days=0,
+        policy_version="ci-export-policy-v1",
+        legal_basis="Isolated test fixture only",
+    )
+    assert payload.data_class == "account_export_artifact"
