@@ -162,31 +162,26 @@ begin
    or exists(select 1 from unnest(v_purposes) x where x not in ('agent_generation_context','agent_runtime_context','workflow_context','personalization_context'))
    or exists(select 1 from unnest(v_sensitivities) x where x not in ('public','internal','confidential','restricted'))
   ) then raise exception 'MEMORY_CONSENT_OR_SCOPE_INVALID' using errcode='42501'; end if;
-  insert into public.agent_memory_policies(owner_user_id,agent_id,memory_type,enabled,consent_version,allowed_purposes,allowed_sensitivities,retention_days,policy_version,consent_revoked_at)
-  values(p_owner_user_id,p_agent_id,v_memory_type,v_enabled,
-   case when v_enabled then 'allpha.memory.v1' else null end,
-   case when v_enabled then v_purposes else '{}'::text[] end,
-   case when v_enabled then v_sensitivities else '{}'::text[] end,
-   v_retention_days,1,case when v_enabled then null else clock_timestamp() end)
-  on conflict do nothing;
+  perform pg_advisory_xact_lock(hashtextextended(
+   p_owner_user_id::text||':'||coalesce(p_agent_id::text,'personal')||':'||v_memory_type,0));
   select * into v_policy from public.agent_memory_policies p
    where p.owner_user_id=p_owner_user_id and p.agent_id is not distinct from p_agent_id
     and p.memory_type=v_memory_type for update;
-  if v_policy.id is null then raise exception 'MEMORY_POLICY_WRITE_FAILED' using errcode='40001'; end if;
-  if v_policy.created_at<>v_policy.updated_at or v_policy.policy_version>1 then
-   update public.agent_memory_policies set enabled=v_enabled,
-    consent_version=case when v_enabled then 'allpha.memory.v1' else null end,
-    allowed_purposes=case when v_enabled then v_purposes else '{}'::text[] end,
-    allowed_sensitivities=case when v_enabled then v_sensitivities else '{}'::text[] end,
-    retention_days=v_retention_days,policy_version=v_policy.policy_version+1,
-    consent_revoked_at=case when v_enabled then null else clock_timestamp() end,
-    updated_at=clock_timestamp()
-   where id=v_policy.id returning * into v_policy;
+  if not found then
+   insert into public.agent_memory_policies(owner_user_id,agent_id,memory_type,enabled,consent_version,allowed_purposes,allowed_sensitivities,retention_days,policy_version,consent_revoked_at)
+   values(p_owner_user_id,p_agent_id,v_memory_type,v_enabled,
+    case when v_enabled then 'allpha.memory.v1' else null end,
+    case when v_enabled then v_purposes else '{}'::text[] end,
+    case when v_enabled then v_sensitivities else '{}'::text[] end,
+    v_retention_days,1,case when v_enabled then null else clock_timestamp() end)
+   returning * into v_policy;
   elsif v_policy.enabled is distinct from v_enabled
      or v_policy.allowed_purposes is distinct from case when v_enabled then v_purposes else '{}'::text[] end
      or v_policy.allowed_sensitivities is distinct from case when v_enabled then v_sensitivities else '{}'::text[] end
      or v_policy.retention_days is distinct from v_retention_days
-     or v_policy.consent_version is distinct from case when v_enabled then 'allpha.memory.v1' else null end then
+     or v_policy.consent_version is distinct from case when v_enabled then 'allpha.memory.v1' else null end
+     or (v_enabled and v_policy.consent_revoked_at is not null)
+     or (not v_enabled and v_policy.consent_revoked_at is null) then
    update public.agent_memory_policies set enabled=v_enabled,
     consent_version=case when v_enabled then 'allpha.memory.v1' else null end,
     allowed_purposes=case when v_enabled then v_purposes else '{}'::text[] end,
