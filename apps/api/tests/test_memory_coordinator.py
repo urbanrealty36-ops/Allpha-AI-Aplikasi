@@ -29,6 +29,8 @@ class FakeMemoryCoordinator(MemoryCoordinator):
             return [{"agent_id": AGENT}] if self.owned else []
         if path == "agent_memory_policies":
             return self.policy_rows
+        if path == "agent_memory_items":
+            return self.rows
         if path == "rpc/agent_memory_transition":
             return {"expired_count": 0}
         if path == "rpc/agent_memory_search":
