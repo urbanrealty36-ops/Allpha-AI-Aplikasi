@@ -591,7 +591,7 @@ export function AiCinemaCreatorWorkspace({ getAccessToken }: Props) {
       </View>
       <View style={{ gap: 8, padding: 12, borderRadius: 14, backgroundColor: "#1E293B" }}>
         <Text style={{ color: "#F8FAFC", fontWeight: "800" }}>Upload video film · Media Pipeline</Text>
-        <Text style={{ color: "#94A3B8", fontSize: 11 }}>MP4/WebM maksimal 50 MiB. File dikirim ke FastAPI dan Supabase Storage; worker dan scan menentukan kapan media siap.</Text>
+        <Text style={{ color: "#94A3B8", fontSize: 11 }}>MP4/WebM maksimal 50 MiB per file. Upload TUS resumable memakai token bertanda tangan dari FastAPI; sesi dapat dilanjutkan setelah koneksi terputus atau aplikasi dibuka kembali dengan memilih file yang sama.</Text>
         <Action title={uploadAsset ? "Ganti video" : "Pilih video MP4/WebM"} secondary onPress={() => void pickCinemaVideo()} disabled={saving}/>
         {uploadAsset && <Text style={{ color: "#CBD5E1", fontSize: 11 }}>{uploadAsset.name}{uploadAsset.size ? " · " + (uploadAsset.size / 1024 / 1024).toFixed(1) + " MiB" : ""}</Text>}
         {saving && <Text style={{ color: "#CBD5E1", fontSize: 11 }}>Upload resumable {uploadProgress}% · sesi tersimpan untuk dilanjutkan</Text>}
