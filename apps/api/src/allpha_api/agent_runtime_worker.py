@@ -222,11 +222,12 @@ async def _serve_runtime_enabled(stop_event: asyncio.Event) -> None:
 
 async def serve() -> None:
     """Host independently gated runtime, workflow and Knowledge consumers in one process."""
-    from allpha_api import workflow_worker_host, knowledge_ingestion_worker
+    from allpha_api import workflow_worker_host, knowledge_ingestion_worker, knowledge_worker
 
     runtime_enabled = _enabled()
     workflow_enabled = workflow_worker_host.enabled()
     knowledge_documents_enabled = knowledge_ingestion_worker.enabled()
+    knowledge_embeddings_enabled = knowledge_worker.enabled()
     stop_event = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
@@ -249,6 +250,11 @@ async def serve() -> None:
             knowledge_ingestion_worker.serve_enabled(stop_event=stop_event),
             name="knowledge-document-ingestion-worker",
         ))
+    if knowledge_embeddings_enabled:
+        consumers.append(asyncio.create_task(
+            knowledge_worker.serve_enabled(stop_event=stop_event),
+            name="knowledge-embedding-worker",
+        ))
 
     if not consumers:
         logger.warning(
@@ -258,8 +264,8 @@ async def serve() -> None:
         return
 
     logger.info(
-        "Allpha shared worker host started; agent_runtime=%s workflow=%s knowledge_documents=%s",
-        runtime_enabled, workflow_enabled, knowledge_documents_enabled,
+        "Allpha shared worker host started; agent_runtime=%s workflow=%s knowledge_documents=%s knowledge_embeddings=%s",
+        runtime_enabled, workflow_enabled, knowledge_documents_enabled, knowledge_embeddings_enabled,
     )
     await asyncio.gather(*consumers)
 
