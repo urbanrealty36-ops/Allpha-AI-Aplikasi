@@ -23,6 +23,7 @@ on:
       - "apps/api/supabase/migrations/20261124010416_eng_p03_retention_request_metadata_accuracy.sql"
       - "apps/api/src/allpha_api/account_lifecycle_api.py"
       - "apps/api/tests/test_account_lifecycle_api.py"
+      - "apps/api/scripts/verify_eng_p03_deletion_governance.py"
       - "apps/web/app/account/AccountDataLifecyclePanel.tsx"
       - "apps/client/components/AccountDataLifecycleScreen.tsx"
       - "apps/api/src/allpha_api/stripe_billing_api.py"
@@ -75,6 +76,9 @@ jobs:
 
       - name: Install canonical API test dependencies
         run: python -m pip install -e "./apps/api[dev]"
+
+      - name: Verify ENG-P03 PostgreSQL 17 legal-hold and source deletion handlers
+        run: python apps/api/scripts/verify_eng_p03_deletion_governance.py
 
       - name: Run focused ENG-P03 and ENG-P04 regression suite
         working-directory: apps/api
