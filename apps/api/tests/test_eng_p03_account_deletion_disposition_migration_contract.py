@@ -208,3 +208,28 @@ def test_dependency_and_legal_hold_requeues_write_audit_events():
     assert "dependency_policy_changed_reevaluation_required" in source
     assert "legal_hold_released_reevaluation_required" in source
     assert "tg_table_name" in source and "tg_op" in source
+
+
+
+def test_account_export_deletion_lifecycle_is_linked_and_fail_closed_on_missing_retention():
+    migration = MIGRATIONS / "20261124213000_eng_p03_account_export_deletion_lifecycle.sql"
+    source = " ".join(migration.read_text(encoding="utf-8").lower().split())
+    assert "add column if not exists export_job_id uuid" in source
+    assert "add column if not exists idempotency_key text" in source
+    assert "create_account_deletion_request_for_actor(uuid,text)" in source
+    assert "insert into public.account_export_jobs(user_id,idempotency_key)" in source
+    assert "private.account_deletion_export_gate" in source
+    assert "account_export_retention_policy_missing" in source
+    assert "account_export_pending" in source
+    assert "account_export_artifact" in source
+    assert "j.expires_at<=pg_catalog.clock_timestamp()" in source
+    assert "export_artifact_retention_active" in source
+    assert "account_export_artifact_cleanup_jobs" in source
+    assert "r.export_job_id=j.id" in source
+
+
+def test_restored_executor_migration_excludes_supabase_history_wrapper():
+    source = (MIGRATIONS / "20261123142156_eng_p03_account_deletion_executor.sql").read_text(encoding="utf-8").lower()
+    assert "track statements in history table" not in source
+    assert "ytsndgxguckhfejqyxqw" not in source
+    assert not source.rstrip().endswith("commit;")
