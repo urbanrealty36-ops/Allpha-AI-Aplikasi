@@ -211,6 +211,14 @@ class MemoryCoordinator:
         result=await self.transition("delete",owner_id,item_id=item_id)
         return result if isinstance(result,dict) else None
 
+    async def pin(self,owner_id,item_id,pinned):
+        result=await self.transition("pin",owner_id,item_id=item_id,payload={"pinned":bool(pinned)})
+        return result if isinstance(result,dict) else None
+
+    async def expire_item(self,owner_id,item_id):
+        result=await self.transition("expire_item",owner_id,item_id=item_id)
+        return result if isinstance(result,dict) else None
+
     async def retrieve_context(self,owner_id,agent_id,purpose="agent_generation_context",limit=12,max_chars=6000,query=None,max_sensitivity=None):
         if os.getenv("ALLPHA_MEMORY_COORDINATOR_ENABLED","false").lower()!="true":return []
         if purpose not in PURPOSES:return []
