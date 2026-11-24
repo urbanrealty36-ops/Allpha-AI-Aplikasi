@@ -260,7 +260,7 @@ def test_shared_worker_host_can_run_workflow_without_enabling_agent_runtime(monk
     monkeypatch.setattr(worker,"_enabled",lambda:False)
     monkeypatch.setattr(workflow_worker_host,"enabled",lambda:True)
 
-    async def workflow_loop():
+    async def workflow_loop(*, stop_event=None):
         calls.append("workflow")
 
     monkeypatch.setattr(workflow_worker_host,"serve_enabled",workflow_loop)
