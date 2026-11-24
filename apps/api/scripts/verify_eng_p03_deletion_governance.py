@@ -1,16 +1,27 @@
 """ENG-P03 PostgreSQL 17 verification for legal-hold reconciliation and fail-closed deletion policy gates."""
 from __future__ import annotations
+import asyncio
+import json
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import uuid
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-import subprocess,sys,time,uuid
+
+import httpx
 
 ROOT=Path(__file__).resolve().parents[3]
+sys.path.insert(0,str(ROOT/"apps"/"api"/"src"))
+from allpha_api.account_lifecycle_worker import AccountLifecycleWorker
 EXECUTOR_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123142156_eng_p03_account_deletion_executor.sql"
 DEPENDENCY_REQUEUE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123142329_eng_p03_deletion_dependency_requeue.sql"
 RETENTION_CANONICAL_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123142451_eng_p03_retention_canonical_data_classes.sql"
 LEGAL_HOLD_REQUEUE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123142930_eng_p03_deletion_legal_hold_release_requeue.sql"
 STORAGE_DISPOSITION_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123143130_eng_p03_deletion_storage_disposition_gate.sql"
 SOURCE_METADATA_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123143201_eng_p03_deletion_source_registry_metadata.sql"
-REQUEUE_AUDIT_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124012454_eng_p03_requeue_audit_trail.sql"
 RETENTION_PRECISION_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123170511_eng_p03_retention_legal_basis_precision.sql"
 STORAGE_RETENTION_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123170158_eng_p03_storage_retention_snapshot_gate.sql"
 IDENTITY_TOMBSTONE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123180112_eng_p03_identity_tombstones_and_provider_cancellation.sql"
@@ -50,6 +61,43 @@ def run(args,sql=None,check=True):
 
 def psql(sql):
     return run(["docker","exec","-i",CONTAINER,"psql","-X","-v","ON_ERROR_STOP=1","-U","postgres","-d","postgres"],sql)
+
+def psql_json(sql):
+    result=run(["docker","exec","-i",CONTAINER,"psql","-X","-A","-t","-q","-v","ON_ERROR_STOP=1","-U","postgres","-d","postgres"],sql)
+    return json.loads(result.stdout.strip())
+
+def delete_with_local_storage(root: Path,bucket: str,object_path: str) -> int:
+    requests=[]
+    root=root.resolve()
+    class StorageHandler(BaseHTTPRequestHandler):
+        def do_DELETE(self):
+            payload=json.loads(self.rfile.read(int(self.headers.get("Content-Length","0"))))
+            requests.append((self.command,self.path,payload))
+            if self.path!=f"/storage/v1/object/{bucket}":
+                self.send_response(404);self.end_headers();return
+            deleted=0
+            for prefix in payload.get("prefixes",[]):
+                candidate=(root/bucket/prefix).resolve()
+                if root in candidate.parents and candidate.is_file():
+                    candidate.unlink();deleted+=1
+            self.send_response(200 if deleted else 404);self.end_headers()
+        def log_message(self,*_args):
+            return
+    server=ThreadingHTTPServer(("127.0.0.1",0),StorageHandler)
+    thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
+    async def delete():
+        worker=object.__new__(AccountLifecycleWorker)
+        worker.base=f"http://127.0.0.1:{server.server_port}"
+        worker.client=httpx.AsyncClient(timeout=5)
+        try:
+            await worker.delete_storage_object(bucket,object_path)
+        finally:
+            await worker.client.aclose()
+    try:
+        asyncio.run(delete())
+    finally:
+        server.shutdown();server.server_close();thread.join(timeout=2)
+    return len(requests)
 
 def main():
     dollar_quote = chr(36) * 2
