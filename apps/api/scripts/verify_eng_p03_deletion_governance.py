@@ -729,6 +729,14 @@ values ('{E}','active');
             raise RuntimeError("actual account export artifact checksum/size mismatch")
         if export_result["manifest"].get("source_count")!=len(export_result["manifest"].get("sources",[])):
             raise RuntimeError("actual account export manifest source count mismatch")
+        # Even with an expired retention timestamp, a deletion-linked export remains
+        # available until the owner confirms download and the deletion executor consumes it.
+        psql(f"update public.account_export_jobs set expires_at=clock_timestamp()-interval '1 second' where id='{export_job_id}'::uuid;")
+        early_cleanup=service_json(
+            "select to_jsonb(public.enqueue_expired_account_export_artifacts())::text;"
+        )
+        if early_cleanup!=0:
+            raise RuntimeError(f"deletion-linked export was expired before owner confirmation: {early_cleanup}")
         confirmation=authenticated_json(
             E,f"select public.confirm_account_deletion_export_download('{request_id}'::uuid)::text;"
         )
