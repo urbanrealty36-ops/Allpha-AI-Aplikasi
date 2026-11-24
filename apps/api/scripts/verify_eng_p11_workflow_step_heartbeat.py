@@ -8,7 +8,7 @@ import time
 import uuid
 
 ROOT = Path(__file__).resolve().parents[3]
-MIGRATION = ROOT / "apps/api/supabase/migrations/20261124071000_eng_p11_workflow_step_lease_heartbeat.sql"
+MIGRATION = ROOT / "apps/api/supabase/migrations/20261124071319_eng_p11_workflow_step_lease_heartbeat.sql"
 CONTAINER = "allpha-p11-heartbeat-" + uuid.uuid4().hex[:8]
 OWNER = "11111111-1111-4111-8111-111111111111"
 OTHER = "22222222-2222-4222-8222-222222222222"
