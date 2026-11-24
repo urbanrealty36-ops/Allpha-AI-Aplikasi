@@ -105,3 +105,10 @@ Any missing, stale, ambiguous, cross-owner/cross-Agent, revoked or malformed sta
 - Until approval and implementation, the provider remains unconfigured and retrieval must fail closed; this is intentional.
 - If the approved provider is unhealthy or policy state cannot be resolved, disable retrieval rather than fall back to the environment sensitivity allowlist or unrestricted search.
 - Any future migration requires versioned SQL, least-privilege grants/RLS, fresh-install and upgrade tests, and a forward-repair/rollback plan approved before applying it.
+
+
+## Source adapter contract clarification — 2026-11-24
+
+The FastAPI-side KnowledgePolicySnapshot and its Supabase RPC adapter now require explicit consent_expires_at and grant_expires_at values in the resolver receipt. Each value is either SQL NULL for a canonical record with no expiry or an ISO-8601 timestamp with an explicit timezone. The request-scoped resolver evaluates both timestamps against UTC and denies an expired consent or source grant before retrieval/search or continued ingestion chunk persistence. The adapter also requires the policy/consent/grant versions, exact owner/Agent/source scope, audience, allowed purpose/sensitivity, active/revocation state, decision reference, tenant/session scope and resolution version.
+
+This is a source-level contract hardening only. It does not define physical table names, DDL, RLS policies, RPC SQL or canonical consent/grant lifecycle storage. The existing Product Owner direction for Option C remains distinct from physical schema approval; Privacy/Security and Data Platform review and the canonical object reconciliation remain required before any physical migration or live provider activation. The production RPC is still absent, so the adapter remains fail-closed.
