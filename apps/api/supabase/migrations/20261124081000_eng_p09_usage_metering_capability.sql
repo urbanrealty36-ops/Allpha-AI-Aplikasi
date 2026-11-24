@@ -37,7 +37,7 @@ begin
   end if;
 
   v_capability := p_record->>'capability';
-  if v_capability not in ('text_generation','embedding','image_generation','video_generation','reranking') then
+  if v_capability is null or v_capability not in ('text_generation','embedding','image_generation','video_generation','reranking') then
     raise exception 'INVALID_METERING_CAPABILITY' using errcode = '22023';
   end if;
 
