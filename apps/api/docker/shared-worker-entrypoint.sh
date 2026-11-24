@@ -4,11 +4,22 @@ set -eu
 KNOWLEDGE_ENABLED="$(printf '%s' "${ALLPHA_KNOWLEDGE_DOCUMENT_WORKER_ENABLED:-false}" | tr '[:upper:]' '[:lower:]')"
 SCANNER_MODE="$(printf '%s' "${ALLPHA_DOCUMENT_SCANNER_MODE:-}" | tr '[:upper:]' '[:lower:]')"
 SCANNER_URL="${ALLPHA_DOCUMENT_SCANNER_URL:-}"
+SCANNER_API_KEY="${ALLPHA_DOCUMENT_SCANNER_API_KEY:-}"
+SCANNER_ALLOWED_HOSTS="${ALLPHA_DOCUMENT_SCANNER_ALLOWED_HOSTS:-}"
 CLAMAV_ENABLED="$(printf '%s' "${ALLPHA_CLAMAV_ENABLED:-false}" | tr '[:upper:]' '[:lower:]')"
 
-if [ "$KNOWLEDGE_ENABLED" = "true" ] && [ -z "$SCANNER_URL" ]; then
-    if [ "$SCANNER_MODE" != "clamd" ] || [ "$CLAMAV_ENABLED" != "true" ]; then
-        echo "Knowledge document consumer disabled: configure the authenticated remote scanner or explicitly enable local ClamAV on a memory-eligible service" >&2
+if [ "$KNOWLEDGE_ENABLED" = "true" ] && [ "$SCANNER_MODE" = "remote" ]; then
+    if [ -z "$SCANNER_URL" ] || [ -z "$SCANNER_API_KEY" ] || [ -z "$SCANNER_ALLOWED_HOSTS" ]; then
+        echo "Knowledge document consumer disabled: remote scanner URL, API key and exact hostname allowlist are all required" >&2
+        export ALLPHA_KNOWLEDGE_DOCUMENT_WORKER_ENABLED=false
+    else
+        echo "Authenticated remote document scanner configuration detected"
+    fi
+fi
+
+if [ "$KNOWLEDGE_ENABLED" = "true" ] && [ "$SCANNER_MODE" = "clamd" ]; then
+    if [ "$CLAMAV_ENABLED" != "true" ]; then
+        echo "Knowledge document consumer disabled: local ClamAV must be explicitly enabled on a memory-eligible service" >&2
         export ALLPHA_KNOWLEDGE_DOCUMENT_WORKER_ENABLED=false
     else
     mkdir -p /run/clamav
@@ -82,6 +93,11 @@ CLAMDSCAN_CONFIG
         echo "ClamAV scanner is ready; starting shared Allpha consumers"
     fi
     fi
+fi
+
+if [ "$KNOWLEDGE_ENABLED" = "true" ] && [ "$SCANNER_MODE" != "remote" ] && [ "$SCANNER_MODE" != "clamd" ]; then
+    echo "Knowledge document consumer disabled: ALLPHA_DOCUMENT_SCANNER_MODE must be remote or clamd" >&2
+    export ALLPHA_KNOWLEDGE_DOCUMENT_WORKER_ENABLED=false
 fi
 
 exec gosu worker "$@"
