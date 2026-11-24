@@ -359,3 +359,5 @@ grant execute on function public.cancel_workflow_run(uuid,uuid)
   to service_role;
 grant execute on function public.timeout_workflow_run(uuid,uuid)
   to service_role;
+
+notify pgrst, 'reload schema';
