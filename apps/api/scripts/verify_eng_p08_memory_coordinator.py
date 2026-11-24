@@ -10,6 +10,7 @@ import uuid
 ROOT=Path(__file__).resolve().parents[3]
 MIGRATION=ROOT/"apps/api/supabase/migrations/20261124055512_eng_p08_memory_coordinator_lifecycle.sql"
 PIN_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124060710_eng_p08_memory_owner_pin_expire.sql"
+BATCH_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124100000_eng_p08_memory_retention_worker.sql"
 NAME="allpha-p08-memory-"+uuid.uuid4().hex[:8]
 OWNER="11111111-1111-4111-8111-111111111111"
 OTHER="99999999-9999-4999-8999-999999999999"
@@ -73,8 +74,10 @@ create table public.account_deletion_source_policies(
 );
 grant usage on schema public,private,extensions to anon,authenticated,service_role;
 """)
+  if not BATCH_MIGRATION.is_file():raise RuntimeError(f"Missing P08 retention migration: {BATCH_MIGRATION}")
   psql(MIGRATION.read_text(encoding="utf-8"))
   psql(PIN_MIGRATION.read_text(encoding="utf-8"))
+  psql(BATCH_MIGRATION.read_text(encoding="utf-8"))
   psql(f"""
 insert into auth.users(id) values('{OWNER}'),('{OTHER}');
 insert into public.ai_agents(id) values('{AGENT}');
@@ -283,6 +286,56 @@ begin
   raise exception 'global Memory retention executor did not erase expired content';
  end if;
 end $do$;
+psql(f"""
+insert into public.agent_memory_items(
+ owner_user_id,agent_id,policy_id,memory_type,visibility_scope,purpose,classification,
+ content,content_sha256,source_ref,provenance,version,policy_version,status,
+ retention_expires_at,approved_at
+)
+select '{OWNER}','{AGENT}',p.id,'long_term','agent_private','agent_generation_context','internal',
+ 'Batch expiry item '||g::text,
+ encode(extensions.digest(('Batch expiry item '||g::text),'sha256'),'hex'),
+ jsonb_build_object('kind','batch-expiry-test','index',g),
+ jsonb_build_object('test_only',true),1,p.policy_version,'active',
+ clock_timestamp()-interval '1 second',clock_timestamp()
+from public.agent_memory_policies p
+cross join generate_series(1,3) g
+where p.owner_user_id='{OWNER}' and p.agent_id='{AGENT}' and p.memory_type='long_term' and p.enabled;
+set role service_role;
+select public.expire_agent_memory_items_batch(2);
+reset role;
+do $do$
+declare v_expired integer; v_active integer; v_system_events integer;
+begin
+ select count(*) into v_expired from public.agent_memory_items
+  where owner_user_id='{OWNER}' and agent_id='{AGENT}' and created_at>clock_timestamp()-interval '1 minute'
+   and status='expired' and content='';
+ select count(*) into v_active from public.agent_memory_items
+  where owner_user_id='{OWNER}' and agent_id='{AGENT}' and created_at>clock_timestamp()-interval '1 minute'
+   and status='active' and content like 'Batch expiry item%';
+ select count(*) into v_system_events from public.agent_memory_events
+  where owner_user_id='{OWNER}' and agent_id='{AGENT}' and created_at>clock_timestamp()-interval '1 minute'
+   and event_type='item_expired' and actor_user_id is null;
+ if v_expired<>2 or v_active<>1 then
+  raise exception 'bounded Memory expiry batch expected 2 expired + 1 active; got % + %',v_expired,v_active;
+ end if;
+ if v_system_events<>2 then raise exception 'system retention events must not attribute expiry to the owner'; end if;
+end $do$;
+set role service_role;
+select public.expire_agent_memory_items_batch(10);
+reset role;
+do $do$
+begin
+ if exists(select 1 from public.agent_memory_items where owner_user_id='{OWNER}' and agent_id='{AGENT}'
+   and created_at>clock_timestamp()-interval '1 minute' and content like 'Batch expiry item%' and status in ('pending','active')) then
+  raise exception 'bounded Memory expiry follow-up left due records active';
+ end if;
+ if has_function_privilege('authenticated','public.expire_agent_memory_items_batch(integer)','EXECUTE')
+    or not has_function_privilege('service_role','public.expire_agent_memory_items_batch(integer)','EXECUTE') then
+  raise exception 'Memory retention RPC privileges are not service-only';
+ end if;
+end $do$;
+""")
 delete from auth.users where id='{OWNER}';
 do $do$
 begin
@@ -295,7 +348,7 @@ begin
  end if;
 end $do$;
 """)
-  print("PASS: ENG-P08 PostgreSQL 17 Memory consent, proposal approval, owner-scoped retrieval, correction, pin/unpin, immediate owner expiry, deletion, retention expiry, least-privilege RPCs and P03 pseudonymous audit integration.")
+  print("PASS: ENG-P08 PostgreSQL 17 Memory consent, proposal approval, owner-scoped retrieval, correction, pin/unpin, immediate owner expiry, bounded system retention batches, deletion, retention expiry, least-privilege RPCs and P03 pseudonymous audit integration.")
  finally:
   run(["docker","rm","--force",NAME],check=False)
 
