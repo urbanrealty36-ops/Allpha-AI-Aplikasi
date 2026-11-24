@@ -208,6 +208,7 @@ def _knowledge_context_snapshot(hits: list[Any], *, max_chars: int = 6000) -> tu
             or not isinstance(content_sha256, str)
             or hashlib.sha256(content.encode("utf-8")).hexdigest() != content_sha256
             or sensitivity not in {"public", "internal", "confidential", "restricted"}
+            or getattr(hit, "retrieval_method", None) not in {"vector", "keyword", "hybrid"}
             or not isinstance(source_location, dict)
             or not isinstance(score, (int, float)) or isinstance(score, bool) or not math.isfinite(float(score))
         ):
@@ -264,7 +265,7 @@ async def _retrieve_agent_knowledge_context(
     if not allowed or any(value not in {"public", "internal", "confidential", "restricted"} for value in allowed):
         raise KnowledgeRetrievalUnavailable("Knowledge sensitivity policy is missing or invalid")
     hits = await service.retrieve(RetrievalRequest(
-        owner_id=owner_id, agent_id=agent_id, query=query,
+        owner_id=owner_id, agent_id=agent_id, query=query[:4000],
         allowed_sensitivities=allowed, limit=8, trace_id=trace_id,
     ))
     context, references, digest = _knowledge_context_snapshot(hits)
