@@ -417,8 +417,10 @@ create table public.content_items(id uuid primary key,owner_id uuid);
 create table public.content_comments(id uuid primary key,content_id uuid,actor_user_id uuid);
 create table public.content_reactions(id uuid primary key,content_id uuid,actor_user_id uuid);
 create table public.messages(id uuid primary key,sender_user_id uuid,conversation_id uuid);
+create table public.conversation_participants(id uuid primary key,conversation_id uuid,user_id uuid,role text,status text);
 create table public.community_posts(id uuid primary key,author_id uuid,community_id uuid);
 create table public.community_memberships(id uuid primary key,community_id uuid,user_id uuid,role text,status text);
+create table public.workspace_memberships(id uuid primary key,workspace_id uuid,user_id uuid,role text,status text);
 create table public.workspace_documents(id uuid primary key,created_by uuid,workspace_id uuid);
 create table public.workspace_annotations(id uuid primary key,author_id uuid,workspace_id uuid);
 """)
