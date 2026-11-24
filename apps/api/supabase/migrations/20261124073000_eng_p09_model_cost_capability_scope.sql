@@ -9,6 +9,10 @@ alter table public.ai_model_cost_configs
 alter table public.ai_model_cost_configs
   add constraint ai_model_cost_configs_capability_check
   check (capability in ('text_generation','embedding','image_generation','video_generation','reranking'));
+drop index if exists public.ai_model_cost_one_active_version;
+create unique index ai_model_cost_one_active_capability_version
+  on public.ai_model_cost_configs(provider_id,model_id,capability)
+  where status = 'active';
 create index if not exists ai_model_cost_configs_capability_route_idx
   on public.ai_model_cost_configs(capability,provider_id,model_id,model_version,status);
 commit;
