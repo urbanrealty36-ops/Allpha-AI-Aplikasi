@@ -349,7 +349,7 @@ begin
   and (p_max_sensitivity is null or
    case i.classification when 'public' then 1 when 'internal' then 2 when 'confidential' then 3 when 'restricted' then 4 else 99 end
    <= case p_max_sensitivity when 'public' then 1 when 'internal' then 2 when 'confidential' then 3 when 'restricted' then 4 else 0 end)
-  and i.status='active' and i.retention_expires_at>clock_timestamp()
+  and i.status='active' and i.retention_expires_at>statement_timestamp()
   and p.enabled and p.consent_version='allpha.memory.v1' and p.consent_revoked_at is null
   and i.policy_version=p.policy_version and p.allowed_purposes @> array[p_purpose]::text[]
   and p.allowed_sensitivities @> array[i.classification]::text[]
