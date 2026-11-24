@@ -11,7 +11,6 @@ LEGAL_HOLD_REQUEUE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123142930_e
 STORAGE_DISPOSITION_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123143130_eng_p03_deletion_storage_disposition_gate.sql"
 SOURCE_METADATA_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123143201_eng_p03_deletion_source_registry_metadata.sql"
 REQUEUE_AUDIT_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124012454_eng_p03_requeue_audit_trail.sql"
-RETENTION_OWNER_DIRECTIVE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123170014_eng_p03_owner_directed_retention_baseline.sql"
 RETENTION_PRECISION_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123170511_eng_p03_retention_legal_basis_precision.sql"
 FK_ACTION_GATE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124010741_eng_p03_fk_action_integrity_gate.sql"
 EXPORT_DELETION_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124015229_eng_p03_account_export_deletion_lifecycle.sql"
@@ -339,14 +338,28 @@ begin
  end if;
 end $$;
 """)
-        # This fixture's generic source rows are intentionally incomplete; keep them
-        # inactive so the production owner-directive constraint rejects no invalid active policy.
-        psql("update public.account_deletion_source_policies set active=false;")
-        # Verify the real export-before-deletion RPC contract on isolated PostgreSQL 17.
-        for migration in (
-            RETENTION_OWNER_DIRECTIVE_MIGRATION,RETENTION_PRECISION_MIGRATION,
-            FK_ACTION_GATE_MIGRATION,EXPORT_DELETION_MIGRATION,
-        ):
+        # This fixture has 10 source rows, not the production 106-source catalog.
+        # Keep generic source policies inactive and seed only six isolated retention classes.
+        psql("""
+update public.account_deletion_source_policies set active=false;
+alter table public.account_data_retention_policies
+  add column if not exists decision_source text not null default 'operator_approval',
+  add column if not exists decision_reference text;
+alter table public.account_data_retention_policies
+  alter column approved_by drop not null,
+  alter column approved_at drop not null;
+insert into public.account_data_retention_policies(
+ data_class,retention_days,policy_version,legal_basis,approved_by,approved_at,
+ active,decision_source,decision_reference
+) values
+ ('owner_private',0,'owner-directive-2026-11-23-v1','UU No. 27/2022 Pasal 42-44: CI-only synthetic retention fixture',null,null,true,'product_owner_directive','CI_ONLY'),
+ ('agent_operational',0,'owner-directive-2026-11-23-v1','UU No. 27/2022 Pasal 42-44: CI-only synthetic retention fixture',null,null,true,'product_owner_directive','CI_ONLY'),
+ ('tenant_shared',0,'owner-directive-2026-11-23-v1','UU No. 27/2022 Pasal 42-44: CI-only synthetic retention fixture',null,null,true,'product_owner_directive','CI_ONLY'),
+ ('published_knowledge',0,'owner-directive-2026-11-23-v1','UU No. 27/2022 Pasal 42-44: CI-only synthetic retention fixture',null,null,true,'product_owner_directive','CI_ONLY'),
+ ('session_scoped',0,'owner-directive-2026-11-23-v1','UU No. 27/2022 Pasal 42-44: CI-only synthetic retention fixture',null,null,true,'product_owner_directive','CI_ONLY'),
+ ('public_catalog',0,'owner-directive-2026-11-23-v1','UU No. 27/2022 Pasal 42-44: CI-only synthetic retention fixture',null,null,true,'product_owner_directive','CI_ONLY');
+""")
+        for migration in (RETENTION_PRECISION_MIGRATION,FK_ACTION_GATE_MIGRATION,EXPORT_DELETION_MIGRATION):
             psql(migration.read_text(encoding="utf-8"))
         psql(f"""
 insert into public.profiles(id,account_status) values ('{D}','active');
