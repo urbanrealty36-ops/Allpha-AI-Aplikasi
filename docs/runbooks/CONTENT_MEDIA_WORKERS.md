@@ -19,6 +19,9 @@ Image worker requires:
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY` or server-only `SUPABASE_SECRET_KEY`
 - `CLAMAV_HOST` (and optional `CLAMAV_PORT`, default 3310)
+- `ALLPHA_DOCUMENT_SCANNER_ID=clamav-local`
+- `ALLPHA_DOCUMENT_SCANNER_ENGINE_VERSION`
+- `ALLPHA_DOCUMENT_SCANNER_SIGNATURE_VERSION`
 
 Video/audio transcode worker requires:
 
@@ -32,7 +35,7 @@ Video/audio transcode worker requires:
 - `CLOUDINARY_API_SECRET`
 - `ALLPHA_CLOUDINARY_CALLBACK_URL` using HTTPS
 
-Invalid boolean values or missing required configuration stop startup. Do not pass Supabase service credentials to Cloudinary. Do not set either feature flag true until the scanner endpoint, provider credentials, callback route/domain and callback signature validation are configured and verified.
+Invalid boolean values or missing required configuration stop startup. Both workers use the shared `media_scanner.scan_media_bytes` adapter, which checks the exact pinned ClamAV engine and signature with `zVERSION` before each `INSTREAM` scan; missing pins, identity drift, timeout or non-clean verdict never promote media. Do not pass Supabase service credentials to Cloudinary. Do not set either feature flag true until the scanner endpoint, provider credentials, callback route/domain and callback signature validation are configured and verified.
 
 ## Current production state
 
