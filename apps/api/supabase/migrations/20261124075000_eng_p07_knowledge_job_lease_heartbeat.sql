@@ -14,7 +14,7 @@ begin
   if auth.role() is distinct from 'service_role' then
     raise exception 'KNOWLEDGE_WORKER_SERVICE_ROLE_REQUIRED';
   end if;
-  if p_job_id is null or p_lease_token is null
+  if p_job_id is null or p_lease_token is null or p_lease_seconds is null
      or p_lease_seconds < 10 or p_lease_seconds > 900 then
     raise exception 'KNOWLEDGE_JOB_HEARTBEAT_ARGUMENTS_INVALID';
   end if;
