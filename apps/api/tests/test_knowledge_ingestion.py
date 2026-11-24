@@ -23,7 +23,7 @@ def test_canonical_knowledge_storage_key_rejects_unsafe_filename_segments():
     assert knowledge._canonical_knowledge_storage_path(
         owner, AGENT, SOURCE, "notes.txt",
     ) == f"{owner}/{AGENT}/{SOURCE}/notes.txt"
-    for filename in ("", ".", "..", "../notes.txt", "..\\\\notes.txt", "notes\\n.txt", "notes\\r.txt"):
+    for filename in ("", ".", "..", "../notes.txt", "..\\notes.txt", "notes\\n.txt", "notes\\r.txt"):
         with pytest.raises(ValueError):
             knowledge._canonical_knowledge_storage_path(owner, AGENT, SOURCE, filename)
 
