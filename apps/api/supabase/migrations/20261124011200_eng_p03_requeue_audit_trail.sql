@@ -83,3 +83,5 @@ $function$;
 
 revoke all on function private.requeue_blocked_account_deletion_requests() from public,anon,authenticated;
 revoke all on function private.requeue_account_deletion_after_hold_release() from public,anon,authenticated;
+grant execute on function private.requeue_blocked_account_deletion_requests() to service_role;
+grant execute on function private.requeue_account_deletion_after_hold_release() to service_role;
