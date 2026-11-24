@@ -32,6 +32,7 @@ on:
       - "apps/api/supabase/migrations/20261123143130_eng_p03_storage_disposition_gate.sql"
       - "apps/api/supabase/migrations/20261123143201_eng_p03_source_registry_metadata.sql"
       - "apps/api/supabase/migrations/20261123165316_eng_p03_source_policy_classification.sql"
+      - "apps/api/supabase/migrations/20261124012454_eng_p03_requeue_audit_trail.sql"
       - "apps/web/app/account/AccountDataLifecyclePanel.tsx"
       - "apps/client/components/AccountDataLifecycleScreen.tsx"
       - "apps/api/src/allpha_api/stripe_billing_api.py"
