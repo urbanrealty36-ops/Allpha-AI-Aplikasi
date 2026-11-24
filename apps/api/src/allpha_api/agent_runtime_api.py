@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import math
 import os
 import time
 import uuid
@@ -24,6 +25,10 @@ from allpha_api.model_router import TextGenerationRequest
 from allpha_api.text_generation_adapters import build_text_generation_router_from_environment
 from allpha_api.tool_planner import ToolPlanValidationError, build_tool_plan_prompt, parse_native_tool_calls, parse_tool_plan
 from allpha_api.memory_coordinator import MemoryCoordinator, MemoryDenied, MemoryUnavailable
+from allpha_api.knowledge_retrieval import (
+    KnowledgeAccessDenied, KnowledgeRetrievalUnavailable, KnowledgeRetrievalService,
+    RetrievalRequest, request_scoped_retrieval_service,
+)
 from allpha_api.content_api import _server_db
 from allpha_api.agent_social_side_effect_adapter import get_side_effect_adapter
 from allpha_api.side_effect_adapter_contract import SideEffectCommand
@@ -179,6 +184,92 @@ def _memory_context_snapshot(items: list[dict[str, Any]]) -> tuple[list[dict[str
     encoded = json.dumps(context, ensure_ascii=False, sort_keys=True,
                          separators=(",", ":"), allow_nan=False).encode("utf-8")
     return context, references, hashlib.sha256(encoded).hexdigest()
+
+
+def _knowledge_context_snapshot(hits: list[Any], *, max_chars: int = 6000) -> tuple[list[dict[str, Any]], list[dict[str, Any]], str]:
+    """Build bounded untrusted prompt context plus content-free citation provenance."""
+    context: list[dict[str, Any]] = []
+    references: list[dict[str, Any]] = []
+    remaining = max_chars
+    for hit in hits:
+        content = getattr(hit, "content", None)
+        source_id = getattr(hit, "source_id", None)
+        chunk_id = getattr(hit, "chunk_id", None)
+        source_version = getattr(hit, "source_version", None)
+        content_sha256 = getattr(hit, "content_sha256", None)
+        sensitivity = getattr(hit, "sensitivity", None)
+        source_location = getattr(hit, "source_location", None)
+        score = getattr(hit, "score", None)
+        if (
+            not isinstance(content, str) or not content
+            or not isinstance(source_id, str) or not source_id
+            or not isinstance(chunk_id, str) or not chunk_id
+            or not isinstance(source_version, int) or isinstance(source_version, bool) or source_version < 1
+            or not isinstance(content_sha256, str)
+            or hashlib.sha256(content.encode("utf-8")).hexdigest() != content_sha256
+            or sensitivity not in {"public", "internal", "confidential", "restricted"}
+            or not isinstance(source_location, dict)
+            or not isinstance(score, (int, float)) or isinstance(score, bool) or not math.isfinite(float(score))
+        ):
+            raise KnowledgeRetrievalUnavailable("Knowledge context provenance is incomplete or invalid")
+        location_json = json.dumps(source_location, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        if len(location_json.encode("utf-8")) > 1024:
+            raise KnowledgeRetrievalUnavailable("Knowledge source location exceeds the context metadata limit")
+        if remaining <= 0:
+            break
+        excerpt = content[:remaining]
+        if not excerpt:
+            break
+        retrieved_sha256 = hashlib.sha256(excerpt.encode("utf-8")).hexdigest()
+        context.append({
+            "source_id": source_id,
+            "source_version": source_version,
+            "chunk_id": chunk_id,
+            "source_location": source_location,
+            "sensitivity": sensitivity,
+            "content_sha256": content_sha256,
+            "retrieved_content_sha256": retrieved_sha256,
+            "content": excerpt,
+        })
+        references.append({
+            "source_id": source_id,
+            "source_version": source_version,
+            "chunk_id": chunk_id,
+            "source_location": source_location,
+            "sensitivity": sensitivity,
+            "content_sha256": content_sha256,
+            "retrieved_content_sha256": retrieved_sha256,
+            "retrieval_method": getattr(hit, "retrieval_method", None),
+            "score": float(score),
+            "provider_id": getattr(hit, "provider_id", None),
+            "model_id": getattr(hit, "model_id", None),
+            "model_version": getattr(hit, "model_version", None),
+            "index_generation": getattr(hit, "index_generation", None),
+        })
+        remaining -= len(excerpt)
+    encoded = json.dumps(context, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    return context, references, hashlib.sha256(encoded).hexdigest()
+
+
+async def _retrieve_agent_knowledge_context(
+    request: Request, *, owner_id: str, agent_id: str, query: str, trace_id: str,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], str, str]:
+    service = request_scoped_retrieval_service(request)
+    empty_digest = hashlib.sha256(b"[]").hexdigest()
+    if not isinstance(service, KnowledgeRetrievalService):
+        return [], [], empty_digest, "not_configured"
+    if service.policy is None:
+        raise KnowledgeRetrievalUnavailable("Knowledge policy provider is not configured")
+    allowed = await service.policy.allowed_sensitivities(owner_id=owner_id, agent_id=agent_id)
+    if not allowed or any(value not in {"public", "internal", "confidential", "restricted"} for value in allowed):
+        raise KnowledgeRetrievalUnavailable("Knowledge sensitivity policy is missing or invalid")
+    hits = await service.retrieve(RetrievalRequest(
+        owner_id=owner_id, agent_id=agent_id, query=query,
+        allowed_sensitivities=allowed, limit=8, trace_id=trace_id,
+    ))
+    context, references, digest = _knowledge_context_snapshot(hits)
+    return context, references, digest, "available" if hits else "empty"
+
 
 
 def _resolve_plan_inputs(step: dict[str, Any], outputs: dict[str, dict[str, Any]]) -> dict[str, Any]:
