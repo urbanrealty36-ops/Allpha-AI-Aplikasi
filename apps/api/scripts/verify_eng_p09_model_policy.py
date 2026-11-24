@@ -34,14 +34,18 @@ def main()->None:
     run(["docker","run","-d","--rm","--name",NAME,"-e","POSTGRES_PASSWORD=ci-only","postgres:17-alpine"])
     try:
         ready=False
+        readiness_sql=["docker","exec",NAME,"psql","-X","-A","-t","-U","postgres","-d","postgres","-c","select 1"]
         for _ in range(60):
-            probe=run(["docker","exec",NAME,"pg_isready","-U","postgres","-d","postgres"],check=False)
-            if probe.returncode==0:
-                ready=True
-                break
+            probe=run(readiness_sql,check=False)
+            if probe.returncode==0 and probe.stdout.strip()=="1":
+                time.sleep(1)
+                stable=run(readiness_sql,check=False)
+                if stable.returncode==0 and stable.stdout.strip()=="1":
+                    ready=True
+                    break
             time.sleep(1)
         if not ready:
-            raise RuntimeError("PostgreSQL 17 did not reach readiness")
+            raise RuntimeError("PostgreSQL 17 did not reach stable SQL readiness")
 
         psql("""
 create role anon nologin;
