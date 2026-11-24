@@ -280,13 +280,18 @@ class SupabaseKeywordKnowledgeRepository:
                 raise KnowledgeRetrievalUnavailable(
                     "database keyword result violated owner/source/version/sensitivity invariants"
                 )
+            content = str(row.get("content") or "")
+            if hashlib.sha256(content.encode("utf-8")).hexdigest() != str(row["content_sha256"]):
+                raise KnowledgeRetrievalUnavailable(
+                    "database keyword result content digest does not match citation provenance"
+                )
             hits.append(RetrievalHit(
                 owner_id=owner_id,
                 agent_id=agent_id,
                 source_id=str(row["source_id"]),
                 source_version=int(row["source_version"]),
                 chunk_id=str(row["id"]),
-                content=str(row.get("content") or ""),
+                content=content,
                 content_sha256=str(row["content_sha256"]),
                 source_location=row.get("source_location") or {},
                 sensitivity=str(source["sensitivity"]),
