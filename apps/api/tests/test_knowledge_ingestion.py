@@ -18,6 +18,16 @@ def auth_as(user_id="owner-a"):
         return {"id": user_id, "email": f"{user_id}@example.invalid"}
     return fake_current_user
 
+def test_canonical_knowledge_storage_key_rejects_unsafe_filename_segments():
+    owner = "00000000-0000-4000-8000-000000000100"
+    assert knowledge._canonical_knowledge_storage_path(
+        owner, AGENT, SOURCE, "notes.txt",
+    ) == f"{owner}/{AGENT}/{SOURCE}/notes.txt"
+    for filename in ("", ".", "..", "../notes.txt", "..\\\\notes.txt", "notes\\n.txt", "notes\\r.txt"):
+        with pytest.raises(ValueError):
+            knowledge._canonical_knowledge_storage_path(owner, AGENT, SOURCE, filename)
+
+
 def test_knowledge_routes_require_authentication():
     assert client.get(f"/v1/agents/{AGENT}/knowledge/sources").status_code == 401
     assert client.post(f"/v1/agents/{AGENT}/knowledge/sources/{SOURCE}/process").status_code == 401
