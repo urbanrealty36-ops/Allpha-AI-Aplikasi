@@ -131,6 +131,18 @@ create table public.agent_skill_versions(
  created_by uuid not null references auth.users(id),snapshot jsonb not null,
  created_at timestamptz not null default now(),unique(skill_id,version)
 );
+create function public.prepare_agent_skill_update() returns trigger language plpgsql set search_path=''
+as $prepare$ begin new.version:=old.version+1; new.updated_at:=clock_timestamp(); return new; end $prepare$;
+create function public.capture_agent_skill_version() returns trigger language plpgsql security definer set search_path=''
+as $capture$ begin
+ insert into public.agent_skill_versions(skill_id,agent_id,version,created_by,snapshot)
+ values(new.id,new.agent_id,new.version,new.created_by,to_jsonb(new));
+ return new;
+end $capture$;
+create trigger agent_skills_prepare_update before update on public.agent_skills
+for each row execute function public.prepare_agent_skill_update();
+create trigger agent_skills_capture_version after insert or update on public.agent_skills
+for each row execute function public.capture_agent_skill_version();
 alter table public.agent_skills enable row level security;
 alter table public.agent_skill_versions enable row level security;
 create policy agent_skills_owner_insert on public.agent_skills for insert to authenticated
