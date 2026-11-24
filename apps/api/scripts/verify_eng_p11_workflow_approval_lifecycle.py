@@ -114,6 +114,7 @@ create table public.workflow_run_events(
 );
 """)
         psql(MIGRATION.read_text(encoding="utf-8"))
+        psql("update public.workflow_steps set node_kind='approval';")
 
         psql("""
 insert into public.workflow_runs(id,owner_user_id,status,started_at,created_at,max_runtime_seconds)
@@ -124,10 +125,10 @@ values
  ('66666666-6666-4666-8666-666666666666','11111111-1111-4111-8111-111111111111','running',now()-interval '30 seconds',now()-interval '30 seconds',1);
 insert into public.workflow_steps(id,run_id,owner_user_id,node_key,node_kind,status,attempts,max_attempts,lease_token,lease_expires_at)
 values
- ('77777777-7777-4777-8777-777777777777','33333333-3333-4333-8333-333333333333','11111111-1111-4111-8111-111111111111','approve','approval','running',1,3,'88888888-8888-4888-8888-888888888888',now()+interval '60 seconds'),
- ('99999999-9999-4999-8999-999999999999','44444444-4444-4444-8444-444444444444','11111111-1111-4111-8111-111111111111','reject','approval','running',1,3,'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',now()+interval '60 seconds'),
- ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','55555555-5555-4555-8555-555555555555','11111111-1111-4111-8111-111111111111','cancel','approval','running',1,3,'cccccccc-cccc-4ccc-8ccc-cccccccccccc',now()+interval '60 seconds'),
- ('dddddddd-dddd-4ddd-8ddd-dddddddddddd','66666666-6666-4666-8666-666666666666','11111111-1111-4111-8111-111111111111','timeout','approval','running',1,3,'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',now()+interval '60 seconds');
+ ('77777777-7777-4777-8777-777777777777','33333333-3333-4333-8333-333333333333','11111111-1111-4111-8111-111111111111','approve','merge','running',1,3,'88888888-8888-4888-8888-888888888888',now()+interval '60 seconds'),
+ ('99999999-9999-4999-8999-999999999999','44444444-4444-4444-8444-444444444444','11111111-1111-4111-8111-111111111111','reject','merge','running',1,3,'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',now()+interval '60 seconds'),
+ ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','55555555-5555-4555-8555-555555555555','11111111-1111-4111-8111-111111111111','cancel','merge','running',1,3,'cccccccc-cccc-4ccc-8ccc-cccccccccccc',now()+interval '60 seconds'),
+ ('dddddddd-dddd-4ddd-8ddd-dddddddddddd','66666666-6666-4666-8666-666666666666','11111111-1111-4111-8111-111111111111','timeout','merge','running',1,3,'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',now()+interval '60 seconds');
 
 set role service_role;
 select set_config('request.jwt.claim.role','service_role',false);
