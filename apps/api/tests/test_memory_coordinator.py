@@ -143,5 +143,5 @@ def test_memory_api_agent_scope_rejects_non_owner(monkeypatch):
     monkeypatch.setattr(memory_api,"user_db_request",fake_user_db_request)
     request=SimpleNamespace(state=SimpleNamespace(supabase_access_token="non-owner-token"))
     with pytest.raises(HTTPException) as error:
-        asyncio.run(memory_api._owner(AGENT,request,{"id":OTHER}))
+        asyncio.run(memory_api._owner(AGENT,request,{"id":"other-owner"}))
     assert error.value.status_code==404
