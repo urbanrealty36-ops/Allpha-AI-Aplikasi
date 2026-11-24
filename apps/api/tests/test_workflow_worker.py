@@ -279,9 +279,9 @@ class FakeAgentRuntimeStore:
     def __init__(self, occurrence_status="outcome_unknown", runtime_task_id=None):
         self.schedule = {
             "id": "schedule-1", "owner_user_id": "owner-1", "status": "active",
-            "require_approval": False, "agent_id": "agent-1", "skill_id": "skill-1",
+            "require_approval": False, "agent_id": "11111111-1111-4111-8111-111111111111", "skill_id": "44444444-4444-4444-8444-444444444444",
             "created_by_agent_version": 1, "created_by_skill_version": 1,
-            "session_id": "session-1", "tool_key": "text.normalize",
+            "session_id": "33333333-3333-4333-8333-333333333333", "tool_key": "text.normalize",
             "input_payload": {"text": "hello"}, "budget_limit": {},
         }
         self.occurrence = {
