@@ -1,5 +1,6 @@
 -- ENG-P08: bounded, lease-safe batch expiry for owner-private Memory.
--- The worker is separately gated; this migration only defines a service-only RPC.
+-- Reuses the canonical pg_cron scheduler installed by the Memory Coordinator migration;
+-- this does not create a second worker or scheduler.
 create or replace function public.expire_agent_memory_items_batch(p_limit integer)
 returns jsonb
 language plpgsql
@@ -68,3 +69,26 @@ grant execute on function public.expire_agent_memory_items_batch(integer)
 
 comment on function public.expire_agent_memory_items_batch(integer) is
   'Expires at most p_limit due owner-private Memory items, scrubs content and provenance, and records a pseudonymous system audit event.';
+
+-- Replace the existing all-at-once Memory cron command with a bounded batch.
+-- Keep the existing canonical job name and five-minute cadence; do not add a
+-- second scheduler or a separate Railway consumer.
+do $schedule$
+declare
+  v_job_id bigint;
+begin
+  if to_regnamespace('cron') is not null then
+    for v_job_id in
+      select jobid from cron.job where jobname = 'allpha-memory-retention'
+    loop
+      perform cron.unschedule(v_job_id);
+    end loop;
+    perform cron.schedule(
+      'allpha-memory-retention',
+      '*/5 * * * *',
+      'select public.expire_agent_memory_items_batch(500)'
+    );
+  end if;
+end;
+$schedule$;
+
