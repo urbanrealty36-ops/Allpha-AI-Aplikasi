@@ -205,6 +205,7 @@ create function public.digest(text,text) returns bytea language sql immutable as
 $digest$;
 grant usage on schema auth to public;
 grant execute on function auth.role() to public;
+create table public.account_export_artifact_cleanup_jobs(id uuid primary key default gen_random_uuid(),export_job_id uuid not null unique references public.account_export_jobs(id) on delete cascade,storage_bucket text not null,storage_path text not null);
 create table public.account_deletion_requests(
  id uuid primary key default gen_random_uuid(),
  user_id uuid references auth.users(id) on delete set null,
