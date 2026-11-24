@@ -146,9 +146,12 @@ def test_agent_runtime_marks_knowledge_not_configured_without_policy_service(mon
 
 def test_agent_runtime_retrieves_owner_authorized_knowledge_and_keeps_provenance():
     class Policy:
-        async def allowed_sensitivities(self, *, owner_id, agent_id):
+        async def resolve_context(self, *, owner_id, agent_id):
             assert (owner_id, agent_id) == ("owner-a", "agent-a")
-            return ["internal"]
+            return SimpleNamespace(allowed_sensitivities=("internal",),
+                allowed_source_ids=("11111111-1111-4111-8111-111111111111",),
+                policy_version="knowledge-policy.v1", consent_version="consent.v1", grant_version="grant.v1",
+                audience="owner_private", decision_reference="decision-1")
 
     class Repository:
         async def authorize_agent(self, *, owner_id, agent_id):
@@ -158,6 +161,7 @@ def test_agent_runtime_retrieves_owner_authorized_knowledge_and_keeps_provenance
             assert kwargs["owner_id"] == "owner-a"
             assert kwargs["agent_id"] == "agent-a"
             assert kwargs["allowed_sensitivities"] == ["internal"]
+            assert kwargs["allowed_source_ids"] == ["11111111-1111-4111-8111-111111111111"]
             return [knowledge_hit()]
 
     async def scenario():
@@ -178,8 +182,9 @@ def test_agent_runtime_retrieves_owner_authorized_knowledge_and_keeps_provenance
 
 def test_agent_runtime_rejects_knowledge_context_without_valid_policy():
     class Policy:
-        async def allowed_sensitivities(self, *, owner_id, agent_id):
-            return []
+        async def resolve_context(self, *, owner_id, agent_id):
+            return SimpleNamespace(allowed_sensitivities=(), allowed_source_ids=(), policy_version="",
+                consent_version="", grant_version="", audience="", decision_reference="")
 
     class Repository:
         async def authorize_agent(self, *, owner_id, agent_id):
@@ -192,7 +197,7 @@ def test_agent_runtime_rejects_knowledge_context_without_valid_policy():
         service = KnowledgeRetrievalService(repository=Repository(), policy=Policy())
         request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(knowledge_retrieval_service=service)))
         from allpha_api.knowledge_retrieval import KnowledgeRetrievalUnavailable
-        with pytest.raises(KnowledgeRetrievalUnavailable, match="sensitivity policy"):
+        with pytest.raises(KnowledgeRetrievalUnavailable, match="source-grant scope"):
             await _retrieve_agent_knowledge_context(
                 request, owner_id="owner-a", agent_id="agent-a",
                 query="find relevant source", trace_id="trace-knowledge",
@@ -204,8 +209,11 @@ def test_agent_runtime_rejects_knowledge_context_without_valid_policy():
 
 def test_agent_runtime_bounds_long_intent_before_knowledge_retrieval():
     class Policy:
-        async def allowed_sensitivities(self, *, owner_id, agent_id):
-            return ["internal"]
+        async def resolve_context(self, *, owner_id, agent_id):
+            return SimpleNamespace(allowed_sensitivities=("internal",),
+                allowed_source_ids=("11111111-1111-4111-8111-111111111111",),
+                policy_version="knowledge-policy.v1", consent_version="consent.v1", grant_version="grant.v1",
+                audience="owner_private", decision_reference="decision-1")
 
     class Repository:
         async def authorize_agent(self, *, owner_id, agent_id):
