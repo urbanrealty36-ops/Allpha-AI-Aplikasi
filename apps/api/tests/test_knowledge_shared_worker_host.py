@@ -91,3 +91,23 @@ def test_shared_worker_entrypoint_disables_only_knowledge_when_clamav_is_unavail
     assert "Knowledge document consumer disabled" in failure_branch
     assert "export ALLPHA_KNOWLEDGE_DOCUMENT_WORKER_ENABLED=false" in failure_branch
     assert "exit 1" not in failure_branch
+
+
+
+def test_clamav_worker_limits_concurrency_without_disabling_signature_scanning():
+    script = (
+        Path(__file__).resolve().parents[1]
+        / "docker" / "shared-worker-entrypoint.sh"
+    ).read_text(encoding="utf-8")
+    for setting in (
+        "MaxFileSize 10M",
+        "MaxScanSize 20M",
+        "StreamMaxLength 20M",
+        "MaxThreads 1",
+        "MaxConnectionQueueLength 4",
+        "MaxQueue 8",
+        "ConcurrentDatabaseReload no",
+    ):
+        assert setting in script
+    assert "Bytecode no" not in script
+    assert "ScanArchive no" not in script
