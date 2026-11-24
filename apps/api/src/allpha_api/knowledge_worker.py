@@ -234,11 +234,22 @@ class SupabaseKnowledgeJobStore:
         })
         return rows[0] if rows else None
 
-    async def update_source_state(self, job, *, status, stage, error_code=None):
-        return await self._request("PATCH", "agent_knowledge_sources", params={
-            "id": f"eq.{job['source_id']}", "owner_id": f"eq.{job['owner_id']}",
-            "agent_id": f"eq.{job['agent_id']}", "source_version": f"eq.{job['source_version']}",
-        }, body={"status": status, "processing_stage": stage, "error_code": error_code})
+    async def update_source_state(
+        self, job, *, status, stage, error_code=None, scanner_receipt=None,
+    ) -> bool:
+        if status != "processing" or error_code is not None:
+            raise WorkerConfigurationError("document source state updates must remain in the fenced processing lifecycle")
+        result = await self._request(
+            "POST", "rpc/update_agent_knowledge_source_processing_state",
+            body={
+                "p_job_id": job["id"],
+                "p_lease_token": job["lease_token"],
+                "p_source_version": job["source_version"],
+                "p_stage": stage,
+                "p_scanner_receipt": scanner_receipt,
+            },
+        )
+        return result is True
 
     async def persist_document_chunk_batch(self, job, *, chunks, reset):
         return await self._request("POST", "rpc/persist_agent_knowledge_chunk_batch", body={
