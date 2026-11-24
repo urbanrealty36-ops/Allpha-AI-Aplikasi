@@ -254,43 +254,77 @@ def _load_factory(path: str):
     return getattr(importlib.import_module(module_name), function_name)
 
 
-async def run_forever(worker: KnowledgeEmbeddingWorker, *, poll_seconds: float = 2.0) -> None:
-    stop = asyncio.Event()
-    loop = asyncio.get_running_loop()
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        try:
-            loop.add_signal_handler(sig, stop.set)
-        except NotImplementedError:
-            pass
+def enabled() -> bool:
+    raw = os.getenv("ALLPHA_KNOWLEDGE_EMBEDDING_WORKER_ENABLED", "false").strip().lower()
+    if raw not in {"true", "false"}:
+        raise SystemExit("ALLPHA_KNOWLEDGE_EMBEDDING_WORKER_ENABLED must be true or false")
+    return raw == "true"
+
+
+def build_worker_from_environment() -> KnowledgeEmbeddingWorker:
+    factory_path = os.getenv("ALLPHA_KNOWLEDGE_WORKER_FACTORY", "").strip()
+    if not factory_path:
+        raise WorkerConfigurationError("approved router and vector sink factory is not configured")
+    factory = _load_factory(factory_path)
+    worker = factory()
+    if not isinstance(worker, KnowledgeEmbeddingWorker):
+        raise WorkerConfigurationError("worker factory must return KnowledgeEmbeddingWorker")
+    if not isinstance(worker.router, CanonicalModelRouter):
+        raise WorkerConfigurationError("runtime must use CanonicalModelRouter")
+    try:
+        worker.router.require_runtime_ready()
+    except ModelRouterUnavailable as exc:
+        raise WorkerConfigurationError(f"canonical Model Router is not runtime-ready: {exc}") from exc
+    return worker
+
+
+async def run_forever(
+    worker: KnowledgeEmbeddingWorker,
+    *,
+    poll_seconds: float = 2.0,
+    stop_event: asyncio.Event | None = None,
+) -> None:
+    stop = stop_event or asyncio.Event()
+    if stop_event is None:
+        loop = asyncio.get_running_loop()
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            try:
+                loop.add_signal_handler(sig, stop.set)
+            except NotImplementedError:
+                pass
     while not stop.is_set():
         try:
             found = await worker.process_once()
+        except asyncio.CancelledError:
+            raise
         except Exception:
             log.exception("Knowledge worker polling failed")
             found = False
-        if not found:
+        if not found and not stop.is_set():
             try:
                 await asyncio.wait_for(stop.wait(), timeout=max(0.25, min(poll_seconds, 30)))
             except asyncio.TimeoutError:
                 pass
 
 
+async def serve_enabled(*, stop_event: asyncio.Event) -> None:
+    if not enabled():
+        return
+    worker = build_worker_from_environment()
+    poll_seconds = float(os.getenv("KNOWLEDGE_EMBEDDING_POLL_SECONDS", "2"))
+    log.info(
+        "Knowledge embedding consumer enabled; poll_seconds=%s batch_size=%s lease_seconds=%s",
+        poll_seconds, worker.batch_size, worker.lease_seconds,
+    )
+    await run_forever(worker, poll_seconds=poll_seconds, stop_event=stop_event)
+
+
 def main() -> None:
     logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
-    factory_path = os.getenv("ALLPHA_KNOWLEDGE_WORKER_FACTORY", "").strip()
-    if not factory_path:
-        raise SystemExit("Worker disabled: approved router and vector sink factory is not configured")
-    factory = _load_factory(factory_path)
-    worker = factory()
-    if not isinstance(worker, KnowledgeEmbeddingWorker):
-        raise SystemExit("Worker factory must return KnowledgeEmbeddingWorker")
-    if not isinstance(worker.router, CanonicalModelRouter):
-        raise SystemExit("Worker disabled: runtime must use CanonicalModelRouter")
-    try:
-        worker.router.require_runtime_ready()
-    except ModelRouterUnavailable as exc:
-        raise SystemExit(f"Worker disabled: {exc}") from exc
-    asyncio.run(run_forever(worker))
+    worker = build_worker_from_environment()
+    asyncio.run(run_forever(
+        worker, poll_seconds=float(os.getenv("KNOWLEDGE_EMBEDDING_POLL_SECONDS", "2")),
+    ))
 
 
 if __name__ == "__main__":
