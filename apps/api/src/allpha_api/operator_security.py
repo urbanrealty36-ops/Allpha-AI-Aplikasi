@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from allpha_api.auth import current_user, user_db_request
+from allpha_api.tool_registry import get_tool, UnknownToolError
 
 logger = logging.getLogger(__name__)
 
@@ -676,6 +677,19 @@ async def create_operator_runtime_policy(
 ) -> dict[str, Any]:
     if len(payload.approved_tool_keys) != len(set(payload.approved_tool_keys)) or len(payload.required_permission_scopes) != len(set(payload.required_permission_scopes)):
         raise HTTPException(status_code=422, detail={"code": "RUNTIME_POLICY_DUPLICATE_VALUES", "message": "Tool dan scope tidak boleh duplikat."})
+    registered = []
+    unknown_tools = []
+    for tool_key in payload.approved_tool_keys:
+        try:
+            registered.append(get_tool(tool_key))
+        except UnknownToolError:
+            unknown_tools.append(tool_key)
+    if unknown_tools:
+        raise HTTPException(status_code=422, detail={"code": "RUNTIME_POLICY_UNKNOWN_TOOL", "message": "Policy hanya boleh menyetujui tool yang memiliki handler executable di registry kanonis.", "unknown_tool_keys": sorted(unknown_tools)})
+    required_tool_scopes = {scope for tool in registered for scope in tool.required_permission_scopes}
+    missing_scopes = required_tool_scopes - set(payload.required_permission_scopes)
+    if missing_scopes:
+        raise HTTPException(status_code=422, detail={"code": "RUNTIME_POLICY_REQUIRED_SCOPE_MISSING", "message": "Policy harus mencakup seluruh permission scope yang diwajibkan oleh tool registry.", "missing_scopes": sorted(missing_scopes)})
     policy_document = {
         "policy_version": payload.policy_version,
         "approved_tool_keys": sorted(payload.approved_tool_keys),
