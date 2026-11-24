@@ -77,7 +77,7 @@ begin
     updated_at=clock_timestamp()
   from picked where s.id=picked.id returning s.id,s.storage_bucket,s.storage_path,s.lease_token,s.attempts;
 end;
-$function$
+$function$;
 
 revoke all on function public.claim_account_deletion_storage_jobs(uuid,uuid,integer,integer) from public, anon, authenticated;
 grant execute on function public.claim_account_deletion_storage_jobs(uuid,uuid,integer,integer) to service_role;
