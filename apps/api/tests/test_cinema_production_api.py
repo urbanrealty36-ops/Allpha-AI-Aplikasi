@@ -132,3 +132,76 @@ def test_cinema_asset_link_requires_processed_clean_media(monkeypatch):
         assert response.json()["item"]["media_id"] == MEDIA
     finally:
         app.dependency_overrides.pop(current_user, None)
+
+
+def test_cinema_episode_accepts_processed_video_from_authorized_collaborator(monkeypatch):
+    collaborator = "44444444-4444-4444-8444-444444444444"
+    captured = {}
+
+    async def title_access(*args, **kwargs):
+        return {"id": TITLE, "owner_id": OWNER, "status": "draft", "version": 2, "title": "Test Film"}
+
+    async def media_owners(_title):
+        return {OWNER, collaborator}
+
+    async def fake_db(method, table, *, params=None, payload=None, prefer=None):
+        if method == "GET" and table == "content_media":
+            captured["media_params"] = params
+            return [{
+                "id": MEDIA, "owner_id": collaborator, "media_type": "video/mp4",
+                "status": "ready", "scan_status": "clean",
+                "processed_at": "2026-11-24T10:00:00Z",
+                "derivatives": [{"kind": "hls_manifest", "path": "private/derived/master.m3u8"}],
+            }]
+        if method == "POST" and table == "cinema_episodes":
+            captured["episode_payload"] = payload
+            return [{"id": "55555555-5555-4555-8555-555555555555", **payload}]
+        raise AssertionError((method, table, params, payload))
+
+    monkeypatch.setattr(cinema_api, "_title_access", title_access)
+    monkeypatch.setattr(cinema_api, "_title_media_owner_ids", media_owners)
+    monkeypatch.setattr(cinema_api, "_db", fake_db)
+    app.dependency_overrides[current_user] = lambda: {"id": collaborator}
+    client = TestClient(app)
+    try:
+        response = client.post(f"/v1/cinema/creator/titles/{TITLE}/episodes", json={
+            "episode_number": 1, "title": "Episode 1", "synopsis": "Pilot", "media_id": MEDIA,
+        })
+        assert response.status_code == 201
+        assert response.json()["item"]["media_id"] == MEDIA
+        assert captured["media_params"]["owner_id"] == f"in.({OWNER},{collaborator})"
+        assert captured["episode_payload"]["owner_id"] == OWNER
+        assert captured["episode_payload"]["status"] == "ready"
+    finally:
+        app.dependency_overrides.pop(current_user, None)
+
+
+def test_cinema_episode_rejects_unprocessed_or_non_video_media(monkeypatch):
+    async def title_access(*args, **kwargs):
+        return {"id": TITLE, "owner_id": OWNER, "status": "draft", "version": 2, "title": "Test Film"}
+
+    async def media_owners(_title):
+        return {OWNER}
+
+    async def fake_db(method, table, *, params=None, payload=None, prefer=None):
+        if method == "GET" and table == "content_media":
+            return [{
+                "id": MEDIA, "owner_id": OWNER, "media_type": "image/png",
+                "status": "ready", "scan_status": "clean",
+                "processed_at": "2026-11-24T10:00:00Z", "derivatives": [{"kind": "preview"}],
+            }]
+        raise AssertionError("episode must not be created from non-video media")
+
+    monkeypatch.setattr(cinema_api, "_title_access", title_access)
+    monkeypatch.setattr(cinema_api, "_title_media_owner_ids", media_owners)
+    monkeypatch.setattr(cinema_api, "_db", fake_db)
+    app.dependency_overrides[current_user] = lambda: {"id": OWNER}
+    client = TestClient(app)
+    try:
+        response = client.post(f"/v1/cinema/creator/titles/{TITLE}/episodes", json={
+            "episode_number": 1, "title": "Episode 1", "synopsis": "", "media_id": MEDIA,
+        })
+        assert response.status_code == 409
+        assert response.json()["error"]["code"] == "CINEMA_EPISODE_MEDIA_NOT_READY"
+    finally:
+        app.dependency_overrides.pop(current_user, None)
