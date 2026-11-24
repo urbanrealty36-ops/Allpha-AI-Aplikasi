@@ -53,12 +53,15 @@ CLAMDSCAN_CONFIG
     trap cleanup EXIT INT TERM
 
     READY=0
-    for attempt in $(seq 1 60); do
-        if gosu worker clamdscan --config-file=/run/clamav/clamdscan.conf --ping=1 >/dev/null 2>&1; then
+    for attempt in $(seq 1 30); do
+        if timeout 3s gosu worker clamdscan --config-file=/run/clamav/clamdscan.conf --ping=1 >/dev/null 2>&1; then
             READY=1
             break
         fi
-        sleep 2
+        if [ $((attempt % 10)) -eq 0 ]; then
+            echo "Waiting for ClamAV socket readiness: attempt $attempt/30"
+        fi
+        sleep 1
     done
 
     if [ "$READY" -ne 1 ]; then
