@@ -6,7 +6,7 @@ import Link from "next/link";
 type Session = { access_token:string; refresh_token:string; expires_at:number; user:{id:string;email?:string} };
 type Operator = { id:string; email?:string; scopes:string[] };
 type Capability = { id:string; agent_id:string; created_by:string; capability_key:string; description:string; required_permission_scopes:string[]; risk_level:string; status:string; created_at:string };
-type RuntimePolicy = { id:string; agent_id:string; policy_version:number; policy_digest:string; approved_tool_keys:string[]; required_permission_scopes:string[]; status:string; approved_at?:string };
+type RuntimePolicy = { id:string; agent_id:string; policy_version:number; policy_digest:string; approved_tool_keys:string[]; required_permission_scopes:string[]; risk_constraints?:Record<string,unknown>; status:string; created_at?:string; approved_at?:string };
 type AuthPayload = { access_token?:string; refresh_token?:string; expires_in?:number; user?:{id:string;email?:string}; error_description?:string; msg?:string };
 const apiBase=(process.env.NEXT_PUBLIC_API_BASE_URL||(process.env.NODE_ENV==="production"?"https://api.allpha.web.id":"http://localhost:8000")).replace(/\/$/,"");
 const supabaseUrl=(process.env.NEXT_PUBLIC_SUPABASE_URL||"").replace(/\/$/,"");
@@ -45,6 +45,15 @@ export default function AgentCapabilitiesGovernancePage(){
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState("");
   const [notice,setNotice]=useState("");
+  const [policyAgentId,setPolicyAgentId]=useState("");
+  const [policyVersion,setPolicyVersion]=useState("1");
+  const [policyTools,setPolicyTools]=useState("");
+  const [policyScopes,setPolicyScopes]=useState("");
+  const [policyConstraints,setPolicyConstraints]=useState("{}");
+  const [policyReason,setPolicyReason]=useState("");
+  const [policyDrafts,setPolicyDrafts]=useState<RuntimePolicy[]>([]);
+  const [policyApproved,setPolicyApproved]=useState<RuntimePolicy[]>([]);
+  const [policyRevoked,setPolicyRevoked]=useState<RuntimePolicy[]>([]);
 
   const load=useCallback(async(active:Session)=>{
     const access=await read<{operator:Operator}>(await apiFetch("/v1/admin/operator/access",active));
@@ -82,6 +91,64 @@ export default function AgentCapabilitiesGovernancePage(){
     finally{setBusy(false);}
   }
 
+  async function loadPolicyInventory(agentId=policyAgentId){
+    if(!session)return;
+    const id=agentId.trim();
+    if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)){
+      setError("Agent ID harus UUID valid.");return;
+    }
+    setBusy(true);setError("");
+    try{
+      const [drafts,approved,revoked]=await Promise.all(["draft","approved","revoked"].map(async status=>
+        read<{items:RuntimePolicy[]}>(await apiFetch("/v1/admin/operator/runtime-policies?agent_id="+encodeURIComponent(id)+"&status="+status,session))
+      ));
+      setPolicyDrafts(drafts.items||[]);setPolicyApproved(approved.items||[]);setPolicyRevoked(revoked.items||[]);
+      setPolicyAgentId(id);
+    }catch(cause){setError(cause instanceof Error?cause.message:"Runtime policy inventory gagal dimuat.");}
+    finally{setBusy(false);}
+  }
+
+  async function createRuntimePolicy(event:FormEvent){
+    event.preventDefault();if(!session)return;
+    let constraints:Record<string,unknown>;
+    try{const parsed=JSON.parse(policyConstraints);if(!parsed||Array.isArray(parsed)||typeof parsed!=="object")throw new Error();constraints=parsed;}
+    catch{setError("Risk constraints harus JSON object yang valid.");return;}
+    const tools=[...new Set(policyTools.split(",").map(value=>value.trim()).filter(Boolean))];
+    const scopes=[...new Set(policyScopes.split(",").map(value=>value.trim()).filter(Boolean))];
+    if(!policyAgentId.trim()||!Number.isInteger(Number(policyVersion))||Number(policyVersion)<1||!tools.length){
+      setError("Agent UUID, policy version dan minimal satu tool key wajib diisi.");return;
+    }
+    setBusy(true);setError("");setNotice("");
+    try{
+      await read(await apiFetch("/v1/admin/operator/runtime-policies",session,{method:"POST",body:JSON.stringify({
+        agent_id:policyAgentId.trim(),policy_version:Number(policyVersion),approved_tool_keys:tools,
+        required_permission_scopes:scopes,risk_constraints:constraints,
+      })}));
+      setNotice("Runtime policy draft tersimpan. Belum aktif sampai operator dengan high-risk review scope menyetujuinya.");
+      await loadPolicyInventory(policyAgentId);
+    }catch(cause){setError(cause instanceof Error?cause.message:"Runtime policy draft gagal dibuat.");}
+    finally{setBusy(false);}
+  }
+
+  async function reviewRuntimePolicy(policy:RuntimePolicy,decision:"approve"|"revoke"){
+    if(!session)return;
+    if(!operator?.scopes.includes("platform:capabilities.review.high_risk")){
+      setError("Perubahan lifecycle runtime policy memerlukan scope platform:capabilities.review.high_risk.");return;
+    }
+    if(policyReason.trim().length<8){setError("Alasan review policy minimal 8 karakter.");return;}
+    setBusy(true);setError("");setNotice("");
+    try{
+      await read(await apiFetch("/v1/admin/operator/runtime-policies/"+encodeURIComponent(policy.id)+"/"+(decision==="approve"?"approve":"revoke"),session,{
+        method:"POST",body:JSON.stringify({reason:policyReason.trim()}),
+      }));
+      setPolicyReason("");
+      setNotice(decision==="approve"?"Runtime policy disetujui dan aktif untuk evaluasi capability.":"Runtime policy dicabut; Runtime tidak boleh menggunakan policy ini.");
+      await loadPolicyInventory(policy.agent_id);
+      await load(session);
+    }catch(cause){setError(cause instanceof Error?cause.message:"Perubahan lifecycle runtime policy gagal.");}
+    finally{setBusy(false);}
+  }
+
   async function review(item:Capability,decision:"approved"|"denied"){
     if(!session)return;
     const reason=(reasons[item.id]||"").trim();
@@ -112,6 +179,24 @@ export default function AgentCapabilitiesGovernancePage(){
       <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border p-4"><div><p className="text-sm font-semibold">{operator?.email||operator?.id}</p><p className="text-xs text-slate-500">Scope: {operator?.scopes.join(", ")}</p></div><button onClick={()=>void refresh()} disabled={busy} className="rounded-xl border px-4 py-2 text-sm disabled:opacity-50">Refresh queue</button></section>
       {error&&<p role="alert" className="rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-800">{error}</p>}
       {notice&&<p role="status" className="rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</p>}
+      <section className="space-y-4 rounded-2xl border p-4">
+        <div><h2 className="text-lg font-semibold">Agent Runtime Policy Registry</h2><p className="text-sm text-slate-500">Buat policy draft, tinjau daftar policy dan aktifkan melalui high-risk approval. Runtime hanya menggunakan policy berstatus approved.</p></div>
+        <div className="grid gap-3 md:grid-cols-[1fr_auto]"><label className="grid gap-1 text-sm">Target Agent UUID<input className={field} value={policyAgentId} onChange={e=>setPolicyAgentId(e.target.value)} placeholder="UUID Agent"/></label><button type="button" disabled={busy||!policyAgentId.trim()} onClick={()=>void loadPolicyInventory()} className="self-end rounded-xl border px-4 py-2 text-sm disabled:opacity-50">Load policy inventory</button></div>
+        <form onSubmit={createRuntimePolicy} className="grid gap-3 rounded-xl bg-slate-50 p-3 dark:bg-slate-900 md:grid-cols-2">
+          <label className="grid gap-1 text-sm">Policy version<input className={field} type="number" min="1" step="1" value={policyVersion} onChange={e=>setPolicyVersion(e.target.value)} required/></label>
+          <label className="grid gap-1 text-sm">Approved tool keys (comma separated)<input className={field} value={policyTools} onChange={e=>setPolicyTools(e.target.value)} placeholder="web_search, knowledge_search" required/></label>
+          <label className="grid gap-1 text-sm md:col-span-2">Required permission scopes (comma separated)<input className={field} value={policyScopes} onChange={e=>setPolicyScopes(e.target.value)} placeholder="network.read, knowledge.read"/></label>
+          <label className="grid gap-1 text-sm md:col-span-2">Risk constraints JSON<textarea className={field} rows={3} value={policyConstraints} onChange={e=>setPolicyConstraints(e.target.value)}/></label>
+          <button disabled={busy||!operator?.scopes.includes("platform:capabilities.review")} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 md:col-span-2">Create runtime policy draft</button>
+        </form>
+        <label className="grid gap-1 text-sm">Policy approval / revocation reason<textarea className={field} rows={2} minLength={8} value={policyReason} onChange={e=>setPolicyReason(e.target.value)} placeholder="Alasan review policy (min. 8 karakter)"/></label>
+        <div className="grid gap-3 lg:grid-cols-3">
+          <div className="rounded-xl border p-3"><h3 className="mb-2 font-semibold">Draft ({policyDrafts.length})</h3>{policyDrafts.map(item=><div key={item.id} className="mb-2 rounded-lg bg-slate-50 p-2 text-xs dark:bg-slate-900"><p className="font-semibold">v{item.policy_version} · {item.policy_digest.slice(0,12)}…</p><p>{item.approved_tool_keys.join(", ")}</p><button type="button" disabled={busy||!operator?.scopes.includes("platform:capabilities.review.high_risk")||policyReason.trim().length<8} onClick={()=>void reviewRuntimePolicy(item,"approve")} className="mt-2 rounded-lg bg-emerald-700 px-3 py-1.5 font-semibold text-white disabled:opacity-40">Approve</button></div>)}</div>
+          <div className="rounded-xl border p-3"><h3 className="mb-2 font-semibold">Approved ({policyApproved.length})</h3>{policyApproved.map(item=><div key={item.id} className="mb-2 rounded-lg bg-emerald-50 p-2 text-xs dark:bg-emerald-950"><p className="font-semibold">v{item.policy_version} · active</p><p>{item.approved_tool_keys.join(", ")}</p><button type="button" disabled={busy||!operator?.scopes.includes("platform:capabilities.review.high_risk")||policyReason.trim().length<8} onClick={()=>void reviewRuntimePolicy(item,"revoke")} className="mt-2 rounded-lg border border-rose-300 px-3 py-1.5 font-semibold text-rose-700 disabled:opacity-40">Revoke</button></div>)}</div>
+          <div className="rounded-xl border p-3"><h3 className="mb-2 font-semibold">Revoked ({policyRevoked.length})</h3>{policyRevoked.map(item=><div key={item.id} className="mb-2 rounded-lg bg-slate-50 p-2 text-xs text-slate-500 dark:bg-slate-900"><p className="font-semibold">v{item.policy_version} · revoked</p><p>{item.approved_tool_keys.join(", ")}</p></div>)}</div>
+        </div>
+        <p className="text-xs text-slate-500">Paid Skill license terms remain blocked unless a matching Billing entitlement exists. Capability approval never bypasses Agent ownership, permission scope or Runtime policy checks.</p>
+      </section>
       <section className="space-y-3"><div className="flex items-center justify-between"><h2 className="text-lg font-semibold">Pending capability requests</h2><span className="text-sm text-slate-500">{requests.length} pending</span></div>
         {requests.length===0?<div className="rounded-2xl border border-dashed p-8 text-center text-sm text-slate-500">Tidak ada capability request yang menunggu review.</div>:requests.map(item=>{
           const available=policies[item.agent_id]||[];
