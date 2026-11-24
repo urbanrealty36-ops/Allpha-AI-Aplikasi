@@ -908,8 +908,31 @@ async def create_episode(title_id: uuid.UUID,payload: EpisodeCreate,user: dict[s
     if title.get("status") not in {"draft","rejected"}:
         raise HTTPException(409,detail={"code":"CINEMA_TITLE_NOT_EDITABLE","message":"Episode hanya dapat diubah pada draft atau judul yang dikembalikan."})
     if payload.media_id:
-        media = await _db("GET","content_media",params={"select":"id","id":f"eq.{payload.media_id}","owner_id":f"eq.{user['id']}","status":"eq.ready","scan_status":"eq.clean","limit":"1"})
-        if not media: raise HTTPException(404,detail={"code":"CINEMA_MEDIA_NOT_OWNED","message":"Media tidak ditemukan atau bukan milik Anda."})
+        allowed_media_owners = await _title_media_owner_ids(title)
+        media = await _db("GET", "content_media", params={
+            "select": "id,owner_id,media_type,status,scan_status,processed_at,derivatives",
+            "id": f"eq.{payload.media_id}",
+            "owner_id": "in.(" + ",".join(sorted(allowed_media_owners)) + ")",
+            "limit": "1",
+        })
+        if not media:
+            raise HTTPException(404, detail={
+                "code": "CINEMA_MEDIA_NOT_OWNED",
+                "message": "Media tidak ditemukan atau bukan milik pemilik/kolaborator yang berhak.",
+            })
+        media_item = media[0]
+        if (
+            media_item.get("status") != "ready"
+            or media_item.get("scan_status") != "clean"
+            or not str(media_item.get("media_type") or "").startswith("video/")
+            or not media_item.get("processed_at")
+            or not isinstance(media_item.get("derivatives"), list)
+            or not media_item.get("derivatives")
+        ):
+            raise HTTPException(409, detail={
+                "code": "CINEMA_EPISODE_MEDIA_NOT_READY",
+                "message": "Part film harus berupa video yang selesai diproses, lolos pemindaian, dan memiliki derivative.",
+            })
     rows = await _db("POST","cinema_episodes",payload={**payload.model_dump(),"title_id":str(title_id),"owner_id":title["owner_id"],"status":"ready" if payload.media_id else "draft"},prefer="return=representation")
     if not rows: raise HTTPException(503,detail={"code":"CINEMA_EPISODE_CREATE_UNCONFIRMED","message":"Episode belum dapat dikonfirmasi."})
     return {"item":rows[0]}
