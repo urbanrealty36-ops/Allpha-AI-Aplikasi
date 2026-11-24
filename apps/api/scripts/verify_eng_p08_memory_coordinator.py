@@ -67,7 +67,7 @@ create table private.account_export_sources(
 create table public.account_deletion_source_policies(
  source_key text primary key,data_class text,deletion_action text,dependency_order integer not null,
  policy_version text,reason text,approved_by uuid,approved_at timestamptz,active boolean not null,
- updated_at timestamptz not null,table_name text not null,filter_kind text not null,
+ updated_at timestamptz not null default now(),table_name text not null,filter_kind text not null,
  owner_columns text[] not null,decision_source text not null,decision_reference text
 );
 grant usage on schema public,private,extensions to anon,authenticated,service_role;
