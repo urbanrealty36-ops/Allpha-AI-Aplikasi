@@ -173,7 +173,7 @@ def test_embedding_router_rejects_policy_registry_mismatch_before_provider_call(
     asyncio.run(scenario())
 
 
-def test_embedding_router_does_not_retry_provider_after_dimension_or_metering_failure(monkeypatch):
+def test_embedding_router_rejects_dimension_mismatch_before_metering(monkeypatch):
     configure_profile(monkeypatch)
     calls = {"provider": 0, "meter": 0}
 
@@ -198,5 +198,36 @@ def test_embedding_router_does_not_retry_provider_after_dimension_or_metering_fa
             await router.embed(embedding_request())
         assert error.value.failure.code == "EMBEDDING_PROVIDER_RESPONSE_INVALID"
         assert calls == {"provider": 1, "meter": 0}
+
+    asyncio.run(scenario())
+
+
+
+def test_embedding_router_never_replays_provider_after_metering_confirmation_failure(monkeypatch):
+    configure_profile(monkeypatch)
+    calls = {"provider": 0, "meter": 0}
+
+    def handler(request):
+        if request.method == "GET":
+            return httpx.Response(200, json=[model_cost_row()])
+        if request.url.path.endswith("/embeddings"):
+            calls["provider"] += 1
+            return httpx.Response(200, json={
+                "model": "embed-model-1",
+                "data": [{"index": 0, "embedding": [0.1, 0.2, 0.3]}],
+                "usage": {"prompt_tokens": 10},
+            })
+        if request.url.path.endswith("/record_agent_model_usage_metering"):
+            calls["meter"] += 1
+            return httpx.Response(503, json={"message": "temporary database failure"})
+        raise AssertionError(request.url.path)
+
+    async def scenario():
+        router = await build_embedding_router_from_environment(transport=httpx.MockTransport(handler))
+        with pytest.raises(ModelRouterRejected) as error:
+            await router.embed(embedding_request())
+        assert error.value.failure.code == "MODEL_ROUTER_METERING_UNCONFIRMED"
+        assert error.value.failure.retryable is False
+        assert calls == {"provider": 1, "meter": 1}
 
     asyncio.run(scenario())
