@@ -1013,8 +1013,8 @@ def test_tool_planner_includes_owner_authorized_knowledge_and_content_free_citat
             assert kwargs["allowed_sensitivities"] == ["internal"]
             content = "Owner-authorized Knowledge fact."
             return [RetrievalHit(
-                owner_id=OWNER, agent_id=AGENT, source_id="source-knowledge-1",
-                source_version=3, chunk_id="chunk-knowledge-1", content=content,
+                owner_id=OWNER, agent_id=AGENT, source_id="11111111-1111-4111-8111-111111111111",
+                source_version=3, chunk_id="22222222-2222-4222-8222-222222222222", content=content,
                 content_sha256=hashlib.sha256(content.encode("utf-8")).hexdigest(),
                 source_location={"kind": "page", "index": 2}, sensitivity="internal",
                 retrieval_method="keyword", score=0.5,
@@ -1062,7 +1062,7 @@ def test_tool_planner_includes_owner_authorized_knowledge_and_content_free_citat
         assert response.status_code == 201, response.text
         payload = response.json()
         assert payload["knowledge_context_state"] == "available"
-        assert payload["knowledge_context_refs"][0]["source_id"] == "source-knowledge-1"
+        assert payload["knowledge_context_refs"][0]["source_id"] == "11111111-1111-4111-8111-111111111111"
         assert "content" not in payload["knowledge_context_refs"][0]
         assert "Owner-authorized Knowledge fact." in text_router.requests[0].prompt
         assert "OWNER-AUTHORIZED KNOWLEDGE CONTEXT" in text_router.requests[0].prompt
