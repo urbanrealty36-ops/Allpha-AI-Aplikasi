@@ -198,17 +198,24 @@ class KnowledgeEmbeddingWorker:
 
 class SupabaseKnowledgeJobStore:
     """Minimal service-role PostgREST/RPC adapter; never used by client code."""
-    def __init__(self, *, supabase_url: str, service_key: str):
+    def __init__(
+        self, *, supabase_url: str, service_key: str,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ):
         if not supabase_url or not service_key:
             raise WorkerConfigurationError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required")
         self.base = supabase_url.rstrip("/")
         self.key = service_key
+        self.transport = transport
 
     def _headers(self) -> dict[str, str]:
         return {"apikey": self.key, "Authorization": f"Bearer {self.key}", "Content-Type": "application/json"}
 
     async def _request(self, method: str, path: str, *, params=None, body=None):
-        async with httpx.AsyncClient(timeout=httpx.Timeout(15, connect=3)) as client:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(15, connect=3), transport=self.transport,
+            follow_redirects=False, trust_env=False,
+        ) as client:
             response = await client.request(method, f"{self.base}/rest/v1/{path}", headers=self._headers(), params=params, json=body)
         if response.status_code >= 400:
             raise RuntimeError(f"Supabase worker operation failed: {method} {path} ({response.status_code})")
