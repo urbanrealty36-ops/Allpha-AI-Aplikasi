@@ -1,5 +1,13 @@
 """ENG-P03 account export worker lease-heartbeat regressions."""
 import asyncio
+import json
+import tempfile
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+
+import httpx
+import pytest
 
 from allpha_api.account_lifecycle_worker import AccountLifecycleWorker
 
@@ -597,5 +605,62 @@ def test_deletion_subscription_cancellation_worker_retries_unknown_provider_outc
         assert failed["p_error_code"] == "RuntimeError"
         assert failed["p_retry_seconds"] == 60
         assert not any(name == "complete_account_deletion_subscription_cancellation_job" for name, _ in calls)
+
+    asyncio.run(scenario())
+
+
+
+def test_storage_cleanup_deletes_real_local_object_and_is_idempotent():
+    async def scenario():
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            object_path = "subject-ref/export-job.json.gz"
+            stored_object = root / "account-exports" / object_path
+            stored_object.parent.mkdir(parents=True)
+            stored_object.write_bytes(b"isolated account export artifact")
+            requests = []
+
+            class StorageHandler(BaseHTTPRequestHandler):
+                def do_DELETE(self):
+                    payload = json.loads(self.rfile.read(int(self.headers.get("Content-Length", "0"))))
+                    requests.append((self.command, self.path, payload))
+                    if self.path != "/storage/v1/object/account-exports":
+                        self.send_response(404)
+                        self.end_headers()
+                        return
+                    deleted = 0
+                    for prefix in payload.get("prefixes", []):
+                        target = root / "account-exports" / prefix
+                        if target.is_file() and root in target.resolve().parents:
+                            target.unlink()
+                            deleted += 1
+                    self.send_response(200 if deleted else 404)
+                    self.end_headers()
+
+                def log_message(self, *_args):
+                    return
+
+            server = ThreadingHTTPServer(("127.0.0.1", 0), StorageHandler)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            worker = _worker()
+            worker.base = f"http://127.0.0.1:{server.server_port}"
+            worker.client = httpx.AsyncClient(timeout=3)
+            try:
+                await worker.delete_storage_object("account-exports", object_path)
+                assert not stored_object.exists(), "Storage DELETE must remove the real local object"
+                # Supabase Storage's not-found response is an idempotent cleanup result.
+                await worker.delete_storage_object("account-exports", object_path)
+                assert len(requests) == 2
+                assert all(method == "DELETE" for method, _path, _payload in requests)
+                assert all(payload == {"prefixes": [object_path]} for _method, _path, payload in requests)
+                with pytest.raises(RuntimeError, match="ACCOUNT_DELETION_STORAGE_PATH_INVALID"):
+                    await worker.delete_storage_object("account-exports", "../outside.json")
+                assert len(requests) == 2, "invalid paths must be rejected before reaching Storage"
+            finally:
+                await worker.client.aclose()
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
 
     asyncio.run(scenario())
