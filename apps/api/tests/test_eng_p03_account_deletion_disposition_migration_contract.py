@@ -54,6 +54,7 @@ EXECUTOR_HARDENING = MIGRATIONS / "20261123180725_eng_p03_executor_referential_i
 STRIPE_ENVIRONMENT = MIGRATIONS / "20261123181359_eng_p03_billing_stripe_environment_binding.sql"
 LEGACY_BILLING_GUARD = MIGRATIONS / "20261123181531_eng_p03_legacy_billing_order_rpc_guard.sql"
 GOVERNANCE_RETRY = MIGRATIONS / "20261123182248_eng_p03_governance_policy_gate_and_retry.sql"
+AGENT_OWNERSHIP_TOMBSTONE = MIGRATIONS / "20261124005951_eng_p03_agent_ownership_tombstone_attribution.sql"
 API_SOURCE = Path(__file__).parents[1] / "src" / "allpha_api" / "stripe_billing_api.py"
 WORKER_SOURCE = Path(__file__).parents[1] / "src" / "allpha_api" / "account_lifecycle_worker.py"
 
@@ -134,3 +135,15 @@ def test_deletion_governance_rechecks_owner_directives_holds_sources_fks_and_tra
     assert "public.prepare_account_deletion_execution_batch" in source
     assert "status in ('awaiting_policy','scheduled','blocked_dependency')" in source
     assert "scheduled_for<=clock_timestamp()" in source
+
+
+
+def test_new_auth_users_get_private_subjects_and_agent_ownership_transfer_is_bulk_safe():
+    source = " ".join(AGENT_OWNERSHIP_TOMBSTONE.read_text(encoding="utf-8").lower().split())
+    assert "private.ensure_account_identity_subject_from_auth_user()" in source
+    assert "after insert on auth.users" in source
+    assert "extensions.digest(new.id::text,'sha256')" in source
+    assert "public.set_my_account_deletion_agent_ownership_transfers(uuid,uuid)" in source
+    assert "ownership_role='owner' and ao.status='active'" in source
+    assert "account_deletion_agent_successor_conflict" in source
+    assert "agent_transfer_executor_fence_anchor_missing" in source
