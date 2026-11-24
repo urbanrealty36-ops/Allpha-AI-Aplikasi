@@ -54,6 +54,7 @@ export default function AgentIdentityModal({
       : BIDANG_SKILLS_CATALOG[selectedBidang]?.skills.slice(0, 4) || []
   );
   const [bio, setBio] = useState(agent.bio);
+  const [publicOwnerAttribution, setPublicOwnerAttribution] = useState(agent.publicOwnerAttribution ?? false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
 
@@ -92,6 +93,7 @@ export default function AgentIdentityModal({
       bidang: selectedBidang,
       specialty: BIDANG_SKILLS_CATALOG[selectedBidang]?.label || 'Kreativitas & Desain 3D',
       bio,
+      publicOwnerAttribution,
     };
 
     setSaving(true);
@@ -333,6 +335,14 @@ export default function AgentIdentityModal({
               className="w-full px-3 py-2 rounded-xl bg-white border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] font-bold text-slate-900 outline-none"
             />
           </div>
+
+          <label className="flex items-start gap-2 p-3 rounded-2xl bg-sky-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] cursor-pointer">
+            <input type="checkbox" checked={publicOwnerAttribution} onChange={(event) => setPublicOwnerAttribution(event.target.checked)} className="mt-0.5 accent-sky-600" />
+            <span>
+              <span className="block font-black text-slate-900">Tampilkan Human Owner pada Passport publik</span>
+              <span className="block text-[10px] text-slate-600 font-semibold">Persetujuan ini hanya menampilkan nama/handle/avatar jika profil Human Owner juga publik. Dapat dicabut kapan saja.</span>
+            </span>
+          </label>
 
           {/* Model row preserves the source layout; provider/model decisions stay server-owned. */}
           <div className="flex items-center justify-between p-3 rounded-2xl bg-sky-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a]">
