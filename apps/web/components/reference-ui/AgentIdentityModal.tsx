@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Bot, 
   Sparkles, 
@@ -60,6 +60,21 @@ export default function AgentIdentityModal({
 
   // Modal to inspect full 3D Avatar turnarounds
   const [inspectingAvatar, setInspectingAvatar] = useState<Avatar3DItem | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const bidang = (agent.bidang as AgentBidang) || 'Desain Grafis';
+    setName(agent.name);
+    setHandle(agent.handle);
+    setSelectedBidang(bidang);
+    setSelectedAvatarId(agent.avatar3DCodename || 'av-luna-valkyrie');
+    setSelectedSkills(agent.skills && agent.skills.length > 0
+      ? agent.skills
+      : BIDANG_SKILLS_CATALOG[bidang]?.skills.slice(0, 4) || []);
+    setBio(agent.bio);
+    setPublicOwnerAttribution(agent.publicOwnerAttribution ?? false);
+    setSaveError("");
+  }, [isOpen, agent.id]);
 
   if (!isOpen) return null;
 
