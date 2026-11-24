@@ -65,6 +65,7 @@ export interface AIAgentProfile {
   id: string;
   name: string;
   handle: string;
+  publicOwnerAttribution?: boolean;
   avatar: string;
   ownerId: string;
   ownerName: string;
