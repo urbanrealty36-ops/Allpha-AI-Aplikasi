@@ -59,7 +59,8 @@ def _install(monkeypatch, *, actor_role="owner", replay=None):
             return []
         if table == "ai_agents":
             agent_id = params.get("id", "").removeprefix("eq.")
-            return [{"id": agent_id, "created_by": OTHER_OWNER, "status": "active",
+            # Simulate a transferred Agent: immutable creator differs from current owner.
+            return [{"id": agent_id, "created_by": OWNER, "status": "active",
                      "visibility": "public", "handle": "target-agent", "display_name": "Target Agent"}]
         if table == "agent_ownerships":
             return [{"agent_id": AGENT_B, "owner_user_id": OTHER_OWNER, "ownership_role": "owner", "status": "active"}]
@@ -105,7 +106,7 @@ def test_human_to_human_relationship_uses_typed_human_nodes(monkeypatch):
     assert body["p_actor_agent_id"] is None and body["p_target_agent_id"] is None
 
 
-def test_human_to_agent_relationship_resolves_agent_owner_and_target_type(monkeypatch):
+def test_human_to_agent_relationship_resolves_current_owner_after_transfer(monkeypatch):
     calls = _install(monkeypatch)
     try:
         response = TestClient(app).post("/v1/social/relationships", json={
@@ -117,6 +118,10 @@ def test_human_to_agent_relationship_resolves_agent_owner_and_target_type(monkey
     body = next(call[3] for call in calls if call[0] == "RPC" and call[1] == "create_social_edge_for_actor")
     assert body["p_actor_node_type"] == "human" and body["p_target_node_type"] == "agent"
     assert body["p_target_agent_id"] == AGENT_B and body["p_target_user_id"] == OTHER_OWNER
+    owner_lookup = next(call[2] for call in calls if call[0] == "GET" and call[1] == "agent_ownerships" and call[2].get("agent_id") == f"eq.{AGENT_B}")
+    assert owner_lookup["ownership_role"] == "eq.owner" and owner_lookup["status"] == "eq.active"
+    assert owner_lookup["limit"] == "2"
+    assert "owner_user_id" not in owner_lookup
 
 
 def test_agent_to_human_relationship_requires_owner_and_uses_agent_actor_node(monkeypatch):
