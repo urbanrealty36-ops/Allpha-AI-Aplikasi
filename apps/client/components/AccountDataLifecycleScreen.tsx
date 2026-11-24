@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Linking, Pressable, Text, TextInput, View, type ViewStyle } from "react-native";
 
-type ExportJob = { id: string; status: string; requested_at: string; progress_percent?: number; progress_stage?: string; expires_at?: string | null; file_size_bytes?: number | null; error_code?: string | null };
+type ExportJob = { id: string; status: string; requested_at: string; progress_percent?: number; progress_stage?: string; expires_at?: string | null; download_confirmed_at?: string | null; file_size_bytes?: number | null; error_code?: string | null };
 type DeletionRequest = { id: string; status: string; requested_at: string; policy_version?: string | null; export_job_id?: string | null; error_code?: string | null };
 type Props = { apiBase: string; getAccessToken: () => Promise<string> };
 
@@ -110,6 +110,16 @@ export function AccountDataLifecycleScreen({ apiBase, getAccessToken }: Props) {
     finally { setBusy(false); }
   }
 
+  async function confirmExportDownload(requestId: string) {
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const payload = await request("/v1/me/deletion-requests/" + encodeURIComponent(requestId) + "/confirm-export-download", { method: "POST" });
+      setMessage(payload?.message || "Konfirmasi unduhan tersimpan.");
+      await load();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Konfirmasi unduhan arsip gagal."); }
+    finally { setBusy(false); }
+  }
+
   async function createOwnershipTransfer(requestId: string) {
     setBusy(true); setError(""); setMessage("");
     try {
@@ -192,14 +202,16 @@ export function AccountDataLifecycleScreen({ apiBase, getAccessToken }: Props) {
 
       <View style={{ backgroundColor: "#111A2D", borderRadius: 16, padding: 14, gap: 12 }}>
         <Text style={{ color: "#FFFFFF", fontSize: 16, fontWeight: "700" }}>Permintaan penghapusan akun</Text>
-        <Text style={{ color: "#AAB4CC", lineHeight: 20 }}>Arsip ekspor dibuat lebih dahulu. Penghapusan menunggu ekspor selesai, masa retensi artefak ekspor berakhir, kebijakan retensi data, legal hold, dan seluruh dependency.</Text>
+        <Text style={{ color: "#AAB4CC", lineHeight: 20 }}>Arsip ekspor dibuat lebih dahulu. Unduh arsip lalu konfirmasikan sebelum penghapusan dilanjutkan; retensi data, legal hold, dan seluruh dependency tetap menjadi gate.</Text>
         {deletions.map(item => (
           <View key={item.id} style={{ borderTopWidth: 1, borderTopColor: "#303A52", paddingTop: 10, gap: 6 }}>
             <Text style={{ color: "#FFFFFF", fontWeight: "700" }}>{label(item.status)}</Text>
             <Text style={{ color: "#AAB4CC" }}>Diminta: {new Date(item.requested_at).toLocaleString("id-ID")}{item.policy_version ? " · " + item.policy_version : ""}</Text>
             {!!item.export_job_id && <Text style={{ color: "#AAB4CC" }}>Export: {label(exports.find(job => job.id === item.export_job_id)?.status || "queued")} · {item.export_job_id}</Text>}
+            {!!item.export_job_id && !!exports.find(job => job.id === item.export_job_id)?.download_confirmed_at && <Text style={{ color: "#8FE0B2" }}>Unduhan arsip dikonfirmasi</Text>}
+            {!!item.export_job_id && exports.find(job => job.id === item.export_job_id)?.status === "succeeded" && !exports.find(job => job.id === item.export_job_id)?.download_confirmed_at && button("Saya sudah mengunduh arsip — lanjutkan", () => void confirmExportDownload(item.id), busy)}
             {!!item.error_code && <Text style={{ color: "#FF9AAB" }}>{item.error_code}</Text>}
-            {item.status === "awaiting_policy" && button("Batalkan permintaan", () => void cancelDeletion(item.id), busy)}
+            {["awaiting_policy", "scheduled", "blocked_legal_hold", "blocked_dependency"].includes(item.status) && button("Batalkan permintaan", () => void cancelDeletion(item.id), busy)}
           </View>
         ))}
         {openDeletion && <>
