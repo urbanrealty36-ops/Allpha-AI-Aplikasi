@@ -691,3 +691,59 @@ def test_list_operator_runtime_policies_denies_missing_capability_review_scope(m
         assert response.json()["error"]["code"]=="OPERATOR_SCOPE_REQUIRED"
     finally:
         app.dependency_overrides.clear()
+
+
+def test_runtime_policy_creation_rejects_unregistered_tool_before_persistence(monkeypatch):
+    async def fake_db(method,path,token,**kwargs):
+        return [{"id":"grant-1","user_id":"operator","scopes":["platform:capabilities.review"],"status":"active","expires_at":None}]
+    async def fake_audit(request,**kwargs):
+        return None
+    async def unexpected_privileged(*args,**kwargs):
+        raise AssertionError("Unknown tools must be rejected before persistence")
+    monkeypatch.setattr(security,"user_db_request",fake_db)
+    monkeypatch.setattr(security,"write_operator_audit",fake_audit)
+    monkeypatch.setattr(security,"privileged_rest_request",unexpected_privileged)
+    install_auth("operator")
+    try:
+        response=client.post("/v1/admin/operator/runtime-policies",json={
+            "agent_id":"11111111-1111-4111-8111-111111111111",
+            "policy_version":"v1",
+            "approved_tool_keys":["not.registered"],
+            "required_permission_scopes":[],
+            "risk_constraints":{},
+        })
+        assert response.status_code==422
+        assert response.json()["error"]["code"]=="RUNTIME_POLICY_UNKNOWN_TOOL"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_runtime_policy_creation_persists_canonical_registry_tool_and_text_version(monkeypatch):
+    calls=[]
+    async def fake_db(method,path,token,**kwargs):
+        return [{"id":"grant-1","user_id":"operator","scopes":["platform:capabilities.review"],"status":"active","expires_at":None}]
+    async def fake_audit(request,**kwargs):
+        return None
+    async def fake_privileged(method,table,**kwargs):
+        calls.append((method,table,kwargs))
+        return [{"id":"policy-1","agent_id":"11111111-1111-4111-8111-111111111111",
+                 "policy_version":"release-v1","status":"draft"}]
+    monkeypatch.setattr(security,"user_db_request",fake_db)
+    monkeypatch.setattr(security,"write_operator_audit",fake_audit)
+    monkeypatch.setattr(security,"privileged_rest_request",fake_privileged)
+    install_auth("operator")
+    try:
+        response=client.post("/v1/admin/operator/runtime-policies",json={
+            "agent_id":"11111111-1111-4111-8111-111111111111",
+            "policy_version":"release-v1",
+            "approved_tool_keys":["text.normalize"],
+            "required_permission_scopes":[],
+            "risk_constraints":{},
+        })
+        assert response.status_code==201
+        assert response.json()["runtime_authorized"] is False
+        assert calls[0][0:2]==("POST","agent_runtime_policies")
+        assert calls[0][2]["body"]["policy_version"]=="release-v1"
+        assert calls[0][2]["body"]["approved_tool_keys"]==["text.normalize"]
+    finally:
+        app.dependency_overrides.clear()
