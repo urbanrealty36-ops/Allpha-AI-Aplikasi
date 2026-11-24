@@ -45,11 +45,16 @@ def main() -> None:
     run(["docker", "run", "-d", "--rm", "--name", NAME, "-e", "POSTGRES_PASSWORD=ci-only", "postgres:17-alpine"])
     try:
         ready = False
-        for _ in range(60):
+        ready_streak = 0
+        for _ in range(90):
             probe = run(["docker", "exec", NAME, "pg_isready", "-U", "postgres", "-d", "postgres"], check=False)
             if probe.returncode == 0:
-                ready = True
-                break
+                ready_streak += 1
+                if ready_streak >= 3:
+                    ready = True
+                    break
+            else:
+                ready_streak = 0
             time.sleep(1)
         if not ready:
             raise RuntimeError("PostgreSQL 17 did not reach readiness")
