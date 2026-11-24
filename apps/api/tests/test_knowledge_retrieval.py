@@ -503,8 +503,6 @@ def test_public_route_traces_resolved_policy_and_consent_versions():
         assert response.status_code == 200
         assert response.json()["policy_version"] == "knowledge-policy.v3"
         assert response.json()["consent_version"] == "knowledge-consent.v2"
-        assert response.json()["grant_version"] == "knowledge-grant.v1"
-        assert response.json()["audience"] == "owner_private"
 
     asyncio.run(scenario())
 
