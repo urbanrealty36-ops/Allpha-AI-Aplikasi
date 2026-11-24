@@ -1248,7 +1248,6 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
     const body = await apiRequest("/v1/agent-runtime/sessions/" + encodeURIComponent(sessionId)) as { tasks?: RuntimeTask[] };
     const tasks = body.tasks ?? [];
     setRuntimeTasks(current => ({ ...current, [sessionId]: tasks }));
-    await Promise.all(tasks.map(task => loadRuntimeTaskEvents(task.id)));
   }
   async function loadRuntimePlannerStatus() {
     try {
