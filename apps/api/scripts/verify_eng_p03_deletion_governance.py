@@ -572,7 +572,7 @@ insert into public.playback_entitlements(owner_user_id,status)
 values ('{E}','active');
 """)
 
-        service_claims="set request.jwt.claim.role='service_role'; set request.jwt.claims='{{"role":"service_role"}}'; "
+        service_claims="set request.jwt.claim.role='service_role'; set request.jwt.claims='{"role":"service_role"}'; "
         def service_json(sql):
             return psql_json(service_claims+sql)
         def authenticated_json(subject,sql):
