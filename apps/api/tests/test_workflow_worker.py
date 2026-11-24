@@ -60,12 +60,21 @@ class FakeStore:
         self.finalize_error = finalize if isinstance(finalize, Exception) else None
         self.timeout_result = timeout
         self.finalize_calls = 0
+        self.heartbeat_calls = []
+        self.heartbeat_result = {"status": "running"}
+        self.heartbeat_error = None
 
     async def get_run(self, owner_id, run_id):
         return self.latest
 
     async def claim_step(self, owner_id, run_id, lease_token, *, lease_seconds=30):
         return self.claimed
+
+    async def heartbeat_step(self, owner_id, run_id, step_id, lease_token, *, lease_seconds=30):
+        self.heartbeat_calls.append((owner_id, run_id, step_id, lease_token, lease_seconds))
+        if self.heartbeat_error:
+            raise self.heartbeat_error
+        return self.heartbeat_result
 
     async def finalize_step(self, **kwargs):
         self.finalize_calls += 1
@@ -198,4 +207,67 @@ def test_completed_step_is_not_reexecuted_when_claim_returns_none():
     result = asyncio.run(process_next_step(store, owner_id="owner", run_id="run-1"))
 
     assert result["outcome"] == "idle"
+    assert store.finalize_calls == 0
+
+
+def test_long_running_node_renews_its_lease_until_completion(monkeypatch):
+    import allpha_api.workflow_worker as worker
+
+    monkeypatch.setattr(worker, "_heartbeat_interval", lambda _seconds: 0.01)
+    claimed = step()
+    store = FakeStore(claim=claimed, finalize={"status": "succeeded", "run_status": "running"})
+
+    async def slow_node(*_args):
+        await asyncio.sleep(0.05)
+        return {"output_payload": {"value": "done"}, "checkpoint": {"node_key": "greet"}}
+
+    monkeypatch.setattr(worker, "evaluate_deterministic_node", slow_node)
+    result = asyncio.run(process_next_step(store, owner_id="owner", run_id="run-1", lease_seconds=5))
+
+    assert result["step_status"] == "succeeded"
+    assert len(store.heartbeat_calls) >= 1
+    assert store.finalize_calls == 1
+    assert store.heartbeat_calls[0][0:3] == ("owner", "run-1", "step-1")
+    assert store.heartbeat_calls[0][4] == 5
+
+
+def test_lost_workflow_lease_cancels_node_and_never_finalizes(monkeypatch):
+    import allpha_api.workflow_worker as worker
+
+    monkeypatch.setattr(worker, "_heartbeat_interval", lambda _seconds: 0.01)
+    claimed = step()
+    store = FakeStore(claim=claimed)
+    store.heartbeat_result = None
+    cancelled = asyncio.Event()
+
+    async def slow_node(*_args):
+        try:
+            await asyncio.sleep(1)
+        finally:
+            cancelled.set()
+        return {"output_payload": {"value": "unsafe"}, "checkpoint": {"node_key": "greet"}}
+
+    monkeypatch.setattr(worker, "evaluate_deterministic_node", slow_node)
+    with pytest.raises(WorkflowOutcomeUnknown, match="lease was lost"):
+        asyncio.run(process_next_step(store, owner_id="owner", run_id="run-1", lease_seconds=5))
+
+    assert cancelled.is_set()
+    assert store.finalize_calls == 0
+
+
+def test_uncertain_workflow_heartbeat_never_finalizes_or_retries_node(monkeypatch):
+    import allpha_api.workflow_worker as worker
+
+    monkeypatch.setattr(worker, "_heartbeat_interval", lambda _seconds: 0.01)
+    claimed = step()
+    store = FakeStore(claim=claimed)
+    store.heartbeat_error = WorkflowPersistenceError("heartbeat response timeout")
+
+    async def slow_node(*_args):
+        await asyncio.sleep(1)
+        return {"output_payload": {"value": "unknown"}, "checkpoint": {"node_key": "greet"}}
+
+    monkeypatch.setattr(worker, "evaluate_deterministic_node", slow_node)
+    with pytest.raises(WorkflowOutcomeUnknown, match="heartbeat outcome is unknown"):
+        asyncio.run(process_next_step(store, owner_id="owner", run_id="run-1", lease_seconds=5))
     assert store.finalize_calls == 0
