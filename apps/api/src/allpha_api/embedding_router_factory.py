@@ -188,8 +188,8 @@ async def build_embedding_router_from_environment(
     max_latency_ms = integer("ALLPHA_EMBEDDING_MAX_LATENCY_MS")
     if min(dimensions, max_input_tokens, max_prompt_bytes, max_latency_ms) < 1:
         raise EmbeddingProviderConfigurationError("embedding dimensions, request limits and latency must be positive")
-    if max_input_tokens > max_prompt_bytes:
-        raise EmbeddingProviderConfigurationError("embedding token reservation cannot exceed the approved UTF-8 input byte ceiling")
+    if max_input_tokens < max_prompt_bytes:
+        raise EmbeddingProviderConfigurationError("embedding token reservation must cover the approved UTF-8 input byte ceiling")
     if max_input_tokens * input_rate > max_cost:
         raise EmbeddingProviderConfigurationError("embedding token reservation exceeds the approved per-request cost cap")
     sensitivities = tuple(
