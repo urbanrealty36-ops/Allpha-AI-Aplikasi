@@ -183,8 +183,10 @@ begin
     updated_at=clock_timestamp()
    where id=v_policy.id returning * into v_policy;
   elsif v_policy.enabled is distinct from v_enabled
-     or v_policy.allowed_purposes is distinct from v_purposes
-     or v_policy.allowed_sensitivities is distinct from v_sensitivities then
+     or v_policy.allowed_purposes is distinct from case when v_enabled then v_purposes else '{}'::text[] end
+     or v_policy.allowed_sensitivities is distinct from case when v_enabled then v_sensitivities else '{}'::text[] end
+     or v_policy.retention_days is distinct from v_retention_days
+     or v_policy.consent_version is distinct from case when v_enabled then 'allpha.memory.v1' else null end then
    update public.agent_memory_policies set enabled=v_enabled,
     consent_version=case when v_enabled then 'allpha.memory.v1' else null end,
     allowed_purposes=case when v_enabled then v_purposes else '{}'::text[] end,
