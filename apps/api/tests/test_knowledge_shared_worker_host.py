@@ -124,3 +124,18 @@ def test_clamav_scanner_uses_permissioned_unix_socket_for_readiness():
     assert "LocalSocketMode 660" in script
     assert "--config-file=/run/clamav/clamdscan.conf --ping=1" in script
     assert "TCPSocket 3310" not in script
+
+
+
+def test_knowledge_document_scanner_uses_same_socket_config_as_readiness_probe():
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "src" / "allpha_api" / "knowledge.py"
+    ).read_text(encoding="utf-8")
+    entrypoint = (
+        Path(__file__).resolve().parents[1]
+        / "docker" / "shared-worker-entrypoint.sh"
+    ).read_text(encoding="utf-8")
+    assert '"clamdscan","--config-file=/run/clamav/clamdscan.conf","--no-summary"' in source
+    assert "--config-file=/run/clamav/clamdscan.conf --ping=1" in entrypoint
+    assert '"--fdpass"' not in source
