@@ -113,7 +113,7 @@ async def _scan(data: bytes,filename: str,media_type: str):
             )
             version_stdout, _ = await asyncio.wait_for(version_process.communicate(), timeout=5)
             version_text = version_stdout.decode("utf-8", errors="replace").strip()
-            version_match = re.search(r"ClamAV\\s+([^/\\s]+)/([^/\\s]+)/(.+)", version_text)
+            version_match = re.search(r"ClamAV\s+([^/\s]+)/([^/\s]+)/(.+)", version_text)
             if version_process.returncode != 0 or not version_match:
                 raise ValueError("ClamAV engine/signature identity is unavailable")
         except (OSError, asyncio.TimeoutError, ValueError) as exc:
