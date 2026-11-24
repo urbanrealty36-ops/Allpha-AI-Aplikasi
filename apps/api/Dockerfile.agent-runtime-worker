@@ -17,7 +17,8 @@ COPY pyproject.toml ./
 COPY src ./src
 COPY docker/shared-worker-entrypoint.sh /usr/local/bin/shared-worker-entrypoint
 RUN pip install --no-cache-dir . \
-    && chmod 0755 /usr/local/bin/shared-worker-entrypoint
+    && chmod 0755 /usr/local/bin/shared-worker-entrypoint \
+    && sh -n /usr/local/bin/shared-worker-entrypoint
 
 ENTRYPOINT ["/usr/local/bin/shared-worker-entrypoint"]
 CMD ["allpha-agent-runtime-worker"]
