@@ -492,7 +492,7 @@ def test_resumable_media_complete_verifies_object_hash_and_queues_existing_lifec
     assert response.json()["item"]["status"] == "uploaded"
     patch = next(call for call in calls if call[0] == "PATCH" and call[1] == "content_media")
     assert patch[2]["params"]["status"] == "eq.uploading"
-    assert patch[2]["body"] == {"status": "uploaded"}
+    assert patch[2]["body"] == {"status": "uploaded", "sha256": digest}
 
 
 def test_resumable_media_complete_rejects_hash_mismatch_without_promoting_media(monkeypatch):
