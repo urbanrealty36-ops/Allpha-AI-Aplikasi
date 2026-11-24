@@ -268,7 +268,7 @@ grant execute on function public.revoke_my_ai_agent_publication(uuid,integer) to
 grant execute on function public.get_public_agent_owner_attribution(uuid) to anon,authenticated;
 
 insert into private.account_export_sources(source_key,table_name,filter_kind,owner_columns,sort_order,enabled)
-values ('agent_identity_versions','agent_identity_versions','agent_owner',array['agent_id'],53,true)
+values ('agent_identity_versions','agent_identity_versions','owned_agents',array['agent_id'],53,true)
 on conflict(source_key) do update
 set table_name=excluded.table_name,filter_kind=excluded.filter_kind,owner_columns=excluded.owner_columns,sort_order=excluded.sort_order,enabled=true;
 
@@ -278,7 +278,7 @@ insert into public.account_deletion_source_policies(
 )
 select 'agent_identity_versions','agent_operational','preserve',53,policy_version,
  'Agent identity history is part of the persistent Agent operational identity; it contains no Human Owner identifier and follows the same ownership-transfer preservation policy as ai_agents.',
- approved_by,approved_at,true,'agent_identity_versions','agent_owner',array['agent_id'],
+ approved_by,approved_at,true,'agent_identity_versions','owned_agents',array['agent_id'],
  decision_source,decision_reference
 from public.account_deletion_source_policies
 where source_key='agents_created'
