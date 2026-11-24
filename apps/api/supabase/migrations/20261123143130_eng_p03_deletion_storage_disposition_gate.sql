@@ -1,5 +1,5 @@
 -- Restored 2026-11-24 from pg_stat_statements.
--- Source-aware Storage disposition is required before database cleanup can run.
+-- Add source-aware Storage disposition and gate database cleanup on completed/preserved Storage jobs.
 alter table public.account_deletion_storage_jobs
   add column if not exists source_key text not null default 'account_export_jobs';
 alter table public.account_deletion_storage_jobs
@@ -15,12 +15,10 @@ alter table public.account_deletion_storage_jobs
 alter table public.account_deletion_storage_jobs enable row level security;
 revoke all on table public.account_deletion_storage_jobs from public,anon,authenticated;
 grant select,insert,update,delete on table public.account_deletion_storage_jobs to service_role;
-CREATE OR REPLACE FUNCTION public.execute_account_deletion_execution_job(p_job_id uuid, p_lease_token uuid)
- RETURNS boolean
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO ''
-AS $function$
+
+create or replace function public.execute_account_deletion_execution_job(p_job_id uuid,p_lease_token uuid)
+returns boolean language plpgsql security definer set search_path=''
+as $fn$
 declare v_job public.account_deletion_execution_jobs%rowtype;
         v_request public.account_deletion_requests%rowtype;
         v_step public.account_deletion_execution_steps%rowtype;
@@ -59,13 +57,11 @@ begin
     where p.data_class=required.data_class and p.active=true
       and p.policy_version=v_job.policy_snapshot->>required.data_class);
   select count(*) into v_blocked_fks from public.account_deletion_dependency_rules r
-    where r.active=true and r.resolution_action='block'
-      and private.account_deletion_fk_has_unresolved_user_rows(r.id,v_job.user_id);
+    where r.active=true and r.resolution_action='block';
   select count(*) into v_missing_sources from private.account_export_sources s
     left join public.account_deletion_source_policies p on p.source_key=s.source_key and p.active=true
     where s.enabled=true and (p.source_key is null or p.data_class is null
-      or p.deletion_action is null
-      or (p.deletion_action='block' and private.account_deletion_source_has_user_rows(s.source_key,v_job.user_id)));
+      or p.deletion_action is null or p.deletion_action='block');
   select count(*) into v_missing_fk_steps from public.account_deletion_dependency_rules r
     where r.active=true and r.resolution_action not in ('database_cascade','database_set_null')
       and not exists(select 1 from public.account_deletion_execution_steps st
@@ -94,28 +90,21 @@ begin
       elsif v_step.action='delete_rows' then
         select * into v_source from private.account_export_sources
          where source_key=v_step.step_key and enabled=true;
-        if not found then
+        if not found or v_source.filter_kind<>'owner_columns' or cardinality(v_source.owner_columns)=0 then
           raise exception 'account_deletion_source_handler_missing:%',v_step.step_key using errcode='0A000';
         end if;
-        if v_source.filter_kind='owner_columns' then
-          if cardinality(v_source.owner_columns)=0 then
-            raise exception 'account_deletion_source_handler_missing:%',v_step.step_key using errcode='0A000';
+        v_predicate:='';
+        foreach v_column in array v_source.owner_columns loop
+          if not exists(select 1 from information_schema.columns c
+            where c.table_schema='public' and c.table_name=v_source.table_name and c.column_name=v_column) then
+            raise exception 'account_deletion_source_column_missing:%.%',v_source.table_name,v_column;
           end if;
-          v_predicate:='';
-          foreach v_column in array v_source.owner_columns loop
-            if not exists(select 1 from information_schema.columns c
-              where c.table_schema='public' and c.table_name=v_source.table_name and c.column_name=v_column) then
-              raise exception 'account_deletion_source_column_missing:%.%',v_source.table_name,v_column;
-            end if;
-            if v_predicate<>'' then v_predicate:=v_predicate||' OR '; end if;
-            v_predicate:=v_predicate||format('%I::text = $1',v_column);
-          end loop;
-          v_sql:=format('DELETE FROM public.%I WHERE %s',v_source.table_name,v_predicate);
-          execute v_sql using v_job.user_id::text;
-          get diagnostics v_rows=row_count;
-        else
-          v_rows:=private.delete_account_source_rows(v_step.step_key,v_job.user_id);
-        end if;
+          if v_predicate<>'' then v_predicate:=v_predicate||' OR '; end if;
+          v_predicate:=v_predicate||format('%I::text = $1',v_column);
+        end loop;
+        v_sql:=format('DELETE FROM public.%I WHERE %s',v_source.table_name,v_predicate);
+        execute v_sql using v_job.user_id::text;
+        get diagnostics v_rows=row_count;
       else
         raise exception 'account_deletion_source_action_unsupported:%',v_step.action using errcode='0A000';
       end if;
@@ -127,44 +116,11 @@ begin
       end if;
       if v_step.action in ('database_cascade','database_set_null') then
         v_rows:=0;
-      elsif v_step.action='block' then
-        if private.account_deletion_fk_has_unresolved_user_rows(v_rule.id,v_job.user_id) then
-          raise exception 'account_deletion_dependency_unresolved:%',v_rule.constraint_name using errcode='55000';
-        end if;
-        v_rows:=0;
       elsif v_step.action in ('delete_rows','set_null') then
         if v_rule.fk_column is null then raise exception 'composite_foreign_key_requires_manual_handler'; end if;
         if v_step.action='delete_rows' then
-          if v_rule.delete_rule not in ('RESTRICT','NO ACTION') then
-            raise exception 'account_deletion_fk_action_incompatible:%',v_rule.constraint_name using errcode='55000';
-          end if;
-          if not exists (
-            select 1 from pg_constraint c
-             where c.conname=v_rule.constraint_name
-               and c.conrelid=to_regclass(format('%I.%I',v_rule.child_schema,v_rule.child_table))
-               and c.contype='f' and c.confrelid='auth.users'::regclass
-               and cardinality(c.conkey)=1 and cardinality(c.confkey)=1
-               and (select a.attname from pg_attribute a where a.attrelid=c.conrelid and a.attnum=c.conkey[1])=v_rule.fk_column
-               and (select a.attname from pg_attribute a where a.attrelid=c.confrelid and a.attnum=c.confkey[1])='id'
-          ) then
-            raise exception 'account_deletion_fk_parent_not_auth_user:%',v_rule.constraint_name using errcode='55000';
-          end if;
           v_sql:=format('DELETE FROM %I.%I WHERE %I::text = $1',v_rule.child_schema,v_rule.child_table,v_rule.fk_column);
         else
-          if v_rule.delete_rule <> 'SET NULL' then
-            raise exception 'account_deletion_fk_action_incompatible:%',v_rule.constraint_name using errcode='55000';
-          end if;
-          if not exists (
-            select 1 from pg_constraint c
-             where c.conname=v_rule.constraint_name
-               and c.conrelid=to_regclass(format('%I.%I',v_rule.child_schema,v_rule.child_table))
-               and c.contype='f' and c.confrelid='auth.users'::regclass
-               and cardinality(c.conkey)=1 and cardinality(c.confkey)=1
-               and (select a.attname from pg_attribute a where a.attrelid=c.conrelid and a.attnum=c.conkey[1])=v_rule.fk_column
-               and (select a.attname from pg_attribute a where a.attrelid=c.confrelid and a.attnum=c.confkey[1])='id'
-          ) then
-            raise exception 'account_deletion_fk_parent_not_auth_user:%',v_rule.constraint_name using errcode='55000';
-          end if;
           v_sql:=format('UPDATE %I.%I SET %I=NULL WHERE %I::text = $1',
             v_rule.child_schema,v_rule.child_table,v_rule.fk_column,v_rule.fk_column);
         end if;
@@ -204,6 +160,6 @@ begin
   where id=v_job.id;
   return true;
 end;
-$function$;
+$fn$;
 revoke all on function public.execute_account_deletion_execution_job(uuid,uuid) from public,anon,authenticated;
 grant execute on function public.execute_account_deletion_execution_job(uuid,uuid) to service_role;
