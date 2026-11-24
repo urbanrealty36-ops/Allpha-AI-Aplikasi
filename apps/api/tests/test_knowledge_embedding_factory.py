@@ -23,3 +23,26 @@ def test_knowledge_embedding_factory_rejects_invalid_vector_factory_reference():
 
     with pytest.raises(WorkerConfigurationError, match="module:function"):
         _load_factory("not-a-module-path")
+
+
+
+def test_embedding_factory_rejects_noncanonical_vector_sink():
+    from allpha_api.knowledge_worker_factory import _require_canonical_vector_sink
+
+    async def arbitrary_sink(*args, **kwargs):
+        return None
+
+    with pytest.raises(WorkerConfigurationError, match="canonical IdempotentKnowledgeVectorSink"):
+        _require_canonical_vector_sink(arbitrary_sink)
+
+
+def test_embedding_factory_accepts_only_canonical_idempotent_vector_repository():
+    from allpha_api.knowledge_vector_store import IdempotentKnowledgeVectorSink
+    from allpha_api.knowledge_worker_factory import _require_canonical_vector_sink
+
+    class Repository:
+        async def upsert_batch(self, records, *, expected_source_version, idempotency_key):
+            return None
+
+    sink = IdempotentKnowledgeVectorSink(Repository())
+    assert _require_canonical_vector_sink(sink) is sink
