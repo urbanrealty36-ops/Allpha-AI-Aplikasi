@@ -51,3 +51,42 @@ def test_embedding_contract_rejects_duplicate_chunk_ids():
     request["chunks"] = [request["chunks"][0], request["chunks"][0]]
     with pytest.raises(ValidationError, match="unique"):
         EmbeddingRequest.model_validate(request)
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+def test_embedding_contract_rejects_non_finite_values(bad):
+    with pytest.raises(ValidationError, match="finite"):
+        EmbeddingResponse(
+            task_id="job-1", provider_id="p", model_id="m", model_version="v1", dimensions=2,
+            vectors=[{"chunk_id": "c", "content_sha256": "c" * 64, "values": [0.1, bad]}],
+            trace_id="t", completed_at=datetime.now(timezone.utc),
+        )
+
+
+@pytest.mark.parametrize("field,value", [
+    ("provider_id", "  "), ("model_id", " m"), ("model_version", "latest"), ("model_version", "Default"),
+])
+def test_embedding_contract_requires_concrete_provider_and_immutable_model_identity(field, value):
+    base = dict(
+        task_id="job-1", provider_id="p", model_id="m", model_version="v1", dimensions=1,
+        vectors=[{"chunk_id": "c", "content_sha256": "c" * 64, "values": [0.1]}],
+        trace_id="t", completed_at=datetime.now(timezone.utc),
+    )
+    base[field] = value
+    with pytest.raises(ValidationError):
+        EmbeddingResponse(**base)
+
+
+def test_embedding_contract_rejects_same_ids_with_different_content_hash():
+    request, response = make_request(), make_response()
+    tampered = response.vectors[0].model_copy(update={"content_sha256": "f" * 64})
+    response = response.model_copy(update={"vectors": [tampered, response.vectors[1]]})
+    with pytest.raises(ValueError, match="mismatch"):
+        validate_response_matches_request(request, response)
+
+
+def test_embedding_contract_rejects_task_or_trace_mismatch():
+    request, response = make_request(), make_response()
+    for update in ({"task_id": "other"}, {"trace_id": "other"}):
+        with pytest.raises(ValueError, match="task/trace"):
+            validate_response_matches_request(request, response.model_copy(update=update))

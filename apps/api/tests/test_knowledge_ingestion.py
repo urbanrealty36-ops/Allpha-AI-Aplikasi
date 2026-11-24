@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from allpha_api.auth import current_user
 from allpha_api.main import app
 from allpha_api.knowledge import _chunk, _extract, _scan
+from allpha_api import knowledge
 
 client = TestClient(app)
 AGENT = "00000000-0000-0000-0000-000000000101"
@@ -256,3 +257,30 @@ def test_clamd_scanner_fails_closed_when_daemon_unavailable(monkeypatch):
         asyncio.run(_scan(b"private","notes.txt","text/plain"))
     assert error.value.status_code==503
     assert error.value.detail["code"]=="SCANNER_UNAVAILABLE"
+
+
+def test_public_source_projection_hides_storage_path_and_internal_provenance():
+    source = {
+        "id": "s", "filename": "a.txt", "sha256": "a" * 64, "status": "processing",
+        "storage_path": "owner/agent/source/a.txt",
+        "provenance": {
+            "kind": "user_upload", "sensitivity": "internal", "sensitivity_set_by": "owner-id",
+            "internal_note": "x",
+            "malware_scan": {"scanner_id": "sc", "engine_version": "1", "signature_version": "2",
+                             "sha256": "a" * 64, "contract_version": "c", "receipt_id": "r", "raw": "secret"},
+        },
+    }
+    public = knowledge._public_source(source)
+    assert "storage_path" not in public
+    assert public["provenance"] == {
+        "kind": "user_upload", "sensitivity": "internal",
+        "malware_scan": {"scanner_id": "sc", "engine_version": "1", "signature_version": "2",
+                         "sha256": "a" * 64, "contract_version": "c", "receipt_id": "r"},
+    }
+    assert knowledge._public_source({"id": "s", "provenance": None})["provenance"] == {}
+
+
+def test_public_job_projection_drops_lease_fields():
+    job = {"id": "j", "status": "queued", "stage": "awaiting_malware_scan", "lease_token": "t", "locked_by": "w", "attempt": 1}
+    assert knowledge._public_job(job) == {"id": "j", "status": "queued", "stage": "awaiting_malware_scan", "attempt": 1}
+    assert knowledge._public_job(None) is None

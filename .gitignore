@@ -1,0 +1,9 @@
+# Python bytecode and test/build caches
+# Keep local test/build output out of source-control diffs.
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
