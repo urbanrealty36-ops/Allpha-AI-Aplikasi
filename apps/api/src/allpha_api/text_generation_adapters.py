@@ -210,7 +210,79 @@ class SupabaseTextGenerationMeteringSink:
             raise RuntimeError("usage metering RPC did not confirm idempotent persistence")
 
 
-class SupabaseActiveModelCostVerifier:
+class SupabaseApprovedRuntimePolicyVerifier:
+    """Verify one effective, explicitly approved model execution policy in Supabase.
+
+    The tariff row is the canonical policy identity. An active price alone never
+    grants permission to execute a provider route.
+    """
+
+    def __init__(
+        self, *, supabase_url: str, service_role_key: str,
+        policy_id: str, policy_version: str,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> None:
+        required = (supabase_url, service_role_key, policy_id, policy_version)
+        if not all(isinstance(value, str) and value.strip() for value in required):
+            raise ValueError("approved runtime policy verifier configuration is incomplete")
+        self._url = supabase_url.rstrip("/") + "/rest/v1/ai_model_cost_configs"
+        self._key = service_role_key
+        self._policy_id = policy_id
+        self._policy_version = policy_version
+        self._transport = transport
+
+    async def verify(self) -> None:
+        now = datetime.now(timezone.utc)
+        params = {
+            "select": "id,policy_version,status,policy_approved,effective_at,policy_approval_reference,policy_approved_by,policy_approved_at",
+            "id": "eq." + self._policy_id,
+            "policy_version": "eq." + self._policy_version,
+            "status": "eq.active",
+            "policy_approved": "eq.true",
+            "effective_at": "lte." + now.isoformat(),
+            "limit": "2",
+        }
+        try:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(5.0, connect=2.0), transport=self._transport,
+            ) as client:
+                response = await client.get(
+                    self._url, params=params,
+                    headers={
+                        "apikey": self._key,
+                        "Authorization": "Bearer " + self._key,
+                        "Accept": "application/json",
+                    },
+                )
+                response.raise_for_status()
+                rows = response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise RuntimeError("approved model runtime policy registry is unavailable") from exc
+        if not isinstance(rows, list) or len(rows) != 1:
+            raise RuntimeError("exactly one matching approved runtime policy is required")
+        row = rows[0]
+        if (not isinstance(row, dict)
+                or row.get("id") != self._policy_id
+                or row.get("policy_version") != self._policy_version
+                or row.get("status") != "active"
+                or row.get("policy_approved") is not True):
+            raise RuntimeError("matching runtime policy is not explicitly approved and active")
+        reference = row.get("policy_approval_reference")
+        actor = row.get("policy_approved_by")
+        approved_at = row.get("policy_approved_at")
+        if (not isinstance(reference, str) or not 8 <= len(reference.strip()) <= 200
+                or not isinstance(actor, str) or not actor.strip()
+                or not isinstance(approved_at, str) or not approved_at.strip()):
+            raise RuntimeError("runtime policy approval evidence is incomplete")
+        try:
+            approved_time = datetime.fromisoformat(approved_at.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise RuntimeError("runtime policy approval timestamp is invalid") from exc
+        if approved_time.tzinfo is None or approved_time > now:
+            raise RuntimeError("runtime policy approval timestamp is invalid")
+
+
+class SupabaseActiveModelCostVerifier(SupabaseApprovedRuntimePolicyVerifier):
     """Require the active operator-managed tariff to match the approved deployment route.
 
     The exact database tariff row is also the canonical model execution policy.
@@ -226,11 +298,13 @@ class SupabaseActiveModelCostVerifier:
         max_prompt_bytes: int, max_output_tokens: int, max_latency_ms: int,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
-        required = (supabase_url, service_role_key, provider_id, model_id, model_version, pricing_version, cost_unit, policy_id, policy_version)
+        super().__init__(
+            supabase_url=supabase_url, service_role_key=service_role_key,
+            policy_id=policy_id, policy_version=policy_version, transport=transport,
+        )
+        required = (provider_id, model_id, model_version, pricing_version, cost_unit)
         if not all(value.strip() for value in required):
             raise ValueError("active model-cost verifier configuration is incomplete")
-        self._url = supabase_url.rstrip("/") + "/rest/v1/ai_model_cost_configs"
-        self._key = service_role_key
         self._expected = {
             "id": policy_id,
             "policy_version": policy_version,
@@ -250,6 +324,7 @@ class SupabaseActiveModelCostVerifier:
         self._transport = transport
 
     async def verify(self) -> None:
+        await super().verify()
         now = datetime.now(timezone.utc).isoformat()
         params = {
             "select": ",".join((*self._expected.keys(), "status", "effective_at", "policy_approval_reference", "policy_approved_by", "policy_approved_at")),
