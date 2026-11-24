@@ -125,6 +125,22 @@ export function AccountDataLifecycleScreen({ apiBase, getAccessToken }: Props) {
     finally { setBusy(false); }
   }
 
+  async function createAllAgentOwnershipTransfers(requestId: string) {
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const payload = await request("/v1/me/deletion-requests/" + encodeURIComponent(requestId) + "/ownership-transfers/agents", {
+        method: "POST",
+        body: JSON.stringify({ successor_user_id: transferSuccessorId.trim() }),
+      });
+      const count = Number(payload?.transfer?.transferred_count ?? 0);
+      setMessage(count > 0
+        ? "Instruksi pengalihan " + count + " Agent aktif tersimpan. Backend akan memvalidasi ulang pemilik dan penerima sebelum transfer atomik."
+        : "Tidak ada Agent aktif yang perlu dialihkan.");
+      setTransferSuccessorId("");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Pengalihan seluruh Agent gagal disimpan."); }
+    finally { setBusy(false); }
+  }
+
   async function cancelDeletion(id: string) {
     setBusy(true); setError(""); setMessage("");
     try {
@@ -184,7 +200,7 @@ export function AccountDataLifecycleScreen({ apiBase, getAccessToken }: Props) {
         ))}
         {openDeletion && <>
           <Text style={{ color: "#FFFFFF", fontWeight: "700" }}>Pengalihan kepemilikan Agent / Organisasi</Text>
-          <Text style={{ color: "#AAB4CC", lineHeight: 20 }}>Masukkan ID resource milik Anda dan ID pengguna penerima. Backend memvalidasi kepemilikan, akun penerima, serta keanggotaan organisasi.</Text>
+          <Text style={{ color: "#AAB4CC", lineHeight: 20 }}>Masukkan ID resource untuk satu pengalihan, atau gunakan aksi massal Agent untuk mengalihkan seluruh Agent aktif ke satu penerima. Backend memvalidasi pemilik aktif, akun penerima, konflik kepemilikan, serta keanggotaan organisasi.</Text>
           <View style={{ flexDirection: "row", gap: 8 }}>
             {button("AI Agent", () => setTransferType("agent"), busy || transferType === "agent")}
             {button("Organisasi", () => setTransferType("organization"), busy || transferType === "organization")}
@@ -192,6 +208,11 @@ export function AccountDataLifecycleScreen({ apiBase, getAccessToken }: Props) {
           <TextInput value={transferResourceId} onChangeText={setTransferResourceId} autoCapitalize="none" style={field} accessibilityLabel="Resource ID Agent atau Organisasi" placeholder="UUID resource"/>
           <TextInput value={transferSuccessorId} onChangeText={setTransferSuccessorId} autoCapitalize="none" style={field} accessibilityLabel="Successor user ID" placeholder="UUID pengguna penerima"/>
           {button(busy ? "Menyimpan…" : "Simpan instruksi pengalihan", () => void createOwnershipTransfer(openDeletion.id), busy || !transferResourceId.trim() || !transferSuccessorId.trim())}
+          {transferType === "agent" && button(
+            busy ? "Memproses…" : "Alihkan seluruh Agent aktif",
+            () => void createAllAgentOwnershipTransfers(openDeletion.id),
+            busy || !transferSuccessorId.trim()
+          )}
         </>}
         {openDeletion ? <Text style={{ color: "#F6C978" }}>Masih ada permintaan aktif. Batalkan terlebih dahulu jika ingin mengajukan ulang.</Text> : <>
           <Text style={{ color: "#AAB4CC" }}>Kata sandi saat ini</Text>
