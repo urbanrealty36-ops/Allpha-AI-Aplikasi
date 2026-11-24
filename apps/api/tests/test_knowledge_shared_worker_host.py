@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from allpha_api import agent_runtime_worker, knowledge_ingestion_worker, knowledge_worker
+from allpha_api import agent_runtime_worker, knowledge_ingestion_worker, knowledge_worker, memory_retention_worker
 from knowledge_worker_fakes import FakePolicyResolver
 
 
@@ -189,4 +189,15 @@ def test_invalid_scanner_config_failure_does_not_starve_runtime_consumers(monkey
     monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_URL", "http://scanner.example.com/scan")
     assert agent_runtime_worker._consumer_enabled(
         "Knowledge document", lambda: knowledge_ingestion_worker.build_worker_from_environment() and True
+    ) is False
+
+
+def test_memory_retention_consumer_is_disabled_by_default(monkeypatch):
+    monkeypatch.delenv("ALLPHA_MEMORY_RETENTION_WORKER_ENABLED", raising=False)
+    assert memory_retention_worker.enabled() is False
+
+
+def test_invalid_memory_retention_gate_does_not_abort_shared_host():
+    assert agent_runtime_worker._consumer_enabled(
+        "Memory retention", lambda: (_ for _ in ()).throw(SystemExit("invalid retention config"))
     ) is False
