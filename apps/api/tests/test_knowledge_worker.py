@@ -149,3 +149,43 @@ def test_worker_wraps_embedding_and_vector_persistence_in_lease_heartbeat(monkey
         assert persisted == ["job-1"]
 
     asyncio.run(scenario())
+
+
+
+def test_worker_retries_when_vector_persistence_is_temporarily_unavailable():
+    from allpha_api.knowledge_vector_store import VectorPersistenceUnavailable
+
+    async def scenario():
+        store = FakeStore()
+        router = FakeRouter(result=embedding_response())
+
+        async def sink(*args):
+            raise VectorPersistenceUnavailable("index RPC unavailable")
+
+        await KnowledgeEmbeddingWorker(store, router, sink).process_once()
+        final = store.finalizations[-1]
+        assert final["outcome"] == "retry"
+        assert final["stage"] == "embedding_indexing_retry"
+        assert final["error_code"] == "KNOWLEDGE_VECTOR_STORE_UNAVAILABLE"
+        assert final["retry_delay_seconds"] == 60
+
+    asyncio.run(scenario())
+
+
+def test_worker_terminalizes_vector_idempotency_conflict_without_replay():
+    from allpha_api.knowledge_vector_store import VectorPersistenceConflict
+
+    async def scenario():
+        store = FakeStore()
+        router = FakeRouter(result=embedding_response())
+
+        async def sink(*args):
+            raise VectorPersistenceConflict("idempotency key payload conflict")
+
+        await KnowledgeEmbeddingWorker(store, router, sink).process_once()
+        final = store.finalizations[-1]
+        assert final["outcome"] == "failed"
+        assert final["stage"] == "embedding_indexing_failed"
+        assert final["error_code"] == "KNOWLEDGE_VECTOR_PERSISTENCE_CONFLICT"
+
+    asyncio.run(scenario())
