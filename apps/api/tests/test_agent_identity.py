@@ -461,3 +461,102 @@ def test_agent_identity_history_and_publication_migration_is_forward_only():
     assert "public.revoke_my_ai_agent_publication" in sql
     assert "public.get_public_agent_owner_attribution" in sql
     assert "agent_identity_versions" in sql and "owned_agents" in sql
+
+
+def test_agent_ownership_transfer_routes_require_authentication():
+    assert client.get("/v1/agent-ownership-transfers").status_code == 401
+    assert client.post(
+        "/v1/agents/00000000-0000-0000-0000-000000000001/ownership-transfers",
+        json={"recipient_user_id":"00000000-0000-0000-0000-000000000002","idempotency_key":"request-key-0001"},
+    ).status_code == 401
+    assert client.post(
+        "/v1/agent-ownership-transfers/00000000-0000-0000-0000-000000000003/respond",
+        json={"accept":True},
+    ).status_code == 401
+
+
+def test_agent_ownership_transfer_request_uses_authenticated_rpc(monkeypatch):
+    calls=[]
+    async def fake_user_db_request(method,path,access_token,**kwargs):
+        calls.append((method,path,access_token,kwargs))
+        return [{"request_id":"transfer-1","agent_id":"agent-1","status":"pending"}]
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token="owner-token"
+        return {"id":"owner-1","email":"owner@example.invalid"}
+    monkeypatch.setattr("allpha_api.main.user_db_request",fake_user_db_request)
+    app.dependency_overrides[current_user]=fake_current_user
+    try:
+        response=client.post(
+            "/v1/agents/00000000-0000-0000-0000-000000000001/ownership-transfers",
+            headers={"Authorization":"Bearer test"},
+            json={"recipient_user_id":"00000000-0000-0000-0000-000000000002","idempotency_key":"request-key-0001"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code==201
+    assert calls[0][0:3]==("POST","rpc/request_agent_ownership_transfer","owner-token")
+    assert calls[0][3]["body"]=={
+        "p_agent_id":"00000000-0000-0000-0000-000000000001",
+        "p_recipient_user_id":"00000000-0000-0000-0000-000000000002",
+        "p_idempotency_key":"request-key-0001",
+    }
+
+
+def test_agent_ownership_transfer_incoming_and_outgoing_use_authenticated_identity(monkeypatch):
+    calls=[]
+    async def fake_user_db_request(method,path,access_token,**kwargs):
+        calls.append((method,path,access_token,kwargs))
+        return [{"id":"transfer-1","status":"pending"}]
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token="member-token"
+        return {"id":"member-1","email":"member@example.invalid"}
+    monkeypatch.setattr("allpha_api.main.user_db_request",fake_user_db_request)
+    app.dependency_overrides[current_user]=fake_current_user
+    try:
+        response=client.get("/v1/agent-ownership-transfers",headers={"Authorization":"Bearer test"})
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code==200
+    assert len(calls)==2
+    assert calls[0][3]["params"]["from_owner_user_id"]=="eq.member-1"
+    assert calls[1][3]["params"]["to_owner_user_id"]=="eq.member-1"
+
+
+def test_agent_ownership_transfer_response_and_cancel_use_scoped_rpcs(monkeypatch):
+    calls=[]
+    async def fake_user_db_request(method,path,access_token,**kwargs):
+        calls.append((method,path,access_token,kwargs))
+        return [{"request_id":"transfer-1","status":"accepted"}]
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token="member-token"
+        return {"id":"member-1","email":"member@example.invalid"}
+    monkeypatch.setattr("allpha_api.main.user_db_request",fake_user_db_request)
+    app.dependency_overrides[current_user]=fake_current_user
+    try:
+        response=client.post("/v1/agent-ownership-transfers/00000000-0000-0000-0000-000000000003/respond",
+            headers={"Authorization":"Bearer test"},json={"accept":True})
+        cancelled=client.post("/v1/agent-ownership-transfers/00000000-0000-0000-0000-000000000003/cancel",
+            headers={"Authorization":"Bearer test"})
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code==200 and cancelled.status_code==200
+    assert calls[0][1]=="rpc/respond_agent_ownership_transfer"
+    assert calls[0][3]["body"]["p_accept"] is True
+    assert calls[1][1]=="rpc/cancel_agent_ownership_transfer"
+
+
+def test_agent_ownership_transfer_and_consent_migration_is_forward_only_and_exportable():
+    from pathlib import Path
+    migrations=Path(__file__).resolve().parents[1]/"supabase"/"migrations"
+    migration=migrations/"20261124034500_eng_p05_ownership_transfer_retention_and_export.sql"
+    assert migration.is_file()
+    sql=migration.read_text(encoding="utf-8").lower()
+    assert "create or replace function public.request_agent_ownership_transfer" in sql
+    assert "create or replace function public.respond_agent_ownership_transfer" in sql
+    assert "create or replace function public.cancel_agent_ownership_transfer" in sql
+    assert "on delete set null" in sql
+    assert "from_owner_subject_ref" in sql and "to_owner_subject_ref" in sql
+    assert "agent_ownership_transfer_events" in sql
+    assert "agent_owner_attribution_consent_events" in sql
+    assert "account_export_sources" in sql and "account_deletion_source_policies" in sql
+    assert "agent_ownership_transfer_one_pending_per_agent" not in sql or "expires_at" in sql
