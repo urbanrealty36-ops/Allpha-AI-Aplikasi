@@ -111,12 +111,12 @@ end $do$;
 set role service_role;
 select * from public.claim_agent_knowledge_job(90,'awaiting_malware_scan');
 reset role;
+set role service_role;
 do $do$
 declare v_job public.agent_knowledge_jobs%rowtype; v_result jsonb;
 begin
  select * into v_job from public.agent_knowledge_jobs where source_id='{SOURCE}' and stage='awaiting_malware_scan';
  if v_job.status<>'processing' or v_job.lease_token is null then raise exception 'document job lease not acquired'; end if;
- set local role service_role;
  select public.persist_agent_knowledge_chunk_batch(
   v_job.id,v_job.lease_token,1,true,
   jsonb_build_array(
@@ -139,6 +139,7 @@ begin
   raise exception 'chunk persistence count mismatch';
  end if;
 end $do$;
+reset role;
 """)
   psql(f"""
 insert into public.agent_knowledge_sources(id,agent_id,owner_id,filename,media_type,size_bytes,sha256,storage_path,status,processing_stage,provenance)
