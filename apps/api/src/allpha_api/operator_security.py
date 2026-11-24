@@ -649,6 +649,22 @@ async def revoke_operator_grant(
     return {"grant": rows[0], "revoked": True}
 
 
+@router.get("/operator/runtime-policies", name="list_operator_runtime_policies")
+async def list_operator_runtime_policies(
+    agent_id: UUID,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:capabilities.review")),
+) -> dict[str, Any]:
+    rows = await privileged_rest_request(
+        "GET", "agent_runtime_policies",
+        params={
+            "select": "id,agent_id,policy_version,policy_digest,approved_tool_keys,required_permission_scopes,status,approved_at",
+            "agent_id": f"eq.{agent_id}", "status": "eq.approved",
+            "order": "policy_version.desc", "limit": "100",
+        },
+    )
+    return {"items": rows or []}
+
+
 @router.post("/operator/runtime-policies", status_code=201, name="create_operator_runtime_policy")
 async def create_operator_runtime_policy(
     payload: RuntimePolicyCreate,
