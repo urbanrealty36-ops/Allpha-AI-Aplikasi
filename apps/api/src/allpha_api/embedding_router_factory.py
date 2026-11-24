@@ -48,7 +48,7 @@ _PROFILE_FIELDS = (
 )
 
 
-class _VerifiedApproval(CostPolicyApprovalVerifier):
+class _VerifiedApproval:
     def __init__(self, approval: CostPolicyApproval) -> None:
         self._approval = approval
         self._verified = False
@@ -189,6 +189,8 @@ async def build_embedding_router_from_environment(
     max_latency_ms = integer("ALLPHA_EMBEDDING_MAX_LATENCY_MS")
     if min(dimensions, max_input_tokens, max_prompt_bytes, max_latency_ms) < 1:
         raise EmbeddingProviderConfigurationError("embedding dimensions, request limits and latency must be positive")
+    if max_input_tokens > max_prompt_bytes:
+        raise EmbeddingProviderConfigurationError("embedding token reservation cannot exceed the approved UTF-8 input byte ceiling")
     if max_input_tokens * input_rate > max_cost:
         raise EmbeddingProviderConfigurationError("embedding token reservation exceeds the approved per-request cost cap")
     sensitivities = tuple(
@@ -270,7 +272,11 @@ async def build_embedding_router_from_environment(
             for sensitivity in sensitivities
         },
         adapters={provider_id: adapter},
-        metering_sink=SupabaseEmbeddingMeteringSink.from_environment(),
+        metering_sink=SupabaseEmbeddingMeteringSink(
+            supabase_url=os.environ["SUPABASE_URL"],
+            service_role_key=os.environ["SUPABASE_SERVICE_ROLE_KEY"],
+            transport=transport,
+        ),
         cost_budgets=budgets,
         cost_estimates=estimates,
         cost_policy_approval=approval,
