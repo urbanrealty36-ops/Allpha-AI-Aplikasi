@@ -26,7 +26,11 @@ class MemoryCoordinator:
         headers={"apikey":key,"Authorization":f"Bearer {key}","Content-Type":"application/json","Accept":"application/json"}
         if prefer: headers["Prefer"]=prefer
         try:
-            async with httpx.AsyncClient(timeout=_TIMEOUT) as c:
+            async with httpx.AsyncClient(
+                timeout=_TIMEOUT,
+                follow_redirects=False,
+                trust_env=False,
+            ) as c:
                 r=await c.request(method,f"{base}/rest/v1/{path}",params=params,json=body,headers=headers)
         except httpx.HTTPError as exc: raise MemoryUnavailable("Memory database is unavailable") from exc
         if r.status_code>=400:
