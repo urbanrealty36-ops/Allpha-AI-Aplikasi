@@ -53,6 +53,7 @@ IDENTITY_TOMBSTONES = MIGRATIONS / "20261123180112_eng_p03_identity_tombstones_a
 EXECUTOR_HARDENING = MIGRATIONS / "20261123180725_eng_p03_executor_referential_integrity_hardening.sql"
 STRIPE_ENVIRONMENT = MIGRATIONS / "20261123181359_eng_p03_billing_stripe_environment_binding.sql"
 LEGACY_BILLING_GUARD = MIGRATIONS / "20261123181531_eng_p03_legacy_billing_order_rpc_guard.sql"
+GOVERNANCE_RETRY = MIGRATIONS / "20261123182248_eng_p03_governance_policy_gate_and_retry.sql"
 API_SOURCE = Path(__file__).parents[1] / "src" / "allpha_api" / "stripe_billing_api.py"
 WORKER_SOURCE = Path(__file__).parents[1] / "src" / "allpha_api" / "account_lifecycle_worker.py"
 
@@ -118,3 +119,18 @@ def test_subscription_cancellation_uses_the_persisted_stripe_environment_not_che
 def test_legacy_checkout_rpc_is_explicitly_fail_closed_for_old_clients():
     source = " ".join(LEGACY_BILLING_GUARD.read_text(encoding="utf-8").lower().split())
     assert "grant execute on function public.billing_create_order(uuid,text,text) to service_role" in source
+
+
+
+def test_deletion_governance_rechecks_owner_directives_holds_sources_fks_and_transfers():
+    source = " ".join(GOVERNANCE_RETRY.read_text(encoding="utf-8").lower().split())
+    assert "public.evaluate_account_deletion_governance" in source
+    assert "decision_source='product_owner_directive'" in source
+    assert "decision_reference" in source
+    assert "public.account_legal_holds" in source
+    assert "private.account_deletion_source_handler_available" in source
+    assert "missing_fk_rules" in source
+    assert "missing_ownership_transfers" in source
+    assert "public.prepare_account_deletion_execution_batch" in source
+    assert "status in ('awaiting_policy','scheduled','blocked_dependency')" in source
+    assert "scheduled_for<=clock_timestamp()" in source
