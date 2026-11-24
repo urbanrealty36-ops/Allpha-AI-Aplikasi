@@ -51,10 +51,6 @@ create function auth.role() returns text language sql stable as $auth_role$ sele
 grant usage on schema auth,private,extensions to public;
 grant execute on function auth.uid(),auth.role() to public;
 create table public.ai_agents(id uuid primary key,visibility text not null,status text not null);
-create function private.has_agent_ownership(p_agent_id uuid,p_user_id uuid,p_role text)
-returns boolean language sql stable security definer set search_path=''
-as $has_owner$ select exists(select 1 from public.agent_ownerships o where o.agent_id=p_agent_id and o.owner_user_id=p_user_id and o.ownership_role=p_role and o.status='active') $has_owner$;
-grant execute on function private.has_agent_ownership(uuid,uuid,text) to public;
 create table private.account_export_sources(source_key text primary key,table_name text not null,filter_kind text not null,owner_columns text[] not null,sort_order integer not null,enabled boolean not null default true);
 create table public.account_deletion_source_policies(source_key text primary key,data_class text not null,deletion_action text not null,dependency_order integer not null,policy_version integer not null,reason text not null,approved_by uuid,approved_at timestamptz,active boolean not null default true,table_name text not null,filter_kind text not null,owner_columns text[] not null,decision_source text not null,decision_reference text not null,updated_at timestamptz not null default now());
 create table public.account_deletion_dependency_rules(child_schema text not null,child_table text not null,constraint_name text not null,fk_column text not null,delete_rule text not null,resolution_action text not null,reason text not null,active boolean not null default true,unique(child_schema,child_table,constraint_name));
@@ -62,6 +58,11 @@ insert into public.account_deletion_source_policies(source_key,data_class,deleti
 values('agent_ownerships','agent_operational','preserve',51,1,'CI fixture owner policy',true,'agent_ownerships','owner_columns',array['owner_user_id'],'product_owner_directive','CI fixture only');
 create table public.agent_ownerships(agent_id uuid,owner_user_id uuid,ownership_role text,status text);
 grant select on public.agent_ownerships to authenticated, service_role;
+create function private.has_agent_ownership(p_agent_id uuid,p_user_id uuid,p_role text)
+returns boolean language sql stable security definer set search_path=''
+as $has_owner$ select exists(select 1 from public.agent_ownerships o where o.agent_id=p_agent_id and o.owner_user_id=p_user_id and o.ownership_role=p_role and o.status='active') $has_owner$;
+grant execute on function private.has_agent_ownership(uuid,uuid,text) to public;
+
 create table public.agent_skills(
  id uuid primary key default gen_random_uuid(),agent_id uuid not null,created_by uuid not null,
  slug text not null,name text not null,description text not null default '',category text not null default 'general',
