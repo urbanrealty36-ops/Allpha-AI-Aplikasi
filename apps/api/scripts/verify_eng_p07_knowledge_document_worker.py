@@ -1,0 +1,201 @@
+"""ENG-P07 PostgreSQL 17 verifier for private document ingestion and lease-fenced chunk handoff."""
+from __future__ import annotations
+
+from pathlib import Path
+import subprocess
+import sys
+import time
+import uuid
+
+ROOT=Path(__file__).resolve().parents[3]
+MIGRATIONS=ROOT/"apps/api/supabase/migrations"
+FILES=[
+ MIGRATIONS/"20261014180000_eng_p09_knowledge_job_leases.sql",
+ MIGRATIONS/"20261014173000_eng_p07_knowledge_fulltext_index.sql",
+ MIGRATIONS/"20261124110000_eng_p07_knowledge_document_worker_pipeline.sql",
+ MIGRATIONS/"20261124120000_eng_p07_knowledge_api_only_writes.sql",
+ MIGRATIONS/"20261124130000_eng_p07_knowledge_document_enqueue.sql",
+ MIGRATIONS/"20261124140000_eng_p07_knowledge_document_failure_atomic.sql",
+]
+NAME="allpha-p07-knowledge-"+uuid.uuid4().hex[:8]
+OWNER="11111111-1111-4111-8111-111111111111"
+AGENT="22222222-2222-4222-8222-222222222222"
+SOURCE="33333333-3333-4333-8333-333333333333"
+SOURCE_RETRY="44444444-4444-4444-8444-444444444444"
+
+
+def run(args:list[str],sql:str|None=None,check:bool=True)->subprocess.CompletedProcess[str]:
+ result=subprocess.run(args,input=sql,text=True,capture_output=True)
+ if check and result.returncode: raise RuntimeError(result.stdout+"\n"+result.stderr)
+ return result
+
+
+def psql(sql:str,check:bool=True)->subprocess.CompletedProcess[str]:
+ result=run(["docker","exec","-i",NAME,"psql","-X","-v","ON_ERROR_STOP=1","-U","postgres","-d","postgres"],sql,check=False)
+ if check and result.returncode:
+  logs=run(["docker","logs",NAME],check=False)
+  raise RuntimeError(result.stdout+"\n"+result.stderr+"\nPostgreSQL logs:\n"+logs.stdout+logs.stderr)
+ return result
+
+
+def main()->None:
+ run(["docker","run","-d","--rm","--name",NAME,"-e","POSTGRES_PASSWORD=ci-only","postgres:17-alpine"])
+ try:
+  ready=False
+  for _ in range(90):
+   if run(["docker","exec",NAME,"pg_isready","-U","postgres","-d","postgres"],check=False).returncode==0:
+    ready=True;break
+   time.sleep(1)
+  if not ready:raise RuntimeError("PostgreSQL 17 did not reach readiness")
+  psql("""
+create role anon nologin;
+create role authenticated nologin;
+create role service_role nologin bypassrls;
+create schema auth;
+create schema private;
+create schema extensions;
+create schema storage;
+create extension if not exists pgcrypto with schema extensions;
+create function auth.uid() returns uuid language sql stable as $uid$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $uid$;
+create table auth.users(id uuid primary key);
+create table public.ai_agents(id uuid primary key);
+create table public.agent_knowledge_sources(
+ id uuid primary key,agent_id uuid not null,owner_id uuid not null,filename text not null,
+ media_type text not null,size_bytes bigint not null,sha256 text not null,storage_path text not null,
+ source_version integer not null default 1,status text not null,processing_stage text not null,
+ error_code text,provenance jsonb not null default '{}',created_at timestamptz not null default now(),
+ updated_at timestamptz not null default now()
+);
+create table public.agent_knowledge_jobs(
+ id uuid primary key default gen_random_uuid(),source_id uuid not null references public.agent_knowledge_sources(id) on delete cascade,
+ agent_id uuid not null,owner_id uuid not null,status text not null,stage text not null,
+ attempt integer not null default 0,progress integer not null default 0,error_code text,
+ created_at timestamptz not null default now(),updated_at timestamptz not null default now()
+);
+create table public.agent_knowledge_chunks(
+ id uuid primary key default gen_random_uuid(),source_id uuid not null references public.agent_knowledge_sources(id) on delete cascade,
+ agent_id uuid not null,owner_id uuid not null,chunk_index integer not null,
+ content text not null,source_location jsonb not null,source_version integer not null,
+ content_sha256 text not null,created_at timestamptz not null default now(),
+ unique(source_id,source_version,chunk_index)
+);
+create table storage.objects(id uuid primary key default gen_random_uuid(),bucket_id text,name text);
+grant usage on schema public,storage,extensions to anon,authenticated,service_role;
+grant select,insert,update,delete on public.agent_knowledge_sources,public.agent_knowledge_jobs,public.agent_knowledge_chunks to authenticated,service_role;
+grant all on storage.objects to authenticated,service_role;
+""")
+  for migration in FILES:
+   if not migration.is_file():raise RuntimeError(f"Missing P07 migration: {migration}")
+   psql(migration.read_text(encoding="utf-8"))
+  psql(f"""
+insert into auth.users(id) values('{OWNER}');
+insert into public.ai_agents(id) values('{AGENT}');
+insert into public.agent_knowledge_sources(id,agent_id,owner_id,filename,media_type,size_bytes,sha256,storage_path,status,processing_stage,provenance)
+values('{SOURCE}','{AGENT}','{OWNER}','notes.txt','text/plain',5,encode(extensions.digest('alpha','sha256'),'hex'),
+ '{OWNER}/{AGENT}/{SOURCE}/notes.txt','quarantined','awaiting_malware_scan','{{"sensitivity":"internal"}}');
+set role service_role;
+select public.enqueue_agent_knowledge_document_job('{SOURCE}','{AGENT}','{OWNER}',null);
+select public.enqueue_agent_knowledge_document_job('{SOURCE}','{AGENT}','{OWNER}','duplicate request');
+reset role;
+do $do$
+declare v_job public.agent_knowledge_jobs%rowtype;
+begin
+ if (select count(*) from public.agent_knowledge_jobs where source_id='{SOURCE}' and stage='awaiting_malware_scan')<>1 then
+  raise exception 'enqueue idempotency created duplicate document jobs';
+ end if;
+ select * into v_job from public.agent_knowledge_jobs where source_id='{SOURCE}' and stage='awaiting_malware_scan';
+ if v_job.status<>'queued' or v_job.idempotency_key is null then raise exception 'document job was not durably queued'; end if;
+end $do$;
+""")
+  psql(f"""
+set role service_role;
+select * from public.claim_agent_knowledge_job(90,'awaiting_malware_scan');
+reset role;
+do $do$
+declare v_job public.agent_knowledge_jobs%rowtype; v_result jsonb;
+begin
+ select * into v_job from public.agent_knowledge_jobs where source_id='{SOURCE}' and stage='awaiting_malware_scan';
+ if v_job.status<>'processing' or v_job.lease_token is null then raise exception 'document job lease not acquired'; end if;
+ set local role service_role;
+ select public.persist_agent_knowledge_chunk_batch(
+  v_job.id,v_job.lease_token,1,true,
+  jsonb_build_array(
+   jsonb_build_object('chunk_index',0,'content','alpha','source_location',jsonb_build_object('kind','page','index',1),'content_sha256',encode(extensions.digest('alpha','sha256'),'hex')),
+   jsonb_build_object('chunk_index',1,'content','beta','source_location',jsonb_build_object('kind','page','index',2),'content_sha256',encode(extensions.digest('beta','sha256'),'hex'))
+  )
+ );
+ select public.complete_agent_knowledge_document_parse(v_job.id,v_job.lease_token,1,2) into v_result;
+ if v_result->>'retrieval_ready'<>'false' or (v_result->>'chunks_created')::integer<>2 then raise exception 'parse completion did not report pending retrieval QA'; end if;
+ if not exists(select 1 from public.agent_knowledge_sources where id='{SOURCE}' and status='indexed_pending_embeddings' and processing_stage='awaiting_model_router') then
+  raise exception 'source was not moved to embedding handoff state';
+ end if;
+ if not exists(select 1 from public.agent_knowledge_jobs where source_id='{SOURCE}' and stage='text_extracted' and status='succeeded') then
+  raise exception 'document parse job not finalized';
+ end if;
+ if not exists(select 1 from public.agent_knowledge_jobs where source_id='{SOURCE}' and stage='embedding_indexing' and status='queued' and idempotency_key like 'knowledge:%') then
+  raise exception 'embedding job was not durably queued';
+ end if;
+ if (select count(*) from public.agent_knowledge_chunks where source_id='{SOURCE}' and source_version=1)<>2 then
+  raise exception 'chunk persistence count mismatch';
+ end if;
+end $do$;
+""")
+  psql(f"""
+insert into public.agent_knowledge_sources(id,agent_id,owner_id,filename,media_type,size_bytes,sha256,storage_path,status,processing_stage,provenance)
+values('{SOURCE_RETRY}','{AGENT}','{OWNER}','retry.txt','text/plain',5,encode(extensions.digest('alpha','sha256'),'hex'),
+ '{OWNER}/{AGENT}/{SOURCE_RETRY}/retry.txt','quarantined','awaiting_malware_scan','{{"sensitivity":"internal"}}');
+set role service_role;
+select public.enqueue_agent_knowledge_document_job('{SOURCE_RETRY}','{AGENT}','{OWNER}',null);
+select * from public.claim_agent_knowledge_job(90,'awaiting_malware_scan');
+select public.fail_agent_knowledge_document_job(
+ (select id from public.agent_knowledge_jobs where source_id='{SOURCE_RETRY}'),
+ (select lease_token from public.agent_knowledge_jobs where source_id='{SOURCE_RETRY}'),
+ 'SCANNER_UNAVAILABLE','malware_scan_retry',true,0
+);
+reset role;
+do $do$
+begin
+ if not exists(select 1 from public.agent_knowledge_sources where id='{SOURCE_RETRY}' and status='quarantined' and error_code='SCANNER_UNAVAILABLE') then
+  raise exception 'retryable scanner failure did not retain source in quarantine';
+ end if;
+ if not exists(select 1 from public.agent_knowledge_jobs where source_id='{SOURCE_RETRY}' and status='queued' and stage='awaiting_malware_scan' and error_code='SCANNER_UNAVAILABLE') then
+  raise exception 'retryable scanner failure did not requeue the job';
+ end if;
+end $do$;
+""")
+  psql("""
+do $do$
+begin
+ if has_table_privilege('authenticated','public.agent_knowledge_sources','INSERT')
+    or has_table_privilege('authenticated','public.agent_knowledge_sources','UPDATE')
+    or has_table_privilege('authenticated','public.agent_knowledge_jobs','INSERT')
+    or has_table_privilege('authenticated','public.agent_knowledge_chunks','DELETE') then
+  raise exception 'authenticated role retains Knowledge lifecycle DML';
+ end if;
+ if not has_table_privilege('authenticated','public.agent_knowledge_sources','SELECT') then
+  raise exception 'authenticated owner read access was removed';
+ end if;
+ if has_function_privilege('authenticated','public.persist_agent_knowledge_chunk_batch(uuid,uuid,integer,boolean,jsonb)','EXECUTE')
+    or has_function_privilege('authenticated','public.complete_agent_knowledge_document_parse(uuid,uuid,integer,integer)','EXECUTE')
+    or has_function_privilege('authenticated','public.enqueue_agent_knowledge_document_job(uuid,uuid,uuid,text)','EXECUTE')
+    or has_function_privilege('authenticated','public.fail_agent_knowledge_document_job(uuid,uuid,text,text,boolean,integer)','EXECUTE') then
+  raise exception 'authenticated role can execute privileged Knowledge RPCs';
+ end if;
+ if not has_function_privilege('service_role','public.persist_agent_knowledge_chunk_batch(uuid,uuid,integer,boolean,jsonb)','EXECUTE')
+    or not has_function_privilege('service_role','public.complete_agent_knowledge_document_parse(uuid,uuid,integer,integer)','EXECUTE')
+    or not has_function_privilege('service_role','public.enqueue_agent_knowledge_document_job(uuid,uuid,uuid,text)','EXECUTE')
+    or not has_function_privilege('service_role','public.fail_agent_knowledge_document_job(uuid,uuid,text,text,boolean,integer)','EXECUTE') then
+  raise exception 'service_role cannot execute Knowledge worker RPCs';
+ end if;
+end $do$;
+""")
+  print("PASS: ENG-P07 PostgreSQL 17 private quarantine enqueue, idempotency, lease-fenced chunk persistence, atomic embedding handoff, retry recovery and client DML lockdown.")
+ finally:
+  run(["docker","rm","--force",NAME],check=False)
+
+
+if __name__=="__main__":
+ try:main()
+ except Exception as exc:
+  print(f"FAIL: ENG-P07 Knowledge document worker verification: {exc}",file=sys.stderr)
+  raise SystemExit(1)
