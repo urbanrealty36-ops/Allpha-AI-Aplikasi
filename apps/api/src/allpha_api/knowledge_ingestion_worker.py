@@ -121,6 +121,10 @@ class KnowledgeDocumentWorker:
         await self.store.update_source_state(job, status="processing", stage="malware_scan", error_code=None)
         data = await self.storage.download(str(source.get("storage_path") or ""))
         expected_sha = str(source.get("sha256") or "").lower()
+        expected_size = int(source.get("size_bytes") or 0)
+        if expected_size <= 0 or expected_size > 15 * 1024 * 1024 or len(data) != expected_size:
+            await self._fail(job, "KNOWLEDGE_SOURCE_SIZE_MISMATCH", "document_parse_failed", False, 0)
+            return
         if not expected_sha or hashlib.sha256(data).hexdigest() != expected_sha:
             await self._fail(job, "KNOWLEDGE_SOURCE_SHA256_MISMATCH", "document_parse_failed", False, 0)
             return
