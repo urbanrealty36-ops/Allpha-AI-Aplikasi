@@ -232,3 +232,25 @@ def test_embedding_router_never_replays_provider_after_metering_confirmation_fai
         assert calls == {"provider": 1, "meter": 1}
 
     asyncio.run(scenario())
+
+
+
+def test_embedding_profile_keeps_token_budget_independent_from_utf8_byte_ceiling(monkeypatch):
+    configure_profile(monkeypatch)
+    monkeypatch.setenv("ALLPHA_EMBEDDING_MAX_INPUT_TOKENS", "100")
+    monkeypatch.setenv("ALLPHA_EMBEDDING_MAX_COST_MICROUNITS", "200")
+
+    def handler(request):
+        if request.method == "GET" and request.url.path.endswith("/ai_model_cost_configs"):
+            row = model_cost_row()
+            row["max_cost_microunits"] = 200
+            row["max_prompt_bytes"] = 4096
+            return httpx.Response(200, json=[row])
+        raise AssertionError("profile construction should only verify the policy registry")
+
+    async def scenario():
+        router = await build_embedding_router_from_environment(transport=httpx.MockTransport(handler))
+        assert router is not None
+        assert router.has_approved_cost_policy is True
+
+    asyncio.run(scenario())
