@@ -228,11 +228,12 @@ def test_agent_runtime_bounds_long_intent_before_knowledge_retrieval():
 
 
 
-def test_knowledge_context_snapshot_rejects_untrusted_source_location_metadata():
+def test_knowledge_context_snapshot_drops_untrusted_source_location_metadata():
     hit = knowledge_hit()
     hit = RetrievalHit(
         **{**hit.__dict__, "source_location": {"kind": "page", "index": 3, "raw_text": "must not persist"}}
     )
-    from allpha_api.knowledge_retrieval import KnowledgeRetrievalUnavailable
-    with pytest.raises(KnowledgeRetrievalUnavailable, match="source location"):
-        _knowledge_context_snapshot([hit])
+    context, references, _ = _knowledge_context_snapshot([hit])
+    assert context[0]["source_location"] == {"kind": "page", "index": 3}
+    assert "raw_text" not in str(context)
+    assert "raw_text" not in str(references)
