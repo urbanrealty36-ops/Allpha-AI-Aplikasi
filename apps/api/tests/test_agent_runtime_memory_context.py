@@ -3,6 +3,7 @@ import hashlib
 from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 
 from allpha_api.agent_runtime_api import (
     _knowledge_context_snapshot, _memory_context_snapshot,
@@ -256,10 +257,12 @@ def test_task_knowledge_provenance_validator_rejects_raw_document_content():
     hit = knowledge_hit()
     _, refs, _ = _knowledge_context_snapshot([hit])
     unsafe = [{**refs[0], "content": hit.content}]
-    with pytest.raises(Exception, match="metadata tanpa konten"):
+    with pytest.raises(HTTPException) as exc:
         _validate_knowledge_context_provenance(
             unsafe, hashlib.sha256(b"planner knowledge context").hexdigest(), "available",
         )
+    assert exc.value.status_code == 409
+    assert exc.value.detail["code"] == "TOOL_PLAN_KNOWLEDGE_PROVENANCE_INVALID"
 
 
 def test_task_knowledge_provenance_validator_accepts_not_configured_empty_state():
