@@ -166,7 +166,7 @@ def test_embedding_router_rejects_policy_registry_mismatch_before_provider_call(
         return httpx.Response(200, json=[row])
 
     async def scenario():
-        with pytest.raises(ModelRouterUnavailable, match="approved active embedding cost-policy"):
+        with pytest.raises(ModelRouterUnavailable, match="field capability does not match"):
             await build_embedding_router_from_environment(transport=httpx.MockTransport(handler))
         assert calls == ["/rest/v1/ai_model_cost_configs"]
 
