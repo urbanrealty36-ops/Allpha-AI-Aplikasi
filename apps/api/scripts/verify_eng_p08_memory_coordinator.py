@@ -9,7 +9,7 @@ import uuid
 
 ROOT=Path(__file__).resolve().parents[3]
 MIGRATION=ROOT/"apps/api/supabase/migrations/20261124055512_eng_p08_memory_coordinator_lifecycle.sql"
-PIN_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124055900_eng_p08_memory_owner_pin_expire.sql"
+PIN_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124060710_eng_p08_memory_owner_pin_expire.sql"
 NAME="allpha-p08-memory-"+uuid.uuid4().hex[:8]
 OWNER="11111111-1111-4111-8111-111111111111"
 OTHER="99999999-9999-4999-8999-999999999999"
