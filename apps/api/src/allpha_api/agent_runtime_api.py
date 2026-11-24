@@ -213,9 +213,15 @@ def _knowledge_context_snapshot(hits: list[Any], *, max_chars: int = 6000) -> tu
             or not isinstance(score, (int, float)) or isinstance(score, bool) or not math.isfinite(float(score))
         ):
             raise KnowledgeRetrievalUnavailable("Knowledge context provenance is incomplete or invalid")
-        location_json = json.dumps(source_location, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
-        if len(location_json.encode("utf-8")) > 1024:
-            raise KnowledgeRetrievalUnavailable("Knowledge source location exceeds the context metadata limit")
+        location_kind = source_location.get("kind")
+        location_index = source_location.get("index")
+        if (
+            location_kind not in {"document", "page", "paragraph"}
+            or not isinstance(location_index, int) or isinstance(location_index, bool)
+            or location_index < 1
+        ):
+            raise KnowledgeRetrievalUnavailable("Knowledge source location is not a supported parser coordinate")
+        safe_location = {"kind": location_kind, "index": location_index}
         if remaining <= 0:
             break
         excerpt = content[:remaining]
@@ -226,7 +232,7 @@ def _knowledge_context_snapshot(hits: list[Any], *, max_chars: int = 6000) -> tu
             "source_id": source_id,
             "source_version": source_version,
             "chunk_id": chunk_id,
-            "source_location": source_location,
+            "source_location": safe_location,
             "sensitivity": sensitivity,
             "content_sha256": content_sha256,
             "retrieved_content_sha256": retrieved_sha256,
@@ -236,7 +242,7 @@ def _knowledge_context_snapshot(hits: list[Any], *, max_chars: int = 6000) -> tu
             "source_id": source_id,
             "source_version": source_version,
             "chunk_id": chunk_id,
-            "source_location": source_location,
+            "source_location": safe_location,
             "sensitivity": sensitivity,
             "content_sha256": content_sha256,
             "retrieved_content_sha256": retrieved_sha256,
