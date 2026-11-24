@@ -226,7 +226,7 @@ class SupabaseActiveModelCostVerifier:
         max_prompt_bytes: int, max_output_tokens: int, max_latency_ms: int,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
-        required = (supabase_url, service_role_key, provider_id, model_id, model_version, pricing_version, cost_unit)
+        required = (supabase_url, service_role_key, provider_id, model_id, model_version, pricing_version, cost_unit, policy_id, policy_version)
         if not all(value.strip() for value in required):
             raise ValueError("active model-cost verifier configuration is incomplete")
         self._url = supabase_url.rstrip("/") + "/rest/v1/ai_model_cost_configs"
