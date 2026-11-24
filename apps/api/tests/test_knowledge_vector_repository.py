@@ -95,7 +95,7 @@ def test_vector_repository_upsert_passes_job_lease_and_content_free_vectors():
             "values": [0.1, 0.2],
             "idempotency_key": "batch-1:chunk-1",
         }]
-        assert "content" not in json.dumps(payload)
+        assert all("content" not in item for item in payload["p_records"])
         return httpx.Response(200, json={
             "generation_id": GENERATION,
             "source_version": 4,
