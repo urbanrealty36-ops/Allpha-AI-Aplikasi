@@ -19,6 +19,7 @@ DatabaseDirectory /var/lib/clamav
 Foreground yes
 LogTime yes
 LogVerbose yes
+LogFile /dev/stderr
 LocalSocket /run/clamav/clamd.ctl
 LocalSocketGroup clamav
 LocalSocketMode 660
@@ -28,7 +29,7 @@ MaxScanSize 50M
 StreamMaxLength 20M
 CLAMD_CONFIG
 
-    gosu clamav clamd --config-file=/run/clamav/clamd.conf --foreground=true --stdout &
+    gosu clamav clamd --config-file=/run/clamav/clamd.conf --foreground=true &
     CLAMD_PID=$!
     cleanup() {
         kill "$CLAMD_PID" 2>/dev/null || true
