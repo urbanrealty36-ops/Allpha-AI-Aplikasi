@@ -345,3 +345,30 @@ def test_skill_version_history_hides_foreign_agent(monkeypatch):
 
     assert response.status_code == 404
     assert calls == ["agent_ownerships"]
+
+
+def test_public_skill_publications_use_server_only_projection(monkeypatch):
+    calls=[]
+    async def fake_privileged(method, table, **kwargs):
+        calls.append((method,table,kwargs))
+        return [{"id":SKILL_ID,"agent_id":AGENT_ID,"slug":"public_skill","name":"Public Skill",
+                 "description":"Public metadata only","category":"general","version":3,
+                 "status":"published","publication_terms":{"license":"owner"}}]
+    async def forbidden_user_db(*args,**kwargs):
+        raise AssertionError("Public Skill projection must not be queried with an anonymous REST role")
+    monkeypatch.setattr("allpha_api.main.privileged_rest_request",fake_privileged)
+    monkeypatch.setattr("allpha_api.main.user_db_request",forbidden_user_db)
+    response=client.get("/v1/agent-skills/publications?limit=20&offset=5")
+    assert response.status_code==200
+    assert response.json()["items"][0]["id"]==SKILL_ID
+    assert calls[0][0:2]==("GET","agent_skill_publications")
+    assert calls[0][2]["params"]["limit"]=="20"
+    assert calls[0][2]["params"]["offset"]=="5"
+
+
+def test_public_skill_projection_is_service_only_and_security_invoker():
+    migration=Path(__file__).parents[1]/"supabase"/"migrations"/"20261124040000_eng_p06_public_skill_projection_service_only.sql"
+    sql=migration.read_text(encoding="utf-8")
+    assert "security_invoker = true" in sql
+    assert "revoke all on public.agent_skill_publications from public, anon, authenticated" in sql
+    assert "grant select on public.agent_skill_publications to service_role" in sql
