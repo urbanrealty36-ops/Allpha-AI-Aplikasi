@@ -201,18 +201,23 @@ def test_clamd_scanner_accepts_only_clean_local_verdicts(monkeypatch):
     calls=[]
     class Process:
         returncode=0
+        def __init__(self, output):
+            self.output = output
         async def communicate(self):
-            return b"allpha-knowledge.txt: OK",b""
+            return self.output,b""
     async def fake_exec(*args,**kwargs):
         calls.append(args)
         assert args[0]=="clamdscan"
-        assert "--fdpass" not in args and "--no-summary" in args
+        assert "--fdpass" not in args
+        if "--version" in args:
+            return Process(b"ClamAV 1.4.6/123/2026-11-24")
+        assert "--no-summary" in args
         with open(args[-1],"rb") as source:
             assert source.read()==b"private document"
-        return Process()
+        return Process(b"allpha-knowledge.txt: OK")
     monkeypatch.setattr("allpha_api.knowledge.asyncio.create_subprocess_exec",fake_exec)
     asyncio.run(_scan(b"private document","notes.txt","text/plain"))
-    assert len(calls)==1
+    assert len(calls)==2
 
 
 def test_clamd_scanner_rejects_infected_document(monkeypatch):
