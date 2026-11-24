@@ -80,7 +80,7 @@ class MemoryCoordinator:
         return await self.transition("expire_all",None)
 
     async def items(self,owner_id,agent_id,*,memory_type=None,status=None,limit=50):
-        p={"select":"id,policy_id,agent_id,memory_type,visibility_scope,purpose,classification,content,content_sha256,source_ref,provenance,confidence,version,policy_version,status,retention_expires_at,approved_at,created_at,updated_at",
+        p={"select":"id,policy_id,agent_id,memory_type,visibility_scope,purpose,classification,content,content_sha256,source_ref,provenance,confidence,version,policy_version,status,retention_expires_at,approved_at,pinned_at,created_at,updated_at",
            "owner_user_id":f"eq.{owner_id}","agent_id":f"eq.{agent_id}" if agent_id else "is.null","order":"created_at.desc","limit":str(max(1,min(limit,100)))}
         if memory_type:p["memory_type"]=f"eq.{memory_type}"
         if status:p["status"]=f"eq.{status}"
