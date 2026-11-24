@@ -86,7 +86,7 @@ async def _scan(data: bytes,filename: str,media_type: str):
             with tempfile.NamedTemporaryFile(prefix="allpha-knowledge-",suffix=suffix) as source:
                 source.write(data); source.flush()
                 process=await asyncio.create_subprocess_exec(
-                    "clamdscan","--fdpass","--no-summary",source.name,
+                    "clamdscan","--no-summary",source.name,
                     stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.PIPE,
                 )
                 try:
