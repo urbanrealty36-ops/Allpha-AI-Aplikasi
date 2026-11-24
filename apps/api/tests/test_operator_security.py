@@ -667,11 +667,11 @@ def test_list_operator_runtime_policies_requires_capability_review_scope(monkeyp
     monkeypatch.setattr(security,"privileged_rest_request",fake_privileged)
     install_auth("operator")
     try:
-        response=client.get("/v1/admin/operator/runtime-policies?agent_id=agent-1")
+        response=client.get("/v1/admin/operator/runtime-policies?agent_id=11111111-1111-4111-8111-111111111111")
         assert response.status_code==200
         assert response.json()["items"][0]["policy_version"]==4
         assert calls[0][0:2]==("GET","agent_runtime_policies")
-        assert calls[0][2]["params"]["agent_id"]=="eq.agent-1"
+        assert calls[0][2]["params"]["agent_id"]=="eq.11111111-1111-4111-8111-111111111111"
         assert calls[0][2]["params"]["status"]=="eq.approved"
     finally:
         app.dependency_overrides.clear()
