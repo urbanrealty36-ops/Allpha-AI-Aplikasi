@@ -2,6 +2,7 @@
 from __future__ import annotations
 import asyncio
 import json
+import os
 import hashlib
 import re
 import subprocess
@@ -753,51 +754,123 @@ values ('{E}','active');
         if len(transfers)!=2 or any(item.get("status")!="requested" for item in transfers):
             raise RuntimeError(f"Agent/Organization ownership transfer requests failed: {transfers}")
 
-        prepared=service_json(
-            f"select public.prepare_account_deletion_execution('{request_id}'::uuid)::text;"
-        )
-        if prepared.get("outcome")!="queued" or not prepared.get("job_id"):
-            raise RuntimeError(f"dependency-aware deletion preparation did not queue: {prepared}")
-        execution_job_id=prepared["job_id"]
+        # Execute the real Python deletion worker against isolated Postgres RPCs
+        # and a local Supabase Storage-compatible HTTP endpoint.
+        storage_requests=[]
+        class DeletionStorageHandler(BaseHTTPRequestHandler):
+            def do_DELETE(self):
+                payload=json.loads(self.rfile.read(int(self.headers.get("Content-Length","0"))))
+                storage_requests.append((self.command,self.path,payload))
+                if self.path!="/storage/v1/object/account-exports":
+                    self.send_response(404);self.end_headers();return
+                deleted=0
+                for prefix in payload.get("prefixes",[]):
+                    candidate=(storage_root/"account-exports"/prefix).resolve()
+                    if storage_root.resolve() in candidate.parents and candidate.is_file():
+                        candidate.unlink();deleted+=1
+                self.send_response(200 if deleted else 404);self.end_headers()
+            def log_message(self,*_args):
+                return
 
-        execution_claims=service_json(
+        export_object=storage_root/"account-exports"/storage_path
+        if not export_object.is_file():
+            raise RuntimeError("export artifact disappeared before deletion worker execution")
+        server=ThreadingHTTPServer(("127.0.0.1",0),DeletionStorageHandler)
+        server_thread=threading.Thread(target=server.serve_forever,daemon=True)
+        server_thread.start()
+        deletion_worker=object.__new__(AccountLifecycleWorker)
+        deletion_worker.worker_id="ci-e2e-deletion-worker"
+        deletion_worker.base=f"http://127.0.0.1:{server.server_port}"
+        deletion_worker.client=httpx.AsyncClient(timeout=5)
+        deletion_worker.deletion_lease_heartbeat_seconds=30
+
+        async def deletion_rpc(name,payload):
+            job_id=payload.get("p_job_id")
+            lease=payload.get("p_lease_token")
+            if name=="prepare_account_deletion_execution_batch":
+                return service_json(
+                    "select coalesce(jsonb_agg(to_jsonb(t)),'[]'::jsonb)::text "
+                    "from public.prepare_account_deletion_execution_batch(20) t;"
+                )
+            if name=="prepare_account_deletion_subscription_cancellations":
+                return service_json("select to_jsonb(public.prepare_account_deletion_subscription_cancellations())::text;")
+            if name=="claim_account_deletion_subscription_cancellation_jobs":
+                return service_json(
+                    "select coalesce(jsonb_agg(to_jsonb(t)),'[]'::jsonb)::text "
+                    "from public.claim_account_deletion_subscription_cancellation_jobs('ci-e2e-deletion-worker',10,300) t;"
+                )
+            if name=="claim_account_deletion_execution_jobs":
+                return service_json(
+                    "select coalesce(jsonb_agg(to_jsonb(t)),'[]'::jsonb)::text "
+                    "from public.claim_account_deletion_execution_jobs('ci-e2e-deletion-worker',2,3600) t;"
+                )
+            if name=="renew_account_deletion_execution_job_lease":
+                return service_json(
+                    f"select to_jsonb(public.renew_account_deletion_execution_job_lease('{job_id}'::uuid,'{lease}'::uuid,3600))::text;"
+                )
+            if name=="claim_account_deletion_storage_jobs":
+                return service_json(
+                    f"select coalesce(jsonb_agg(to_jsonb(t)),'[]'::jsonb)::text "
+                    f"from public.claim_account_deletion_storage_jobs('{payload['p_execution_job_id']}'::uuid,"
+                    f"'{payload['p_job_lease_token']}'::uuid,{payload['p_limit']}::integer,{payload['p_lease_seconds']}::integer) t;"
+                )
+            if name=="complete_account_deletion_storage_job":
+                return service_json(
+                    f"select to_jsonb(public.complete_account_deletion_storage_job('{job_id}'::uuid,'{lease}'::uuid))::text;"
+                )
+            if name=="execute_account_deletion_execution_job":
+                return service_json(
+                    f"select to_jsonb(public.execute_account_deletion_execution_job('{job_id}'::uuid,'{lease}'::uuid))::text;"
+                )
+            if name=="fail_account_deletion_storage_job":
+                return service_json(
+                    f"select to_jsonb(public.fail_account_deletion_storage_job('{job_id}'::uuid,'{lease}'::uuid,"
+                    f"{sql_literal(payload['p_error_code'])},{payload['p_retry_seconds']}::integer))::text;"
+                )
+            if name=="fail_account_deletion_execution_job":
+                return service_json(
+                    f"select to_jsonb(public.fail_account_deletion_execution_job('{job_id}'::uuid,'{lease}'::uuid,"
+                    f"{sql_literal(payload['p_error_code'])},{payload['p_retry_seconds']}::integer))::text;"
+                )
+            raise RuntimeError(f"unexpected deletion worker RPC: {name}")
+
+        deletion_worker.rpc=deletion_rpc
+        previous_execution_flag=os.environ.get("ACCOUNT_DELETION_EXECUTION_ENABLED")
+        os.environ["ACCOUNT_DELETION_EXECUTION_ENABLED"]="true"
+        async def run_deletion_worker():
+            try:
+                return await deletion_worker.deletion_execution_batch()
+            finally:
+                await deletion_worker.client.aclose()
+        try:
+            processed=asyncio.run(run_deletion_worker())
+        finally:
+            if previous_execution_flag is None:
+                os.environ.pop("ACCOUNT_DELETION_EXECUTION_ENABLED",None)
+            else:
+                os.environ["ACCOUNT_DELETION_EXECUTION_ENABLED"]=previous_execution_flag
+            server.shutdown();server.server_close();server_thread.join(timeout=2)
+
+        if processed!=1:
+            raise RuntimeError(f"actual account deletion worker did not process exactly one job: {processed}")
+        if len(storage_requests)!=1 or storage_requests[0][1]!="/storage/v1/object/account-exports":
+            raise RuntimeError(f"actual deletion worker did not issue one canonical Storage DELETE: {storage_requests}")
+        if storage_requests[0][2].get("prefixes")!=[storage_path] or export_object.exists():
+            raise RuntimeError(f"actual deletion worker did not remove the exported object: {storage_requests}")
+
+        execution_rows=service_json(
             "select coalesce(jsonb_agg(to_jsonb(t)),'[]'::jsonb)::text "
-            "from public.claim_account_deletion_execution_jobs('ci-e2e-worker',10,3600) t;"
+            f"from public.account_deletion_execution_jobs t where t.request_id='{request_id}'::uuid;"
         )
-        execution_job=next((item for item in execution_claims if item.get("id")==execution_job_id),None)
-        if not execution_job or not execution_job.get("lease_token"):
-            raise RuntimeError(f"execution job was not lease-claimed: {execution_claims}")
-        execution_lease=execution_job["lease_token"]
-
-        storage_claims=service_json(
+        if len(execution_rows)!=1:
+            raise RuntimeError(f"expected exactly one persisted execution job: {execution_rows}")
+        execution_job_id=execution_rows[0]["id"]
+        storage_rows=service_json(
             "select coalesce(jsonb_agg(to_jsonb(t)),'[]'::jsonb)::text "
-            f"from public.claim_account_deletion_storage_jobs('{execution_job_id}'::uuid,'{execution_lease}'::uuid,20,3600) t;"
+            f"from public.account_deletion_storage_jobs t where execution_job_id='{execution_job_id}'::uuid;"
         )
-        if len(storage_claims)!=1:
-            raise RuntimeError(f"expected one export Storage cleanup job, got: {storage_claims}")
-        storage_job=storage_claims[0]
-        bucket=storage_job["storage_bucket"]
-        claimed_path=storage_job["storage_path"]
-        if bucket!="account-exports" or claimed_path!=storage_path:
-            raise RuntimeError(f"Storage cleanup claim did not match export artifact: {storage_job}")
-
-        object_file=storage_root/bucket/claimed_path
-        if not object_file.is_file():
-            raise RuntimeError("export artifact disappeared before deletion worker claimed it")
-        delete_requests=delete_with_local_storage(storage_root,bucket,claimed_path)
-        if delete_requests!=1 or object_file.exists():
-            raise RuntimeError("worker Storage DELETE did not remove the actual export artifact");
-        storage_completed=service_json(
-            f"select to_jsonb(public.complete_account_deletion_storage_job('{storage_job['id']}'::uuid,'{storage_job['lease_token']}'::uuid))::text;"
-        )
-        if storage_completed is not True:
-            raise RuntimeError(f"Storage cleanup completion was not persisted: {storage_completed}")
-
-        execution_completed=service_json(
-            f"select to_jsonb(public.execute_account_deletion_execution_job('{execution_job_id}'::uuid,'{execution_lease}'::uuid))::text;"
-        )
-        if execution_completed is not True:
-            raise RuntimeError(f"database/Auth deletion executor did not complete: {execution_completed}")
+        if len(storage_rows)!=1 or storage_rows[0].get("status")!="completed":
+            raise RuntimeError(f"actual deletion worker did not persist Storage completion: {storage_rows}")
 
         result=service_json(f"""
 select jsonb_build_object(
