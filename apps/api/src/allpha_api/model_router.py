@@ -114,6 +114,7 @@ class CanonicalModelRouter:
             raise ModelRouterUnavailable(f"No provider adapter registered for provider_id={route.provider_id}")
         last_error: Exception | None = None
         for attempt in range(min(route.max_attempts, 8)):
+            attempt_delay_seconds = self._retry_delay_seconds * (attempt + 1)
             try:
                 response = await asyncio.wait_for(adapter.embed(request, model_id=route.model_id), timeout=request.timeout_ms / 1000)
                 if response.provider_id != route.provider_id or response.model_id != route.model_id:
@@ -172,8 +173,10 @@ class CanonicalModelRouter:
                         trace_id=request.trace_id,
                     )) from exc
                 last_error = exc
+                if exc.retry_after_ms is not None:
+                    attempt_delay_seconds = exc.retry_after_ms / 1000
             if attempt + 1 < min(route.max_attempts, 8):
-                await asyncio.sleep(self._retry_delay_seconds * (attempt + 1))
+                await asyncio.sleep(max(0.0, min(attempt_delay_seconds, 30.0)))
         retry_after_ms = (
             last_error.retry_after_ms
             if isinstance(last_error, ModelRouterTransient) and last_error.retry_after_ms is not None
