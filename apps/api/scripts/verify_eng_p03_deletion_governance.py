@@ -11,6 +11,10 @@ LEGAL_HOLD_REQUEUE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123142930_e
 STORAGE_DISPOSITION_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123143130_eng_p03_deletion_storage_disposition_gate.sql"
 SOURCE_METADATA_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123143201_eng_p03_deletion_source_registry_metadata.sql"
 REQUEUE_AUDIT_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124012454_eng_p03_requeue_audit_trail.sql"
+RETENTION_OWNER_DIRECTIVE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123170014_eng_p03_owner_directed_retention_baseline.sql"
+RETENTION_PRECISION_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123170511_eng_p03_retention_legal_basis_precision.sql"
+FK_ACTION_GATE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124010741_eng_p03_fk_action_integrity_gate.sql"
+EXPORT_DELETION_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124015229_eng_p03_account_export_deletion_lifecycle.sql"
 MIGRATION=ROOT/"apps/api/supabase/migrations/20261123192200_eng_p03_deletion_legal_hold_governance_worker.sql"
 SOURCE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123153243_eng_p03_account_deletion_specialized_source_handlers.sql"
 OWNER_SCOPE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123153456_eng_p03_agent_skill_deletion_owner_scope.sql"
@@ -57,6 +61,27 @@ create schema extensions;
 create extension if not exists pgcrypto with schema extensions;
 create schema private;
 create table auth.users(id uuid primary key);
+create table public.profiles(
+ id uuid primary key references auth.users(id) on delete cascade,
+ account_status text not null default 'active'
+);
+create table public.account_export_jobs(
+ id uuid primary key default gen_random_uuid(),
+ user_id uuid not null references auth.users(id) on delete cascade,
+ idempotency_key text not null,
+ status text not null default 'queued'
+   check(status in ('queued','running','succeeded','failed','cancelled','expired')),
+ attempts integer not null default 0,
+ max_attempts integer not null default 5,
+ next_attempt_at timestamptz not null default now(),
+ lease_token uuid,lease_owner text,lease_expires_at timestamptz,
+ storage_bucket text not null default 'account-exports',storage_path text,
+ file_sha256 text,file_size_bytes bigint,manifest jsonb not null default '{}'::jsonb,
+ error_code text,requested_at timestamptz not null default now(),started_at timestamptz,
+ completed_at timestamptz,failed_at timestamptz,expires_at timestamptz,
+ created_at timestamptz not null default now(),updated_at timestamptz not null default now(),
+ unique(user_id,idempotency_key)
+);
 create function auth.uid() returns uuid language sql stable as $uid$
  select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid
 $uid$;
@@ -314,7 +339,67 @@ begin
  end if;
 end $$;
 """)
-        print("PASS: ENG-P03 legal hold governance and all nine specialized source handlers preserve other users' shared records.")
+        # Verify the real export-before-deletion RPC contract on isolated PostgreSQL 17.
+        for migration in (
+            RETENTION_OWNER_DIRECTIVE_MIGRATION,RETENTION_PRECISION_MIGRATION,
+            FK_ACTION_GATE_MIGRATION,EXPORT_DELETION_MIGRATION,
+        ):
+            psql(migration.read_text(encoding="utf-8"))
+        psql(f"""
+insert into public.profiles(id,account_status) values ('{D}','active');
+set request.jwt.claim.role='service_role';
+do {dollar_quote}
+declare
+  v_request record;
+  v_gate jsonb;
+  v_prepare jsonb;
+  v_confirmation jsonb;
+begin
+  select * into v_request
+    from public.create_account_deletion_request_for_actor('{D}'::uuid,'ci-deletion-export-0001');
+  if v_request.export_status<>'queued' or v_request.export_job_id is null then
+    raise exception 'deletion request did not create its linked export job';
+  end if;
+  v_gate:=private.account_deletion_export_gate('{D}'::uuid,v_request.export_job_id);
+  if coalesce((v_gate->>'ready')::boolean,true) or v_gate->>'code'<>'ACCOUNT_EXPORT_PENDING' then
+    raise exception 'queued export was not a hard deletion gate: %',v_gate;
+  end if;
+  v_prepare:=public.prepare_account_deletion_execution(v_request.id);
+  if v_prepare->>'outcome'<>'blocked_dependency'
+     or v_prepare->'export_gate'->>'code'<>'ACCOUNT_EXPORT_PENDING' then
+    raise exception 'deletion executor did not stop before Storage/DB cleanup for pending export: %',v_prepare;
+  end if;
+  update public.account_export_jobs
+     set status='succeeded',storage_bucket='account-exports',
+         storage_path='{D}/ci-deletion-export-0001.json.gz',
+         file_sha256=repeat('a',64),file_size_bytes=128,manifest='{{}}'::jsonb,
+         completed_at=clock_timestamp()
+   where id=v_request.export_job_id and user_id='{D}';
+  if not found then raise exception 'isolated export artifact receipt was not persisted'; end if;
+  perform set_config('request.jwt.claim.sub','{D}',true);
+  perform set_config('request.jwt.claim.role','authenticated',true);
+  v_confirmation:=public.confirm_account_deletion_export_download(v_request.id);
+  if v_confirmation->>'status'<>'confirmed' then
+    raise exception 'authenticated owner could not confirm export download: %',v_confirmation;
+  end if;
+  perform set_config('request.jwt.claim.role','service_role',true);
+  v_gate:=private.account_deletion_export_gate('{D}'::uuid,v_request.export_job_id);
+  if coalesce((v_gate->>'ready')::boolean,false)=false
+     or v_gate->>'code'<>'ACCOUNT_EXPORT_DOWNLOAD_CONFIRMED' then
+    raise exception 'confirmed export did not release only the export gate: %',v_gate;
+  end if;
+  if not exists(select 1 from public.account_lifecycle_events
+    where request_id=v_request.id and event_type='deletion_unblocked'
+      and metadata->>'reason_code'='EXPORT_DOWNLOAD_CONFIRMED_REEVALUATION_REQUIRED') then
+    raise exception 'export confirmation audit event missing';
+  end if;
+  if (select status from public.account_deletion_requests where id=v_request.id)<>'awaiting_policy' then
+    raise exception 'export confirmation did not return request to policy reevaluation';
+  end if;
+end {dollar_quote};
+""")
+        print("PASS: ENG-P03 legal hold, shared-source deletion, export-before-deletion and owner download confirmation verified on isolated PostgreSQL 17.")
+
     finally:
         run(["docker","rm","--force",CONTAINER],check=False)
 
