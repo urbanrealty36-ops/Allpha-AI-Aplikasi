@@ -150,7 +150,7 @@ async def _owner_content(content_id: uuid.UUID, user_id: str) -> dict[str, Any]:
     return rows[0]
 
 
-async def _storage(method: str, path: str, *, data: bytes | None = None, media_type: str | None = None, upsert: bool = False) -> httpx.Response:
+async def _storage(method: str, path: str, *, data: bytes | None = None, media_type: str | None = None, upsert: bool = False, timeout_seconds: float = 60) -> httpx.Response:
     base, key = _config()
     headers = {"apikey": key, "Authorization": f"Bearer {key}"}
     if media_type:
@@ -160,7 +160,7 @@ async def _storage(method: str, path: str, *, data: bytes | None = None, media_t
         # owner/content/type/size/hash tuple in content_media.
         headers["x-upsert"] = "true"
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(60, connect=5)) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(timeout_seconds, connect=5)) as client:
             response = await client.request(method, f"{base}/storage/v1/object/{quote(path, safe='/')}", headers=headers, content=data)
     except httpx.HTTPError as exc:
         raise HTTPException(503, detail={"code": "CONTENT_STORAGE_UNAVAILABLE", "message": "Penyimpanan media sementara tidak tersedia."}) from exc
@@ -430,6 +430,7 @@ async def complete_resumable_media_upload(
         stored = await _storage(
             "GET",
             f"{media['bucket_id']}/{media['storage_path']}",
+            timeout_seconds=300,
         )
     except HTTPException as exc:
         raise HTTPException(503, detail={
