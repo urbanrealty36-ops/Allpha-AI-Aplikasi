@@ -17,9 +17,13 @@ The adapter calls the service-only PostgREST RPC
 `public.resolve_agent_knowledge_policy` with owner, Agent, audience, tenant, session
 and purpose identities derived by the server. The RPC must return the strict snapshot
 documented by `KnowledgePolicySnapshot`: policy and consent versions, grant version,
-decision reference, exact source IDs, sensitivity and purpose allow-lists, active/
-revoked/expiry result, and the echoed trusted scope. A missing function, malformed
-response, stale/revoked decision or network error keeps ingestion and retrieval
+decision reference, exact source IDs, sensitivity and purpose allow-lists, explicit
+`consent_expires_at` and `grant_expires_at` timestamps (nullable only when the
+canonical record has no expiry), active/revoked result, and the echoed trusted scope.
+Expiry timestamps must be ISO-8601 with an explicit timezone. The resolver checks
+both timestamps against UTC at request time and denies expired consent or source
+grants before any repository search. A missing function, malformed response,
+stale/revoked/expired decision or network error keeps ingestion and retrieval
 unavailable. Generic `user_consents` records are not Knowledge authorization.
 
 **Do not configure the factory against a guessed or substitute RPC.** The current
