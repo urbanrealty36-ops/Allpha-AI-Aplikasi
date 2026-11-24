@@ -385,7 +385,7 @@ $old$;
 $new$;
   v_old_prepare_metadata text := $old$
       'storage_cleanup_queued',true,'prepared_at',clock_timestamp()),updated_at=clock_timestamp()
-$new$;
+$old$;
   v_new_prepare_metadata text := $new$
       'storage_cleanup_queued',true,'export_job_id',v_request.export_job_id,
       'export_retention_until',v_export_until,'prepared_at',clock_timestamp()),updated_at=clock_timestamp()
@@ -452,7 +452,7 @@ $new$;
   v_old_eval_meta text := $old$
                'retention_days',v_retention_days,'retention_until',v_retention_until,
                'deletion_policy_state',v_policy_state,'legal_hold_active',false,
-$new$;
+$old$;
   v_new_eval_meta text := $new$
                'retention_days',v_retention_days,'retention_until',v_retention_until,
                'export_job_id',v_request.export_job_id,'export_retention_until',v_export_until,
