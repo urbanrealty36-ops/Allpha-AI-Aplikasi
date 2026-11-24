@@ -1,8 +1,9 @@
 """Processes authenticated Cloudinary eager callbacks outside the webhook request path."""
 from __future__ import annotations
-import asyncio,hashlib,logging,os,signal,socket,struct,uuid
+import asyncio,hashlib,logging,os,signal,uuid
 from urllib.parse import urlparse,quote
 import httpx
+from allpha_api.media_scanner import local_scanner_identity_pins, scan_media_bytes
 log=logging.getLogger("allpha.provider_callback_worker")
 
 class CallbackWorker:
@@ -11,6 +12,12 @@ class CallbackWorker:
   self.key=os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ["SUPABASE_SECRET_KEY"]
   self.cloud=os.environ["CLOUDINARY_CLOUD_NAME"]
   self.clamav_host=os.environ["CLAMAV_HOST"];self.clamav_port=int(os.getenv("CLAMAV_PORT","3310"))
+  if os.getenv("ALLPHA_CLAMAV_ENABLED","false").strip().lower() != "true":
+   raise SystemExit("Provider callback worker requires ALLPHA_CLAMAV_ENABLED=true")
+  try:
+   local_scanner_identity_pins()
+  except RuntimeError as exc:
+   raise SystemExit("Provider callback worker requires pinned ClamAV engine/signature identity") from exc
   self.worker_id=f"provider-callback-{uuid.uuid4()}"
   self.client=httpx.AsyncClient(timeout=httpx.Timeout(90,connect=5),headers={"apikey":self.key,"Authorization":f"Bearer {self.key}","Content-Type":"application/json"})
   self.stopping=False
@@ -21,12 +28,8 @@ class CallbackWorker:
   if prefer:h["Prefer"]=prefer
   r=await self.client.request(method,f"{self.base}/rest/v1/{path}",params=params,json=body,headers=h);r.raise_for_status();return r.json() if r.content else None
  def scan(self,data):
-  with socket.create_connection((self.clamav_host,self.clamav_port),timeout=10) as sock:
-   sock.settimeout(60);sock.sendall(b"zINSTREAM\0")
-   for offset in range(0,len(data),64*1024):
-    chunk=data[offset:offset+64*1024];sock.sendall(struct.pack("!I",len(chunk))+chunk)
-   sock.sendall(struct.pack("!I",0));result=sock.recv(4096).decode("utf-8","replace")
-  if not result.strip().endswith("OK") or "FOUND" in result or "ERROR" in result:raise ValueError("DERIVATIVE_SCAN_NOT_CLEAN")
+  # Shared scanner verifies pinned engine/signature identity before a clean verdict.
+  return scan_media_bytes(data,self.clamav_host,self.clamav_port,timeout_seconds=60)
  async def process(self,job):
   jid=str(job["id"]);token=str(job["lease_token"]);payload=job.get("payload") or {};event_id=str(payload["provider_event_id"])
   try:
