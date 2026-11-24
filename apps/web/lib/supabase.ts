@@ -19,3 +19,7 @@ export function getBrowserSupabase(): SupabaseClient | null {
     : null;
   return browserClient;
 }
+
+export function getBrowserSupabasePublishableKey(): string | null {
+  return process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || null;
+}
