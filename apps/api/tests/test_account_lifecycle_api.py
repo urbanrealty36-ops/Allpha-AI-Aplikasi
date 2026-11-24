@@ -1,7 +1,9 @@
 import asyncio
+import uuid
 
 from allpha_api.account_lifecycle_api import (
     AccountDeletionRequestCreate,
+    confirm_account_deletion_export_download,
     request_account_deletion,
 )
 
@@ -171,4 +173,41 @@ def test_account_deletion_bulk_agent_transfer_uses_authenticated_rpc_and_returns
             "p_request_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
             "p_successor_user_id": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
         }},
+    )]
+
+
+
+def test_export_download_confirmation_is_authenticated_and_returns_persisted_result(monkeypatch):
+    from starlette.requests import Request
+
+    calls = []
+
+    async def user_request(method, endpoint, access_token, **kwargs):
+        calls.append((method, endpoint, access_token, kwargs))
+        return {
+            "request_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            "export_job_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            "download_confirmed_at": "2026-11-24T00:00:00Z",
+            "status": "confirmed",
+        }
+
+    monkeypatch.setattr("allpha_api.account_lifecycle_api.user_db_request", user_request)
+    request = Request({
+        "type": "http", "method": "POST", "path": "/", "headers": [],
+        "query_string": b"", "server": ("test", 80), "client": ("test", 1),
+        "scheme": "https", "http_version": "1.1",
+    })
+    request.state.supabase_access_token = "user-access-token"
+    result = asyncio.run(confirm_account_deletion_export_download(
+        uuid.UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
+        request,
+        {"id": "11111111-1111-4111-8111-111111111111"},
+    ))
+
+    assert result["confirmation"]["status"] == "confirmed"
+    assert calls == [(
+        "POST",
+        "rpc/confirm_account_deletion_export_download",
+        "user-access-token",
+        {"body": {"p_request_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}},
     )]
