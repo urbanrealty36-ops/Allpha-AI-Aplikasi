@@ -1147,6 +1147,20 @@ class AgentOwnershipTransferResponse(BaseModel):
     accept: bool
 
 
+class AgentSkillInstallRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    source_agent_id: uuid.UUID
+    source_skill_id: uuid.UUID
+    source_version: int = Field(ge=1)
+    accept_license: bool
+    idempotency_key: str = Field(min_length=8, max_length=160)
+
+
+class AgentSkillInstallationRevoke(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reason: str = Field(min_length=8, max_length=500)
+
+
 _AGENT_FIELDS = "id,handle,display_name,description,avatar_url,persona,disclosure,boundaries,visibility,status,created_by,created_at,updated_at,version,public_owner_attribution,published_at,revoked_at"
 
 
@@ -1244,6 +1258,64 @@ async def revoke_my_agent_publication(agent_id: uuid.UUID, payload: AgentRevokeP
         raise HTTPException(status_code=409, detail={"code": "AGENT_VERSION_CONFLICT_OR_NOT_OWNED", "message": "Agent berubah atau tidak berada dalam kepemilikan Anda."})
     agent = result[0] if isinstance(result, list) else result
     return {"agent": agent, "ownership": {"owner_user_id": user["id"], "role": "owner", "status": "active"}}
+
+
+@app.get("/v1/agent-skills/publications", tags=["agents"])
+async def list_public_agent_skill_publications(
+    agent_id: uuid.UUID | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> dict[str, Any]:
+    params = {
+        "select": "id,agent_id,slug,name,description,category,version,status,publication_terms,created_at,updated_at",
+        "order": "updated_at.desc",
+        "limit": str(min(max(1, limit), 100)),
+        "offset": str(max(0, offset)),
+    }
+    if agent_id:
+        params["agent_id"] = f"eq.{agent_id}"
+    rows = await user_db_request("GET", "agent_skill_publications", None, params=params)
+    return {"items": rows or [], "limit": min(max(1, limit), 100), "offset": max(0, offset)}
+
+
+@app.get("/v1/agents/{agent_id}/skill-installations", tags=["agents"])
+async def list_agent_skill_installations(agent_id: uuid.UUID, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    rows = await user_db_request(
+        "GET", "agent_skill_installations", request.state.supabase_access_token,
+        params={"select": "*", "agent_id": f"eq.{agent_id}", "order": "created_at.desc", "limit": "100"},
+    )
+    return {"items": rows or []}
+
+
+@app.post("/v1/agents/{agent_id}/skills/install", status_code=201, tags=["agents"])
+async def install_agent_skill(agent_id: uuid.UUID, payload: AgentSkillInstallRequest, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    if not payload.accept_license:
+        raise HTTPException(status_code=422, detail={"code": "SKILL_LICENSE_ACCEPTANCE_REQUIRED", "message": "Persetujuan lisensi Skill wajib diberikan sebelum instalasi."})
+    result = await user_db_request(
+        "POST", "rpc/install_agent_skill", request.state.supabase_access_token,
+        body={
+            "p_agent_id": str(agent_id),
+            "p_source_agent_id": str(payload.source_agent_id),
+            "p_source_skill_id": str(payload.source_skill_id),
+            "p_source_version": payload.source_version,
+            "p_accept_license": payload.accept_license,
+            "p_idempotency_key": payload.idempotency_key,
+        },
+    )
+    if not result:
+        raise HTTPException(status_code=409, detail={"code": "SKILL_INSTALL_UNCONFIRMED", "message": "Instalasi Skill belum terkonfirmasi oleh database."})
+    return result[0] if isinstance(result, list) else result
+
+
+@app.post("/v1/agents/{agent_id}/skill-installations/{installation_id}/revoke", tags=["agents"])
+async def revoke_agent_skill_installation(agent_id: uuid.UUID, installation_id: uuid.UUID, payload: AgentSkillInstallationRevoke, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    result = await user_db_request(
+        "POST", "rpc/revoke_agent_skill_installation", request.state.supabase_access_token,
+        body={"p_agent_id": str(agent_id), "p_installation_id": str(installation_id), "p_reason": payload.reason},
+    )
+    if not result:
+        raise HTTPException(status_code=409, detail={"code": "SKILL_INSTALL_REVOCATION_UNCONFIRMED", "message": "Pencabutan instalasi Skill belum terkonfirmasi."})
+    return result[0] if isinstance(result, list) else result
 
 
 @app.get("/v1/agent-passports/{handle}", tags=["agents"])
