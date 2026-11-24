@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 
 import pytest
@@ -55,8 +56,7 @@ class FakeStorage:
         return self.data
 
 
-@pytest.mark.asyncio
-async def test_document_worker_scans_parses_persists_and_atomically_hands_off_embedding(monkeypatch):
+def test_document_worker_scans_parses_persists_and_atomically_hands_off_embedding(monkeypatch):
     store=FakeStore()
     async def clean_scan(data,filename,media_type):
         assert data==DATA and filename=="notes.txt" and media_type=="text/plain"
@@ -64,7 +64,7 @@ async def test_document_worker_scans_parses_persists_and_atomically_hands_off_em
     monkeypatch.setattr("allpha_api.knowledge_ingestion_worker._extract",
         lambda filename,data:[{"text":"knowledge text","location":{"kind":"page","index":1}}])
     worker=KnowledgeDocumentWorker(store=store,storage=FakeStorage(),batch_size=1)
-    assert await worker.process_once() is True
+    assert asyncio.run(worker.process_once()) is True
     assert store.states==[("processing","malware_scan",None),("processing","document_parsing",None),("processing","chunk_persistence",None)]
     assert len(store.batches)==1 and store.batches[0][1] is True
     assert store.batches[0][0][0]["content"]=="knowledge text"
@@ -72,8 +72,7 @@ async def test_document_worker_scans_parses_persists_and_atomically_hands_off_em
     assert store.failures==[]
 
 
-@pytest.mark.asyncio
-async def test_document_worker_rejects_storage_hash_mismatch_before_parser(monkeypatch):
+def test_document_worker_rejects_storage_hash_mismatch_before_parser(monkeypatch):
     store=FakeStore()
     async def clean_scan(*args):raise AssertionError("malware scan must not run after hash mismatch")
     monkeypatch.setattr("allpha_api.knowledge_ingestion_worker._scan",clean_scan)
@@ -83,8 +82,7 @@ async def test_document_worker_rejects_storage_hash_mismatch_before_parser(monke
     assert store.batches==[] and store.completed==[]
 
 
-@pytest.mark.asyncio
-async def test_document_worker_retries_transient_scanner_unavailability(monkeypatch):
+def test_document_worker_retries_transient_scanner_unavailability(monkeypatch):
     store=FakeStore()
     async def unavailable(*args):
         raise HTTPException(status_code=503,detail={"code":"SCANNER_UNAVAILABLE","message":"scanner down"})
