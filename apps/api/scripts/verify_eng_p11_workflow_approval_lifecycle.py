@@ -112,6 +112,7 @@ create table public.workflow_run_events(
  created_at timestamptz not null default now(),
  unique(run_id,sequence)
 );
+grant select on public.workflow_runs, public.workflow_steps, public.workflow_run_events to service_role;
 """)
         psql(MIGRATION.read_text(encoding="utf-8"))
         psql("update public.workflow_steps set node_kind='approval';")
