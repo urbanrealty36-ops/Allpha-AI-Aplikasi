@@ -53,3 +53,19 @@ jobs:
         run: npm run typecheck
       - working-directory: apps/client
         run: npx expo export --platform android
+
+  super-admin-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - working-directory: apps/super-admin
+        run: npm install --no-audit --no-fund
+      - working-directory: apps/super-admin
+        run: npm test
+      - working-directory: apps/super-admin
+        run: npm run typecheck
+      - working-directory: apps/super-admin
+        run: npm run build
