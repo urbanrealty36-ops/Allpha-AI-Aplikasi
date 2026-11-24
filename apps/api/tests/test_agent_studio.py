@@ -278,7 +278,7 @@ def test_eng_p06_migration_declares_owner_rls_versioning_and_no_runtime_grant():
 
 
 def test_eng_p06_forward_migration_guards_lifecycle_and_public_snapshot_view():
-    migration_path = Path(__file__).parents[1] / "supabase" / "migrations" / "20261122180000_eng_p06_skill_version_rollover_runtime_pinning.sql"
+    migration_path = Path(__file__).parents[1] / "supabase" / "migrations" / "20261122154257_eng_p06_skill_version_rollover_runtime_pinning.sql"
     sql = migration_path.read_text(encoding="utf-8").lower()
     assert "guard_agent_skill_lifecycle" in sql
     assert "before insert or update on public.agent_skills" in sql
