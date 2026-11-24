@@ -138,6 +138,7 @@ def test_active_model_cost_verifier_accepts_only_matching_effective_active_tarif
         seen["params"] = dict(req.url.params)
         return httpx.Response(200, json=[{
             "id": "policy-config-1",
+            "capability": "text_generation",
             "policy_version": "v1",
             "provider_id": "provider-test",
             "model_id": "model-test",
@@ -172,6 +173,7 @@ def test_active_model_cost_verifier_accepts_only_matching_effective_active_tarif
     assert seen["path"] == "/rest/v1/ai_model_cost_configs"
     assert seen["auth"] == "Bearer service-test"
     assert seen["params"]["status"] == "eq.active"
+    assert seen["params"]["capability"] == "eq.text_generation"
     assert seen["params"]["limit"] == "2"
 
 
@@ -204,7 +206,7 @@ def test_active_model_cost_verifier_requires_auditable_policy_approval_evidence(
         policy_id="policy-config-1",policy_version="v1",
         max_prompt_bytes=16384,max_output_tokens=1024,max_latency_ms=30000,
         transport=httpx.MockTransport(lambda req: httpx.Response(200,json=[{
-            "id":"policy-config-1","policy_version":"v1","provider_id":"provider-test",
+            "id":"policy-config-1","capability":"text_generation","policy_version":"v1","provider_id":"provider-test",
             "model_id":"model-test","model_version":"model-version-1","pricing_version":"price-v1",
             "cost_unit":"USD","input_micro_cost_per_token":3,"output_micro_cost_per_token":5,
             "max_cost_microunits":100,"max_prompt_bytes":16384,"max_output_tokens":1024,
