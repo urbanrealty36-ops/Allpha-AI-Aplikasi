@@ -259,7 +259,20 @@ insert into private.account_export_sources(source_key,table_name,filter_kind) va
             REQUEUE_AUDIT_MIGRATION,
         ):
             psql(migration.read_text(encoding="utf-8"))
-        psql(ACCOUNT_LIFECYCLE_MIGRATION.read_text(encoding="utf-8"))
+        # Install only the two legacy function definitions needed to replay later
+        # forward-repair migrations. The full 94-source production migration is not
+        # replayed into this deliberately small 10-source fixture.
+        lifecycle_source=ACCOUNT_LIFECYCLE_MIGRATION.read_text(encoding="utf-8")
+        lifecycle_lower=lifecycle_source.lower()
+        for function_name in (
+            "public.fail_account_export_job",
+            "public.create_account_deletion_request_for_actor",
+        ):
+            marker="create or replace function "+function_name
+            start=lifecycle_lower.index(marker)
+            opening=lifecycle_lower.index("as $",start)
+            closing=lifecycle_lower.index("$;",opening+5)+3
+            psql(lifecycle_source[start:closing])
         psql(MIGRATION.read_text(encoding="utf-8"))
         psql(MIGRATION.read_text(encoding="utf-8")) # repeatable forward migration
         psql(f"""
