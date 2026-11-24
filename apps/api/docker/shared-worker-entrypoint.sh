@@ -44,10 +44,12 @@ MaxDirectoryRecursion 5
 ConcurrentDatabaseReload no
 SelfCheck 3600
 CLAMD_CONFIG
+    [ -s /run/clamav/clamd.conf ] || return 1
 
     cat > /run/clamav/clamdscan.conf <<'CLAMDSCAN_CONFIG'
 LocalSocket /run/clamav/clamd.ctl
 CLAMDSCAN_CONFIG
+    [ -s /run/clamav/clamdscan.conf ] || return 1
 
     echo "Starting opt-in ClamAV daemon for Knowledge document scanning"
     gosu clamav clamd --config-file=/run/clamav/clamd.conf --foreground=true &
