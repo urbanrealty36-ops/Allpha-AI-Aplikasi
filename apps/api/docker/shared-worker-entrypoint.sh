@@ -13,7 +13,22 @@ if [ "$KNOWLEDGE_ENABLED" = "true" ] && [ -z "$SCANNER_URL" ] && [ "$SCANNER_MOD
     # Do not start the Knowledge consumer with stale or missing malware signatures.
     freshclam --quiet
 
-    gosu clamav clamd --foreground=true &
+    # Use a minimal explicit daemon configuration instead of a distro sample file.
+    cat > /run/clamav/clamd.conf <<'CLAMD_CONFIG'
+DatabaseDirectory /var/lib/clamav
+Foreground yes
+LogTime yes
+LogVerbose yes
+LocalSocket /run/clamav/clamd.ctl
+LocalSocketGroup clamav
+LocalSocketMode 660
+FixStaleSocket yes
+MaxFileSize 20M
+MaxScanSize 50M
+StreamMaxLength 20M
+CLAMD_CONFIG
+
+    gosu clamav clamd --config-file=/run/clamav/clamd.conf --foreground=true --stdout &
     CLAMD_PID=$!
     cleanup() {
         kill "$CLAMD_PID" 2>/dev/null || true
