@@ -220,11 +220,13 @@ def test_account_export_deletion_lifecycle_is_linked_and_fail_closed_on_missing_
     assert "p_idempotency_key text" in source
     assert "insert into public.account_export_jobs(user_id,idempotency_key)" in source
     assert "private.account_deletion_export_gate" in source
-    assert "account_export_retention_policy_missing" in source
+    assert "account_export_download_confirmation_required" in source
+    assert "download_confirmed_at timestamptz" in source
+    assert "confirm_account_deletion_export_download" in source
     assert "account_export_pending" in source
     assert "account_export_artifact" in source
     assert "j.expires_at<=pg_catalog.clock_timestamp()" in source
-    assert "export_artifact_retention_active" in source
+    assert "export_download_confirmed" in source
     assert "account_export_artifact_cleanup_jobs" in source
     assert "r.export_job_id=j.id" in source
 
