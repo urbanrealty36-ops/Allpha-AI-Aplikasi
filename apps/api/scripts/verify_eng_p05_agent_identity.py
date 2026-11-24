@@ -254,6 +254,8 @@ values ('{AGENT}','{OWNER}',true);
 select public.respond_agent_ownership_transfer(
  (select id from public.agent_ownership_transfer_requests where agent_id='{AGENT}' and status='pending'),true
 );
+""")
+        psql(f"""
 do $$
 begin
  if not private.has_agent_ownership('{AGENT}','{RECIPIENT}','owner') then raise exception 'recipient did not become Agent owner'; end if;
@@ -274,10 +276,17 @@ begin
  if exists(select 1 from public.get_public_agent_owner_attribution('{AGENT}')) then
    raise exception 'old owner attribution still public after transfer';
  end if;
+end $$;
+""")
+        as_user(OWNER, f"""
+do $$
+begin
  if exists(select 1 from public.update_my_ai_agent('{AGENT}',4,'{{"display_name":"old owner takeover"}}'::jsonb)) then
    raise exception 'previous owner can still update transferred Agent';
  end if;
 end $$;
+""")
+        as_user(RECIPIENT, f"""
 select * from public.update_my_ai_agent('{AGENT}',(select version from public.ai_agents where id='{AGENT}'),'{{"display_name":"Recipient Managed Agent"}}'::jsonb);
 """)
 
