@@ -44,7 +44,7 @@ HEARTBEAT_MIGRATION = (
     Path(__file__).resolve().parents[1]
     / "supabase"
     / "migrations"
-    / "20261124071000_eng_p11_workflow_step_lease_heartbeat.sql"
+    / "20261124071319_eng_p11_workflow_step_lease_heartbeat.sql"
 ).read_text(encoding="utf-8")
 
 
