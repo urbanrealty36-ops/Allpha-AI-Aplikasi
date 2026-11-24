@@ -89,6 +89,25 @@ class AgentRuntimeStore:
         """Resolve a published Skill, pinned to its immutable snapshot when version is supplied."""
         if not await self.owner_has_agent(owner_id, agent_id):
             return None
+        # Installed Skills remain executable only while their explicit license
+        # acceptance is active and has not expired. Native/public clients cannot
+        # bypass this gate by pinning an older immutable Skill version.
+        installations = await self.request("GET", "agent_skill_installations", params={
+            "select": "id,status,license_expires_at,license_terms_digest,accepted_at",
+            "agent_id": f"eq.{agent_id}", "installed_skill_id": f"eq.{skill_id}", "limit": "1",
+        })
+        if installations:
+            installation = installations[0]
+            if installation.get("status") != "active" or not installation.get("license_terms_digest") or not installation.get("accepted_at"):
+                return None
+            expires_at = installation.get("license_expires_at")
+            if expires_at:
+                try:
+                    expiry = datetime.fromisoformat(str(expires_at).replace("Z", "+00:00"))
+                except (TypeError, ValueError):
+                    return None
+                if expiry.tzinfo is None or expiry <= datetime.now(timezone.utc):
+                    return None
         if version is not None:
             snapshots = await self.request("GET", "agent_skill_versions", params={
                 "select": "snapshot", "skill_id": f"eq.{skill_id}",
