@@ -1000,9 +1000,11 @@ def test_native_orchestration_retries_persisted_pure_tool_call_without_recalling
 
 def test_tool_planner_includes_owner_authorized_knowledge_and_content_free_citations(monkeypatch):
     class KnowledgePolicy:
-        async def allowed_sensitivities(self, *, owner_id, agent_id):
+        async def resolve_context(self, *, owner_id, agent_id):
             assert (owner_id, agent_id) == (OWNER, AGENT)
-            return ["internal"]
+            return SimpleNamespace(allowed_sensitivities=("internal",), allowed_source_ids=(OWNER,),
+                policy_version="knowledge-policy.v1", consent_version="consent.v1", grant_version="grant.v1",
+                audience="owner_private", decision_reference="decision-1")
 
     class KnowledgeRepository:
         async def authorize_agent(self, *, owner_id, agent_id):
@@ -1012,6 +1014,7 @@ def test_tool_planner_includes_owner_authorized_knowledge_and_content_free_citat
             assert kwargs["owner_id"] == OWNER
             assert kwargs["agent_id"] == AGENT
             assert kwargs["allowed_sensitivities"] == ["internal"]
+            assert kwargs["allowed_source_ids"] == [OWNER]
             content = "Owner-authorized Knowledge fact."
             return [RetrievalHit(
                 owner_id=OWNER, agent_id=AGENT, source_id="11111111-1111-4111-8111-111111111111",
