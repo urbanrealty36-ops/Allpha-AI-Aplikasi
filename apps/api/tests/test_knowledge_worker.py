@@ -14,6 +14,10 @@ class FakeStore:
         self.chunks = chunks if chunks is not None else [{"id":"chunk-1","content":"hello","content_sha256":hashlib.sha256(b"hello").hexdigest(),"source_version":job_version}]
         self.claims = []
         self.finalizations = []
+        self.heartbeats = []
+    async def heartbeat(self, job, *, lease_seconds):
+        self.heartbeats.append((job["id"], job["lease_token"], lease_seconds))
+        return True
     async def claim(self, *, lease_seconds, stage):
         self.claims.append((lease_seconds, stage))
         return self.job
@@ -118,4 +122,30 @@ def test_worker_fails_closed_when_chunk_hash_does_not_match_content():
         assert router.requests == []
         assert store.finalizations[-1]["outcome"] == "failed"
         assert store.finalizations[-1]["error_code"] == "KNOWLEDGE_WORKER_PREREQUISITE_MISSING"
+    asyncio.run(scenario())
+
+
+
+def test_worker_wraps_embedding_and_vector_persistence_in_lease_heartbeat(monkeypatch):
+    async def scenario():
+        store = FakeStore()
+        router = FakeRouter(result=embedding_response())
+        persisted = []
+
+        async def sink(job, request, response):
+            persisted.append(job["id"])
+
+        async def heartbeat_runner(operation, heartbeat, *, lease_seconds, identity, heartbeat_interval_seconds=None):
+            assert identity == "job-1"
+            assert lease_seconds == 90
+            assert await heartbeat() is True
+            await operation()
+            return True
+
+        monkeypatch.setattr("allpha_api.knowledge_worker.run_with_lease_heartbeat", heartbeat_runner)
+        worker = KnowledgeEmbeddingWorker(store, router, sink)
+        assert await worker.process_once() is True
+        assert store.heartbeats == [("job-1", "lease-1", 90)]
+        assert persisted == ["job-1"]
+
     asyncio.run(scenario())
