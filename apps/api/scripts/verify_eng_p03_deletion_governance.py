@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import hashlib
+import re
 import subprocess
 import sys
 import tempfile
@@ -40,6 +41,8 @@ DELETION_RPC_AMBIGUITY_MIGRATION=ROOT/"apps/api/supabase/migrations/202611240207
 STORAGE_CLAIM_ID_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124024848_eng_p03_storage_claim_id_qualification.sql"
 STORAGE_CLAIM_OUTPUT_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124025023_eng_p03_storage_claim_output_column_qualification.sql"
 ACCOUNT_LIFECYCLE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123191600_eng_p03_account_export_and_deletion_request_lifecycle.sql"
+EXPORT_PROGRESS_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123125248_eng_p03_account_export_progress.sql"
+LEASE_SCOPED_EXPORT_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123191800_eng_p03_lease_scoped_export_artifacts.sql"
 MIGRATION=ROOT/"apps/api/supabase/migrations/20261123192200_eng_p03_deletion_legal_hold_governance_worker.sql"
 SOURCE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123153243_eng_p03_account_deletion_specialized_source_handlers.sql"
 OWNER_SCOPE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123153456_eng_p03_agent_skill_deletion_owner_scope.sql"
@@ -262,20 +265,43 @@ insert into private.account_export_sources(source_key,table_name,filter_kind) va
             REQUEUE_AUDIT_MIGRATION,
         ):
             psql(migration.read_text(encoding="utf-8"))
-        # Install only the two legacy function definitions needed to replay later
-        # forward-repair migrations. The full 94-source production migration is not
-        # replayed into this deliberately small 10-source fixture.
+        # Replay progress columns and install the real export-worker RPCs.
+        # The full 94-source production catalog is not replayed into this 10-source fixture.
+        psql(EXPORT_PROGRESS_MIGRATION.read_text(encoding="utf-8"))
         lifecycle_source=ACCOUNT_LIFECYCLE_MIGRATION.read_text(encoding="utf-8")
         lifecycle_lower=lifecycle_source.lower()
         for function_name in (
+            "private.redact_account_export_jsonb",
+            "private.build_account_export_snapshot",
+            "public.claim_account_export_jobs",
+            "public.renew_account_export_job_lease",
+            "public.build_my_account_export_snapshot",
             "public.fail_account_export_job",
             "public.create_account_deletion_request_for_actor",
         ):
             marker="create or replace function "+function_name
             start=lifecycle_lower.index(marker)
-            opening=lifecycle_lower.index("as $",start)
-            closing=lifecycle_lower.index("$;",opening+5)+3
-            psql(lifecycle_source[start:closing])
+            match=re.search(r"\bas\s+(\$[a-z0-9_]*\$)",lifecycle_lower[start:])
+            if not match:
+                raise RuntimeError(f"export lifecycle function delimiter missing: {function_name}")
+            tag=match.group(1)
+            opening=start+match.end()
+            closing=lifecycle_lower.index(tag,opening)
+            end=lifecycle_lower.index(";",closing)+1
+            psql(lifecycle_source[start:end])
+
+        lease_export_source=LEASE_SCOPED_EXPORT_MIGRATION.read_text(encoding="utf-8")
+        lease_export_lower=lease_export_source.lower()
+        marker="create or replace function public.complete_account_export_job"
+        start=lease_export_lower.index(marker)
+        match=re.search(r"\bas\s+(\$[a-z0-9_]*\$)",lease_export_lower[start:])
+        if not match:
+            raise RuntimeError("lease-scoped export completion function delimiter missing")
+        tag=match.group(1)
+        opening=start+match.end()
+        closing=lease_export_lower.index(tag,opening)
+        end=lease_export_lower.index(";",closing)+1
+        psql(lease_export_source[start:end])
         psql(MIGRATION.read_text(encoding="utf-8"))
         psql(MIGRATION.read_text(encoding="utf-8")) # repeatable forward migration
         psql(f"""
