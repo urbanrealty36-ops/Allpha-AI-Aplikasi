@@ -7,7 +7,9 @@ SCANNER_URL="${ALLPHA_DOCUMENT_SCANNER_URL:-}"
 
 if [ "$KNOWLEDGE_ENABLED" = "true" ] && [ -z "$SCANNER_URL" ] && [ "$SCANNER_MODE" = "clamd" ]; then
     mkdir -p /run/clamav
-    chown clamav:clamav /run/clamav /var/lib/clamav
+    mkdir -p /var/log/clamav
+    touch /var/log/clamav/clamav.log
+    chown clamav:clamav /run/clamav /var/lib/clamav /var/log/clamav /var/log/clamav/clamav.log
     chmod 0770 /run/clamav
 
     # Do not start the Knowledge consumer with stale or missing malware signatures.
@@ -19,7 +21,7 @@ DatabaseDirectory /var/lib/clamav
 Foreground yes
 LogTime yes
 LogVerbose yes
-LogFile /dev/stderr
+LogFile /var/log/clamav/clamav.log
 LocalSocket /run/clamav/clamd.ctl
 LocalSocketGroup clamav
 LocalSocketMode 660
@@ -46,6 +48,7 @@ CLAMD_CONFIG
         if ! kill -0 "$CLAMD_PID" 2>/dev/null; then
             wait "$CLAMD_PID" || true
             echo "Shared worker disabled: ClamAV daemon exited during startup" >&2
+            cat /var/log/clamav/clamav.log >&2 || true
             exit 1
         fi
         sleep 2
@@ -53,6 +56,7 @@ CLAMD_CONFIG
 
     if [ "$READY" -ne 1 ]; then
         echo "Shared worker disabled: ClamAV daemon did not become ready" >&2
+        cat /var/log/clamav/clamav.log >&2 || true
         exit 1
     fi
 fi
