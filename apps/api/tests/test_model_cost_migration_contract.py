@@ -37,7 +37,7 @@ def test_model_policy_approval_is_auditable_and_separate_from_tariff_activation(
 
 
 def test_model_usage_summary_is_service_only_and_does_not_mix_cost_units():
-    sql = APPROVAL.read_text(encoding="utf-8").lower()
+    sql = " ".join(APPROVAL.read_text(encoding="utf-8").lower().split())
     assert "create or replace function public.get_agent_model_usage_summary" in sql
     assert "revoke all on function public.get_agent_model_usage_summary(timestamptz,timestamptz)" in sql
     assert "grant execute on function public.get_agent_model_usage_summary(timestamptz,timestamptz) to service_role" in sql
