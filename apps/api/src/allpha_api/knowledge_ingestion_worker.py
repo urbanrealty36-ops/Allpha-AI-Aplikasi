@@ -15,6 +15,7 @@ from fastapi import HTTPException
 
 from allpha_api.knowledge import _chunk, _extract, _scan
 from allpha_api.knowledge_worker import SupabaseKnowledgeJobStore, WorkerConfigurationError
+from allpha_api.lease_heartbeat import run_with_lease_heartbeat
 
 log = logging.getLogger(__name__)
 
@@ -81,7 +82,14 @@ class KnowledgeDocumentWorker:
             log.error("Knowledge document claim returned a job without lease fencing identity")
             return True
         try:
-            await self._process(job)
+            lease_active = await run_with_lease_heartbeat(
+                lambda: self._process(job),
+                lambda: self.store.heartbeat(job, lease_seconds=self.lease_seconds),
+                lease_seconds=self.lease_seconds,
+                identity=job_id,
+            )
+            if not lease_active:
+                log.warning("Knowledge document job %s abandoned after lease loss", job_id)
         except HTTPException as exc:
             detail = exc.detail if isinstance(exc.detail, dict) else {}
             code = str(detail.get("code") or "DOCUMENT_PROCESSING_FAILED")
