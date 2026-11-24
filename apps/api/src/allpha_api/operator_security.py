@@ -650,6 +650,24 @@ async def revoke_operator_grant(
     return {"grant": rows[0], "revoked": True}
 
 
+@router.get("/operator/agents", name="list_operator_agents_for_runtime_governance")
+async def list_operator_agents_for_runtime_governance(
+    limit: int = 100,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:capabilities.review")),
+) -> dict[str, Any]:
+    bounded_limit = min(max(1, limit), 100)
+    rows = await privileged_rest_request(
+        "GET", "ai_agents",
+        params={
+            "select": "id,handle,display_name,status,visibility,version,created_at",
+            "status": "in.(active,draft)",
+            "order": "created_at.desc",
+            "limit": str(bounded_limit),
+        },
+    )
+    return {"items": rows or [], "limit": bounded_limit}
+
+
 @router.get("/operator/runtime-policies", name="list_operator_runtime_policies")
 async def list_operator_runtime_policies(
     agent_id: UUID,
