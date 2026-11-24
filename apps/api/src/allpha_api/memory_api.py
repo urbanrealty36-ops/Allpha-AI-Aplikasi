@@ -48,7 +48,7 @@ def _error(exc):
 async def _owner(agent_id,request,user):
  if agent_id is None:return
  rows=await user_db_request("GET","agent_ownerships",getattr(request.state,"supabase_access_token",None),
-  params={"select":"agent_id","agent_id":f"eq.{agent_id}","owner_user_id":f"eq.{user['id']}","status":"eq.active","limit":"1"})
+  params={"select":"agent_id","agent_id":f"eq.{agent_id}","owner_user_id":f"eq.{user['id']}","ownership_role":"eq.owner","status":"eq.active","limit":"1"})
  if not rows:raise HTTPException(404,detail={"code":"AGENT_NOT_FOUND","message":"Agent tidak ditemukan."})
 
 @router.get("/classes")
