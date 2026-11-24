@@ -908,3 +908,44 @@ def test_model_usage_summary_uses_service_rpc_and_validates_period(monkeypatch):
         assert invalid.status_code==422
     finally:
         app.dependency_overrides.clear()
+
+
+def test_list_operator_agents_for_runtime_governance_requires_capability_review(monkeypatch):
+    calls=[]
+    async def fake_db(method,path,token,**kwargs):
+        return [{"id":"grant-1","user_id":"operator","scopes":["platform:capabilities.review"],"status":"active","expires_at":None}]
+    async def fake_audit(request,**kwargs):
+        return None
+    async def fake_privileged(method,table,**kwargs):
+        calls.append((method,table,kwargs))
+        return [{"id":"11111111-1111-4111-8111-111111111111","handle":"research-agent","display_name":"Research Agent","status":"active","visibility":"private","version":3}]
+    monkeypatch.setattr(security,"user_db_request",fake_db)
+    monkeypatch.setattr(security,"write_operator_audit",fake_audit)
+    monkeypatch.setattr(security,"privileged_rest_request",fake_privileged)
+    install_auth("operator")
+    try:
+        response=client.get("/v1/admin/operator/agents?limit=50")
+        assert response.status_code==200
+        assert response.json()["items"][0]["display_name"]=="Research Agent"
+        assert calls[0][0:2]==("GET","ai_agents")
+        assert calls[0][2]["params"]["status"]=="in.(active,draft)"
+        assert calls[0][2]["params"]["limit"]=="50"
+        assert "owner_user_id" not in calls[0][2]["params"]["select"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_list_operator_agents_for_runtime_governance_denies_missing_scope(monkeypatch):
+    async def fake_db(method,path,token,**kwargs):
+        return [{"id":"grant-1","user_id":"operator","scopes":["platform:operations.read"],"status":"active","expires_at":None}]
+    async def fake_audit(request,**kwargs):
+        return None
+    monkeypatch.setattr(security,"user_db_request",fake_db)
+    monkeypatch.setattr(security,"write_operator_audit",fake_audit)
+    install_auth("operator")
+    try:
+        response=client.get("/v1/admin/operator/agents")
+        assert response.status_code==403
+        assert response.json()["error"]["code"]=="OPERATOR_SCOPE_REQUIRED"
+    finally:
+        app.dependency_overrides.clear()
