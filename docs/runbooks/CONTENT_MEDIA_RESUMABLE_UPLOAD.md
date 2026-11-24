@@ -17,9 +17,9 @@ The signed upload token is scoped to the reserved bucket/object path and is retu
    - `filename`
    - `media_type` (must be an existing allowed media MIME type)
    - `size_bytes` (must be within the existing content media limit)
-   - `sha256` (lowercase SHA-256 hex calculated by the client)
+   - optional `sha256` (lowercase SHA-256 hex calculated by the client; Web sends it, Native may omit it)
 
-   FastAPI verifies ownership and draft state, binds the idempotency key to owner/content/type/size/name/hash, creates or reuses the `content_media` reservation and returns the TUS endpoint, signed token, TUS metadata, and 6 MiB chunk size. Reusing a key for different file attributes is rejected.
+   FastAPI verifies ownership and draft state, binds the idempotency key to owner/content/type/size/name and, when supplied, the expected SHA-256. If no expected digest is supplied, the uploading row carries a deterministic reservation fingerprint until completion; that value is never treated as a media digest while status is `uploading`. Reusing a key for different file attributes is rejected. The endpoint returns the TUS URL, signed token, TUS metadata and 6 MiB chunk size.
 
 2. Upload bytes using Supabase Storage TUS:
 
@@ -32,13 +32,13 @@ The signed upload token is scoped to the reserved bucket/object path and is retu
 
    `POST /v1/content/{content_id}/media/{media_id}/complete`
 
-   FastAPI reads the reserved object through the server-only Storage credential, checks actual byte count, computes SHA-256, validates the media signature against the declared MIME type, and only then transitions the existing row from `uploading` to `uploaded`. The existing database-triggered media lifecycle and Railway image/transcode workers continue from that state. A client claim of completion alone never promotes the media.
+   FastAPI reads the reserved object through the server-only Storage credential, checks actual byte count, computes the authoritative SHA-256, validates the media signature against the declared MIME type, and compares the digest with the client-provided expected SHA-256 when one was supplied. It replaces any temporary reservation fingerprint with the actual media SHA-256 and only then transitions the existing row from `uploading` to `uploaded`. The existing database-triggered media lifecycle and Railway image/transcode workers continue from that state. A client claim of completion alone never promotes the media.
 
 ## Current limits and recovery
 
 - The current `content-media` bucket and API contract retain the existing 50 MiB per-file limit. TUS provides resumability within this configured limit; it does not yet enable multi-gigabyte feature-film files. Raising the limit requires a coordinated forward-only change to the Storage bucket configuration and existing database constraints, after checking the actual Supabase plan and recovery implications. Do not guess a higher limit.
 - The upload reservation is stored in the existing `content_media` table; no new database or parallel media engine is created.
 - Completion verification uses a bounded 300-second Storage request timeout and validates actual bytes before queue promotion.
-- Web and Native persist one active Creator upload session per app instance. To resume after a process/page restart, reselect the same file. The session is matched by filename, size and SHA-256.
+- Web and Native persist one active Creator upload session per app instance. To resume after a process/page restart, reselect the same file. Web matches the session using its SHA-256 fingerprint; Native uses the local file-system MD5/metadata fingerprint only to match the selected file across resume. Native MD5 is not used for security or server-side content integrity; FastAPI always computes the authoritative SHA-256 from the uploaded object.
 - A failed or incomplete upload remains in `uploading`; it is not shown as ready. Existing scan/transcode workers and creator media status remain authoritative.
 - No live production upload has been performed as part of source/CI verification. Production readiness requires an actual signed TUS upload, server-side completion verification, scanner receipt and transcode completion through the deployed services.
