@@ -20,6 +20,9 @@ import httpx
 
 from allpha_api.embedding_contract import EmbeddingRequest, EmbeddingResponse
 from allpha_api.lease_heartbeat import run_with_lease_heartbeat
+from allpha_api.knowledge_vector_store import (
+    VectorPersistenceConflict, VectorPersistenceUnavailable,
+)
 from allpha_api.model_router import (
     CanonicalModelRouter,
     EmbeddingRouter,
@@ -89,6 +92,16 @@ class KnowledgeEmbeddingWorker:
             await self.store.finalize(
                 job, outcome="retry", stage="awaiting_model_router", progress=75,
                 error_code="MODEL_ROUTER_UNAVAILABLE", retry_delay_seconds=60,
+            )
+        except VectorPersistenceUnavailable:
+            await self.store.finalize(
+                job, outcome="retry", stage="embedding_indexing_retry", progress=75,
+                error_code="KNOWLEDGE_VECTOR_STORE_UNAVAILABLE", retry_delay_seconds=60,
+            )
+        except VectorPersistenceConflict:
+            await self.store.finalize(
+                job, outcome="failed", stage="embedding_indexing_failed", progress=75,
+                error_code="KNOWLEDGE_VECTOR_PERSISTENCE_CONFLICT",
             )
         except ModelRouterRejected as exc:
             retryable = bool(exc.failure.retryable)
