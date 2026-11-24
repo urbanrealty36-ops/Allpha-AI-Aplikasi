@@ -15,7 +15,6 @@ from allpha_api.cost_policy import (
     CostBudget,
     CostEstimate,
     CostPolicyApproval,
-    CostPolicyApprovalVerifier,
 )
 from allpha_api.embedding_adapters import (
     EmbeddingProviderConfigurationError,
