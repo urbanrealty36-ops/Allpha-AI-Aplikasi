@@ -416,3 +416,50 @@ def test_unknown_agent_runtime_task_outcome_does_not_finalize_workflow_step(monk
     with pytest.raises(WorkflowOutcomeUnknown, match="Agent Runtime outcome"):
         asyncio.run(process_next_step(store, owner_id="owner", run_id="run-1"))
     assert store.finalize_calls == 0
+
+
+
+def test_approval_node_pauses_and_persists_owner_decision_context():
+    claimed = step(
+        node_kind="approval",
+        node_config={"message": "Approve the publish action", "context": {"artifact_id": "artifact-1"}},
+    )
+    captured = {}
+
+    async def finalize(**kwargs):
+        captured.update(kwargs)
+        return {"status": kwargs["terminal_state"], "run_status": "waiting_for_approval"}
+
+    store = FakeStore(claim=claimed, finalize={"status": "waiting_for_approval"})
+    store.finalize_step = finalize
+    result = asyncio.run(process_next_step(store, owner_id="owner", run_id="run-1"))
+    assert result["step_status"] == "waiting_for_approval"
+    assert captured["terminal_state"] == "waiting_for_approval"
+    assert captured["error_code"] == "APPROVAL_REQUIRED"
+    assert captured["checkpoint"]["approval_message"] == "Approve the publish action"
+    assert captured["checkpoint"]["approval_context"] == {"artifact_id": "artifact-1"}
+
+
+def test_approved_workflow_step_resumes_from_durable_approval_checkpoint():
+    claimed = step(
+        node_kind="approval",
+        node_config={"message": "Approve the publish action", "context": {}},
+        checkpoint={
+            "approval_status": "approved",
+            "approval_id": "approval-1",
+            "approval_decision_note": "Reviewed",
+        },
+    )
+    captured = {}
+
+    async def finalize(**kwargs):
+        captured.update(kwargs)
+        return {"status": kwargs["terminal_state"], "run_status": "running"}
+
+    store = FakeStore(claim=claimed, finalize={"status": "succeeded"})
+    store.finalize_step = finalize
+    result = asyncio.run(process_next_step(store, owner_id="owner", run_id="run-1"))
+    assert result["step_status"] == "succeeded"
+    assert captured["output_payload"] == {
+        "value": {"approved": True, "approval_id": "approval-1", "decision_note": "Reviewed"},
+    }
