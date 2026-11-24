@@ -33,8 +33,8 @@ class EmbeddingRoute:
     provider_id: str
     model_id: str
     model_version: str
-    dimensions: int | None = None
     max_attempts: int = 3
+    dimensions: int | None = None
     def __post_init__(self):
         if not self.provider_id.strip() or not self.model_id.strip() or not self.model_version.strip():
             raise ValueError("embedding route identity fields must be configured")
