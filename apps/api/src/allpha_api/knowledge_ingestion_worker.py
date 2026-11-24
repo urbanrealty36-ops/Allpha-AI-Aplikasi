@@ -20,6 +20,7 @@ from allpha_api.knowledge_worker import SupabaseKnowledgeJobStore, WorkerConfigu
 from allpha_api.lease_heartbeat import run_with_lease_heartbeat
 
 log = logging.getLogger(__name__)
+MAX_KNOWLEDGE_SOURCE_BYTES = 15 * 1024 * 1024
 
 
 class KnowledgeJobLeaseLost(RuntimeError):
@@ -127,12 +128,12 @@ class SupabaseKnowledgeStorage:
                         )
                     declared = response.headers.get("content-length")
                     if declared is not None and (
-                        not declared.isdigit() or int(declared) > 15 * 1024 * 1024
+                        not declared.isdigit() or int(declared) > MAX_KNOWLEDGE_SOURCE_BYTES
                     ):
                         raise KnowledgeStorageObjectTooLarge("Knowledge source object exceeds the 15 MiB limit")
                     async for chunk in response.aiter_bytes():
                         total += len(chunk)
-                        if total > 15 * 1024 * 1024:
+                        if total > MAX_KNOWLEDGE_SOURCE_BYTES:
                             raise KnowledgeStorageObjectTooLarge(
                                 "Knowledge source object exceeds the 15 MiB limit"
                             )
