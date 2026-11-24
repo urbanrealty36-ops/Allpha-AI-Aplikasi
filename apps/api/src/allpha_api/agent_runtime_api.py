@@ -291,6 +291,14 @@ def _validate_knowledge_context_provenance(
             })
         source_version = ref.get("source_version")
         location = ref.get("source_location")
+        try:
+            uuid.UUID(ref.get("source_id", ""))
+            uuid.UUID(ref.get("chunk_id", ""))
+        except (ValueError, TypeError, AttributeError):
+            raise HTTPException(status_code=409, detail={
+                "code": "TOOL_PLAN_KNOWLEDGE_PROVENANCE_INVALID",
+                "message": "ID sumber/chunk Knowledge pada rencana tidak valid.",
+            })
         score = ref.get("score")
         if (
             not isinstance(ref.get("source_id"), str) or not ref["source_id"]
@@ -1864,6 +1872,73 @@ async def create_tool_plan(payload: ToolPlanRequest, request: Request,
         raise _error(exc) from exc
 
 
+async def _revalidate_knowledge_context_sources(
+    request: Request, *, owner_id: str, agent_id: str, refs: list[dict[str, Any]],
+) -> None:
+    """Recheck current source/chunk ownership and versions before a plan becomes a task."""
+    if not refs:
+        return
+    access_token = getattr(request.state, "supabase_access_token", None)
+    if not isinstance(access_token, str) or not access_token.strip():
+        raise HTTPException(status_code=503, detail={
+            "code": "KNOWLEDGE_CONTEXT_REVALIDATION_UNAVAILABLE",
+            "message": "Token sesi untuk memverifikasi ulang Knowledge tidak tersedia.",
+        })
+    source_ids = sorted({ref["source_id"] for ref in refs})
+    chunk_ids = sorted({ref["chunk_id"] for ref in refs})
+    try:
+        sources = await user_db_request("GET", "agent_knowledge_sources", access_token, params={
+            "select": "id,owner_id,agent_id,source_version,status,sensitivity",
+            "id": "in.(" + ",".join(source_ids) + ")",
+            "owner_id": f"eq.{owner_id}",
+            "agent_id": f"eq.{agent_id}",
+            "status": "eq.ready",
+        })
+        chunks = await user_db_request("GET", "agent_knowledge_chunks", access_token, params={
+            "select": "id,source_id,owner_id,agent_id,source_version,content_sha256",
+            "id": "in.(" + ",".join(chunk_ids) + ")",
+            "owner_id": f"eq.{owner_id}",
+            "agent_id": f"eq.{agent_id}",
+        })
+    except HTTPException as exc:
+        if exc.status_code in {401, 403}:
+            raise
+        raise HTTPException(status_code=503, detail={
+            "code": "KNOWLEDGE_CONTEXT_REVALIDATION_UNAVAILABLE",
+            "message": "Status sumber Knowledge tidak dapat diverifikasi ulang.",
+        }) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail={
+            "code": "KNOWLEDGE_CONTEXT_REVALIDATION_UNAVAILABLE",
+            "message": "Status sumber Knowledge tidak dapat diverifikasi ulang.",
+        }) from exc
+    if not isinstance(sources, list) or not isinstance(chunks, list):
+        raise HTTPException(status_code=503, detail={
+            "code": "KNOWLEDGE_CONTEXT_REVALIDATION_UNAVAILABLE",
+            "message": "Respons verifikasi sumber Knowledge tidak valid.",
+        })
+    source_map = {str(row.get("id")): row for row in sources if isinstance(row, dict)}
+    chunk_map = {str(row.get("id")): row for row in chunks if isinstance(row, dict)}
+    for ref in refs:
+        source = source_map.get(ref["source_id"])
+        chunk = chunk_map.get(ref["chunk_id"])
+        if (
+            not source or not chunk
+            or source.get("owner_id") != owner_id or source.get("agent_id") != agent_id
+            or source.get("status") != "ready"
+            or source.get("source_version") != ref["source_version"]
+            or source.get("sensitivity") != ref["sensitivity"]
+            or chunk.get("owner_id") != owner_id or chunk.get("agent_id") != agent_id
+            or chunk.get("source_id") != ref["source_id"]
+            or chunk.get("source_version") != ref["source_version"]
+            or chunk.get("content_sha256") != ref["content_sha256"]
+        ):
+            raise HTTPException(status_code=409, detail={
+                "code": "TOOL_PLAN_KNOWLEDGE_SNAPSHOT_STALE",
+                "message": "Sumber atau chunk Knowledge berubah setelah planning. Buat rencana baru.",
+            })
+
+
 @router.post("/tasks", status_code=201)
 async def create_task(payload: TaskCreate, request: Request,
                       user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
@@ -2003,6 +2078,9 @@ async def create_task(payload: TaskCreate, request: Request,
                     plan_row.get("knowledge_context_refs") or [],
                     plan_row.get("knowledge_context_sha256") or hashlib.sha256(b"[]").hexdigest(),
                     plan_row.get("knowledge_context_state") or "not_configured",
+                )
+                await _revalidate_knowledge_context_sources(
+                    request, owner_id=owner_id, agent_id=agent_id, refs=knowledge_refs,
                 )
                 input_payload["knowledge_context_refs"] = knowledge_refs
                 input_payload["knowledge_context_sha256"] = knowledge_digest
