@@ -5,6 +5,7 @@ unknown outcome, not permission to blindly repeat a finalize/side effect.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import uuid
 from datetime import datetime, timezone
@@ -107,6 +108,70 @@ def evaluate_deterministic_node(step: dict[str, Any], run: dict[str, Any]) -> di
 
 def _step_from_run(run: dict[str, Any], step_id: str) -> dict[str, Any] | None:
     return next((step for step in (run.get("steps") or []) if str(step.get("id")) == str(step_id)), None)
+
+
+def _heartbeat_interval(lease_seconds: int) -> float:
+    return max(0.25, min(float(lease_seconds) / 3.0, 30.0))
+
+
+async def _heartbeat_until_stopped(
+    store: Any, *, owner_id: str, run_id: str, step_id: str,
+    lease_token: str, lease_seconds: int, stop: asyncio.Event,
+) -> None:
+    interval = _heartbeat_interval(lease_seconds)
+    while not stop.is_set():
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=interval)
+            return
+        except asyncio.TimeoutError:
+            pass
+        try:
+            renewed = await store.heartbeat_step(
+                owner_id, run_id, step_id, lease_token, lease_seconds=lease_seconds,
+            )
+        except WorkflowPersistenceError as exc:
+            raise WorkflowOutcomeUnknown("workflow step heartbeat outcome is unknown") from exc
+        if not renewed:
+            raise WorkflowOutcomeUnknown("workflow step lease was lost before node completion")
+
+
+async def _execute_with_heartbeat(
+    store: Any, *, owner_id: str, run_id: str, step_id: str,
+    lease_token: str, lease_seconds: int, execute: Any,
+) -> dict[str, Any]:
+    """Run one node while renewing its lease; never finalize after losing the fence."""
+    stop = asyncio.Event()
+    heartbeat = asyncio.create_task(_heartbeat_until_stopped(
+        store, owner_id=owner_id, run_id=run_id, step_id=step_id,
+        lease_token=lease_token, lease_seconds=lease_seconds, stop=stop,
+    ))
+    node = asyncio.create_task(execute())
+    try:
+        done, _ = await asyncio.wait(
+            {node, heartbeat}, return_when=asyncio.FIRST_COMPLETED,
+        )
+        if heartbeat in done:
+            error = heartbeat.exception()
+            if error is not None:
+                node.cancel()
+                await asyncio.gather(node, return_exceptions=True)
+                raise error
+            if not node.done():
+                node.cancel()
+                await asyncio.gather(node, return_exceptions=True)
+                raise WorkflowOutcomeUnknown("workflow heartbeat stopped before node completion")
+        stop.set()
+        await heartbeat
+        return await node
+    except asyncio.CancelledError:
+        node.cancel()
+        heartbeat.cancel()
+        await asyncio.gather(node, heartbeat, return_exceptions=True)
+        raise
+    finally:
+        stop.set()
+        if not heartbeat.done():
+            await asyncio.gather(heartbeat, return_exceptions=True)
 
 
 
@@ -278,11 +343,16 @@ async def process_next_step(
     if not run or run.get("status") in TERMINAL_RUN_STATES or run.get("cancel_requested"):
         return {"outcome": "terminal", "run_status": (run or {}).get("status", "unknown")}
 
-    try:
+    async def execute_node() -> dict[str, Any]:
         if step.get("node_kind") == "agent_task":
-            result = await execute_agent_task_node(step, run, owner_id)
-        else:
-            result = evaluate_deterministic_node(step, run)
+            return await execute_agent_task_node(step, run, owner_id)
+        return evaluate_deterministic_node(step, run)
+
+    try:
+        result = await _execute_with_heartbeat(
+            store, owner_id=owner_id, run_id=run_id, step_id=str(step["id"]),
+            lease_token=lease_token, lease_seconds=lease_seconds, execute=execute_node,
+        )
         final_state, error_code = "succeeded", None
     except WorkflowNodeError as exc:
         result = {"output_payload": None, "checkpoint": {"node_key": step.get("node_key"), "failed": True}}
