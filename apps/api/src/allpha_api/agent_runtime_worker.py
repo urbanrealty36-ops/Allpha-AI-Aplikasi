@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import signal
 from fastapi import HTTPException
 
 from allpha_api.agent_runtime_api import _execute_native_orchestration_task, _execute_planned_task, _is_native_orchestration_task
@@ -197,39 +198,57 @@ async def run_once(store: AgentRuntimeStore) -> int:
     return processed
 
 
-async def _serve_runtime_enabled() -> None:
+async def _wait_for_stop(stop_event: asyncio.Event, interval: float) -> None:
+    try:
+        await asyncio.wait_for(stop_event.wait(), timeout=interval)
+    except asyncio.TimeoutError:
+        pass
+
+
+async def _serve_runtime_enabled(stop_event: asyncio.Event) -> None:
     store = AgentRuntimeStore.from_environment()
     interval = _poll_seconds()
     logger.info("Agent Runtime worker started; poll_seconds=%s batch_size=%s", interval, _batch_size())
-    while True:
+    while not stop_event.is_set():
         try:
             await run_once(store)
-            await asyncio.sleep(interval)
         except AgentRuntimePersistenceError:
             logger.exception("Agent Runtime worker persistence unavailable")
-            await asyncio.sleep(interval)
         except Exception:
             logger.exception("Agent Runtime worker loop failed")
-            await asyncio.sleep(interval)
+        if not stop_event.is_set():
+            await _wait_for_stop(stop_event, interval)
 
 
 async def serve() -> None:
-    """Host independent runtime and workflow consumers without merging their state machines."""
+    """Host independent runtime and workflow consumers under one graceful process lifecycle."""
     from allpha_api import workflow_worker_host
 
     runtime_enabled = _enabled()
     workflow_enabled = workflow_worker_host.enabled()
+    stop_event = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(sig, stop_event.set)
+        except (NotImplementedError, RuntimeError):
+            logger.debug("Worker signal handler unavailable for %s", sig.name)
+
     consumers: list[asyncio.Task[Any]] = []
     if runtime_enabled:
-        consumers.append(asyncio.create_task(_serve_runtime_enabled(), name="agent-runtime-worker"))
+        consumers.append(asyncio.create_task(
+            _serve_runtime_enabled(stop_event), name="agent-runtime-worker",
+        ))
     if workflow_enabled:
-        consumers.append(asyncio.create_task(workflow_worker_host.serve_enabled(), name="workflow-worker"))
+        consumers.append(asyncio.create_task(
+            workflow_worker_host.serve_enabled(stop_event=stop_event), name="workflow-worker",
+        ))
 
     if not consumers:
         logger.warning(
             "Allpha worker container is healthy but idle; Agent Runtime and Workflow consumers are disabled"
         )
-        await asyncio.Event().wait()
+        await stop_event.wait()
         return
 
     logger.info(
