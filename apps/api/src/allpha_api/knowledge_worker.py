@@ -21,6 +21,7 @@ from typing import Any, Awaitable, Callable, Protocol
 import httpx
 
 from allpha_api.embedding_contract import EmbeddingRequest, EmbeddingResponse
+from allpha_api.lease_heartbeat import run_with_lease_heartbeat
 from allpha_api.model_router import (
     CanonicalModelRouter,
     EmbeddingRouter,
@@ -38,6 +39,7 @@ class WorkerConfigurationError(RuntimeError):
 
 class KnowledgeJobStore(Protocol):
     async def claim(self, *, lease_seconds: int, stage: str) -> dict[str, Any] | None: ...
+    async def heartbeat(self, job: dict[str, Any], *, lease_seconds: int) -> bool: ...
     async def load_source(self, job: dict[str, Any]) -> dict[str, Any] | None: ...
     async def load_chunks(self, job: dict[str, Any]) -> list[dict[str, Any]]: ...
     async def finalize(
@@ -77,7 +79,14 @@ class KnowledgeEmbeddingWorker:
             log.error("Claim RPC returned job without id/lease token")
             return True
         try:
-            await self._process(job)
+            lease_active = await run_with_lease_heartbeat(
+                lambda: self._process(job),
+                lambda: self.store.heartbeat(job, lease_seconds=self.lease_seconds),
+                lease_seconds=self.lease_seconds,
+                identity=job_id,
+            )
+            if not lease_active:
+                log.warning("Knowledge embedding job %s abandoned after lease loss", job_id)
         except ModelRouterUnavailable:
             await self.store.finalize(
                 job, outcome="retry", stage="awaiting_model_router", progress=75,
