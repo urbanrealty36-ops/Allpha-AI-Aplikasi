@@ -42,6 +42,8 @@ async def _storage(method: str,path: str,data: bytes|None=None,media_type: str|N
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(20,connect=4)) as c: r=await c.request(method,f"{url}/storage/v1/object/{quote(path, safe='/')}",headers=headers,content=data)
     except httpx.HTTPError as exc: raise HTTPException(503,detail={"code":"STORAGE_UNAVAILABLE","message":"Penyimpanan dokumen tidak tersedia."}) from exc
+    if r.status_code == 404 and method.upper() == "DELETE":
+        return
     if r.status_code not in (200,201,204):
         status=403 if r.status_code in (401,403) else 503
         raise HTTPException(status,detail={"code":"STORAGE_OPERATION_FAILED","message":"Operasi penyimpanan dokumen gagal."})
@@ -194,6 +196,23 @@ async def retry_source(agent_id: uuid.UUID,source_id: uuid.UUID,payload: RetryRe
 
 @router.delete("/sources/{source_id}",status_code=204)
 async def delete_source(agent_id: uuid.UUID,source_id: uuid.UUID,request: Request,user: dict[str,Any]=Depends(current_user)):
-    token=await _owned(agent_id,request,user); source=await _source(agent_id,source_id,token,user)
-    await _storage("DELETE",f"agent-knowledge/{source['storage_path']}")
-    await _admin_db_request("DELETE","agent_knowledge_sources",params={"id":f"eq.{source_id}","agent_id":f"eq.{agent_id}","owner_id":f"eq.{user['id']}"})
+    await _owned(agent_id,request,user)
+    deletion=await _admin_db_request(
+        "POST","rpc/begin_agent_knowledge_source_delete",
+        body={"p_source_id":str(source_id),"p_agent_id":str(agent_id),"p_owner_id":str(user["id"])},
+    )
+    if not isinstance(deletion,dict):
+        raise HTTPException(503,detail={"code":"KNOWLEDGE_DELETE_FENCE_UNAVAILABLE","message":"Penguncian proses sumber pengetahuan gagal."})
+    if deletion.get("already_deleted"):
+        return None
+    storage_path=deletion.get("storage_path")
+    if not isinstance(storage_path,str) or not storage_path:
+        raise HTTPException(503,detail={"code":"KNOWLEDGE_DELETE_PATH_INVALID","message":"Referensi penyimpanan sumber pengetahuan tidak valid."})
+    # The RPC marks the source deleting and cancels/fences all queued or leased jobs
+    # before Storage is touched. A retry after Storage failure reuses the same fence.
+    await _storage("DELETE",f"agent-knowledge/{storage_path}")
+    await _admin_db_request(
+        "DELETE","agent_knowledge_sources",
+        params={"id":f"eq.{source_id}","agent_id":f"eq.{agent_id}","owner_id":f"eq.{user['id']}","status":"eq.deleting"},
+    )
+    return None
