@@ -350,8 +350,8 @@ def test_keyword_only_repository_is_explicitly_keyword_not_hybrid(monkeypatch):
                 "id": "chunk-keyword", "source_id": "source-a", "agent_id": "agent-a",
                 "owner_id": "owner-a", "chunk_index": 0, "content": "verified keyword result",
                 "source_location": {}, "source_version": 1, "content_sha256": hashlib.sha256(b"verified keyword result").hexdigest(),
-                "agent_knowledge_sources": {"id": "source-a", "source_version": 1,
-                    "status": "ready", "sensitivity": "internal"},
+                "agent_knowledge_sources": {"id": "source-a", "owner_id": "owner-a", "agent_id": "agent-a",
+                    "source_version": 1, "status": "ready", "sensitivity": "internal"},
             }]
         return [{"agent_id": "agent-a"}]
 
