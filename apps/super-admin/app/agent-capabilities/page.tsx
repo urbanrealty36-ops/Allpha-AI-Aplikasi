@@ -6,7 +6,7 @@ import Link from "next/link";
 type Session = { access_token:string; refresh_token:string; expires_at:number; user:{id:string;email?:string} };
 type Operator = { id:string; email?:string; scopes:string[] };
 type Capability = { id:string; agent_id:string; created_by:string; capability_key:string; description:string; required_permission_scopes:string[]; risk_level:string; status:string; created_at:string };
-type RuntimePolicy = { id:string; agent_id:string; policy_version:number; policy_digest:string; approved_tool_keys:string[]; required_permission_scopes:string[]; risk_constraints?:Record<string,unknown>; status:string; created_at?:string; approved_at?:string };
+type RuntimePolicy = { id:string; agent_id:string; policy_version:string; policy_digest:string; approved_tool_keys:string[]; required_permission_scopes:string[]; risk_constraints?:Record<string,unknown>; status:string; created_at?:string; approved_at?:string };
 type RegisteredTool = { key:string; name:string; risk_level:string; execution_class:string; required_permission_scopes:string[]; executable:boolean };
 type AuthPayload = { access_token?:string; refresh_token?:string; expires_in?:number; user?:{id:string;email?:string}; error_description?:string; msg?:string };
 const apiBase=(process.env.NEXT_PUBLIC_API_BASE_URL||(process.env.NODE_ENV==="production"?"https://api.allpha.web.id":"http://localhost:8000")).replace(/\/$/,"");
@@ -127,7 +127,7 @@ export default function AgentCapabilitiesGovernancePage(){
     setBusy(true);setError("");setNotice("");
     try{
       await read(await apiFetch("/v1/admin/operator/runtime-policies",session,{method:"POST",body:JSON.stringify({
-        agent_id:policyAgentId.trim(),policy_version:Number(policyVersion),approved_tool_keys:tools,
+        agent_id:policyAgentId.trim(),policy_version:policyVersion.trim(),approved_tool_keys:tools,
         required_permission_scopes:scopes,risk_constraints:constraints,
       })}));
       setNotice("Runtime policy draft tersimpan. Belum aktif sampai operator dengan high-risk review scope menyetujuinya.");
@@ -166,7 +166,7 @@ export default function AgentCapabilitiesGovernancePage(){
     setBusy(true);setError("");setNotice("");
     try{
       const payload:Record<string,unknown>={decision,reason};
-      if(decision==="approved")payload.policy_version=Number(policyVersion);
+      if(decision==="approved")payload.policy_version=policyVersion;
       await read(await apiFetch("/v1/admin/operator/capabilities/"+encodeURIComponent(item.id)+"/review",session,{method:"POST",body:JSON.stringify(payload)}));
       setNotice(decision==="approved"?"Capability disetujui dengan policy version yang aktif. Runtime tetap memeriksa policy, scope, tool dan owner saat eksekusi.":"Capability ditolak dan tidak memperoleh otorisasi Runtime.");
       setReasons(current=>({...current,[item.id]:""}));
