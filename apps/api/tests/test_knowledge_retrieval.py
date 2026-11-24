@@ -406,6 +406,14 @@ def test_keyword_runtime_stays_disabled_without_explicit_mode_or_policy(monkeypa
     monkeypatch.setattr("allpha_api.knowledge_retrieval.os.getenv", lambda key, default="": default)
     assert request_scoped_retrieval_service(StarletteRequest(scope)) is None
 
+def test_retrieval_rejects_source_outside_active_grant_scope_even_if_adapter_is_buggy():
+    async def scenario():
+        repo = Repo(hits=[hit(source_id="00000000-0000-0000-0000-0000000000ca")])
+        with pytest.raises(KnowledgeAccessDenied, match="outside the active grant scope"):
+            await KnowledgeRetrievalService(repo, Policy()).retrieve(internal_request())
+    asyncio.run(scenario())
+
+
 def test_retrieval_rejects_cross_agent_result_even_if_adapter_is_buggy():
     async def scenario():
         repo = Repo(hits=[hit(agent_id="agent-b")])
