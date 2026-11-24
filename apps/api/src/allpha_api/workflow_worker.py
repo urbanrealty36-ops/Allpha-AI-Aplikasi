@@ -18,6 +18,7 @@ from starlette.requests import Request
 
 TERMINAL_RUN_STATES = frozenset({"succeeded", "failed", "cancelled", "timed_out"})
 TERMINAL_STEP_STATES = frozenset({"succeeded", "failed", "cancelled", "skipped"})
+RECONCILABLE_STEP_STATES = TERMINAL_STEP_STATES | frozenset({"waiting_for_approval"})
 
 
 class WorkflowWorkerError(RuntimeError):
@@ -30,6 +31,15 @@ class WorkflowOutcomeUnknown(WorkflowWorkerError):
 
 class WorkflowNodeError(WorkflowWorkerError):
     """A deterministic node input/configuration error that should not be retried."""
+
+
+class WorkflowApprovalRequired(WorkflowNodeError):
+    """A workflow step is durably paused until its owner approves it."""
+
+    def __init__(self, message: str, context: dict[str, Any] | None = None):
+        super().__init__(message)
+        self.message = message
+        self.context = context or {}
 
 
 def _as_utc(value: str | datetime) -> datetime:
@@ -95,6 +105,22 @@ def evaluate_deterministic_node(step: dict[str, Any], run: dict[str, Any]) -> di
             else:
                 merged[key] = item
         value = merged
+    elif kind == "approval":
+        checkpoint = step.get("checkpoint") or {}
+        if checkpoint.get("approval_status") == "approved":
+            value = {
+                "approved": True,
+                "approval_id": checkpoint.get("approval_id"),
+                "decision_note": checkpoint.get("approval_decision_note"),
+            }
+        else:
+            message = config.get("message")
+            if not isinstance(message, str) or not message.strip() or len(message) > 1000:
+                raise WorkflowNodeError("approval node message is invalid")
+            context = config.get("context", {})
+            if not isinstance(context, dict):
+                raise WorkflowNodeError("approval node context must be an object")
+            raise WorkflowApprovalRequired(message, context)
     else:
         # Explicit deny-by-default: never execute arbitrary code or unknown node kinds.
         raise WorkflowNodeError("unsupported workflow node kind")
@@ -358,6 +384,16 @@ async def process_next_step(
         # A lost lease or uncertain heartbeat is not a deterministic node failure.
         # Leave the claim to expire and reconcile; never finalize under a stale fence.
         raise
+    except WorkflowApprovalRequired as exc:
+        result = {
+            "output_payload": None,
+            "checkpoint": {
+                "node_key": step.get("node_key"),
+                "approval_message": exc.message,
+                "approval_context": exc.context,
+            },
+        }
+        final_state, error_code = "waiting_for_approval", "APPROVAL_REQUIRED"
     except WorkflowNodeError as exc:
         result = {"output_payload": None, "checkpoint": {"node_key": step.get("node_key"), "failed": True}}
         final_state, error_code = "failed", type(exc).__name__.upper()
@@ -380,7 +416,7 @@ async def process_next_step(
         except WorkflowPersistenceError as reconcile_exc:
             raise WorkflowOutcomeUnknown("finalize and read-after-write outcome are unknown") from reconcile_exc
         observed = _step_from_run(latest or {}, str(step["id"]))
-        if observed and observed.get("status") in TERMINAL_STEP_STATES:
+        if observed and observed.get("status") in RECONCILABLE_STEP_STATES:
             return {"outcome": "reconciled", "run_status": (latest or {}).get("status"),
                     "step_status": observed.get("status")}
         raise WorkflowOutcomeUnknown("finalize outcome is not yet observable; do not replay this claim") from exc
