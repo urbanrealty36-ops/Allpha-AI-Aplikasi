@@ -20,7 +20,7 @@ from allpha_api.embedding_adapters import (
     EmbeddingProviderConfigurationError,
     build_embedding_adapter_from_environment,
 )
-from allpha_api.embedding_metering import SupabaseEmbeddingMeteringSink
+from allpha_api.supabase_metering_sink import SupabaseMeteringSink
 from allpha_api.model_router import CanonicalModelRouter, EmbeddingRoute, ModelRouterUnavailable
 
 
@@ -271,9 +271,9 @@ async def build_embedding_router_from_environment(
             for sensitivity in sensitivities
         },
         adapters={provider_id: adapter},
-        metering_sink=SupabaseEmbeddingMeteringSink(
+        metering_sink=SupabaseMeteringSink(
             supabase_url=os.environ["SUPABASE_URL"],
-            service_role_key=os.environ["SUPABASE_SERVICE_ROLE_KEY"],
+            service_key=os.environ["SUPABASE_SERVICE_ROLE_KEY"],
             transport=transport,
         ),
         cost_budgets=budgets,
