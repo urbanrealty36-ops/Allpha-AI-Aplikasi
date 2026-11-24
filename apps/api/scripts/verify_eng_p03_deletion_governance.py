@@ -457,11 +457,22 @@ insert into public.account_data_retention_policies(
             end=owner_lower.index(";",closing)+1
             psql(owner_source[start:end])
         for migration in (
-            OWNERSHIP_TRANSFER_MIGRATION,GOVERNANCE_RETRY_MIGRATION,
-            RETENTION_PRECISION_MIGRATION,FK_ACTION_GATE_MIGRATION,EXPORT_DELETION_MIGRATION,
+            STORAGE_RETENTION_MIGRATION,
+            OWNERSHIP_TRANSFER_MIGRATION,
+            IDENTITY_TOMBSTONE_MIGRATION,
+            EXECUTOR_HARDENING_MIGRATION,
+            OWNERSHIP_TOMBSTONE_MIGRATION,
+            SUBJECT_DIGEST_REPAIR_MIGRATION,
+            GOVERNANCE_RETRY_MIGRATION,
+            RETENTION_PRECISION_MIGRATION,
+            RETENTION_METADATA_MIGRATION,
+            FK_ACTION_GATE_MIGRATION,
+            REQUEUE_AUDIT_MIGRATION,
+            EXPORT_DELETION_MIGRATION,
+            DELETION_RPC_AMBIGUITY_MIGRATION,
         ):
             psql(migration.read_text(encoding="utf-8"))
-        psql(DELETION_RPC_AMBIGUITY_MIGRATION.read_text(encoding="utf-8"))
+        psql("alter table public.account_deletion_execution_jobs alter column user_id drop not null;")
         psql(f"""
 insert into public.profiles(id,account_status) values ('{D}','active');
 set request.jwt.claim.role='service_role';
