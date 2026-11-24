@@ -25,6 +25,7 @@ on:
       - "apps/api/src/allpha_api/account_lifecycle_api.py"
       - "apps/api/tests/test_account_lifecycle_api.py"
       - "apps/api/scripts/verify_eng_p03_deletion_governance.py"
+      - "apps/api/scripts/verify_eng_p03_deletion_governance.py" # verifier source change triggers focused CI
       - "apps/api/supabase/migrations/20261123142156_eng_p03_account_deletion_executor.sql"
       - "apps/api/supabase/migrations/20261123142329_eng_p03_deletion_dependency_requeue.sql"
       - "apps/api/supabase/migrations/20261123142451_eng_p03_retention_canonical_data_classes.sql"
