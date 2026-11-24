@@ -46,7 +46,7 @@ revoke all on public.agent_runtime_tool_plans from public, anon, authenticated;
 grant all on public.agent_runtime_tool_plans to service_role;
 
 comment on table public.agent_runtime_tool_plans is
-  'Owner-scoped durable Model Router tool plans. Raw user intent and private Memory are not stored; only its digest, validated plan, and sanitized metering evidence are retained.';
+  'Owner-scoped durable Model Router tool plans. Raw user intent, private Memory and Knowledge text are not stored; only digests, validated plans, and content-free citation references are retained.';
 comment on column public.agent_runtime_tool_plans.memory_context_refs is
   'Non-content provenance references for owner-consented Memory items used by the planner.';
 comment on column public.agent_runtime_tool_plans.memory_context_sha256 is
