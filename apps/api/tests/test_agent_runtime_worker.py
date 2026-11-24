@@ -251,3 +251,19 @@ def test_disabled_worker_remains_idle_without_opening_runtime_store(monkeypatch)
             await task
 
     asyncio.run(check_idle())
+
+
+def test_shared_worker_host_can_run_workflow_without_enabling_agent_runtime(monkeypatch):
+    from allpha_api import workflow_worker_host
+
+    calls=[]
+    monkeypatch.setattr(worker,"_enabled",lambda:False)
+    monkeypatch.setattr(workflow_worker_host,"enabled",lambda:True)
+
+    async def workflow_loop():
+        calls.append("workflow")
+
+    monkeypatch.setattr(workflow_worker_host,"serve_enabled",workflow_loop)
+    asyncio.run(worker.serve())
+
+    assert calls==["workflow"]
