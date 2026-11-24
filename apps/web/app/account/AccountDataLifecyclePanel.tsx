@@ -172,6 +172,23 @@ export default function AccountDataLifecyclePanel({ apiBase, accessToken }: Prop
     } finally { setBusy(false); }
   }
 
+  async function createAllAgentOwnershipTransfers(requestId: string) {
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const payload = await request("/v1/me/deletion-requests/" + encodeURIComponent(requestId) + "/ownership-transfers/agents", {
+        method: "POST",
+        body: JSON.stringify({ successor_user_id: transferSuccessorId.trim() }),
+      });
+      const count = Number(payload?.transfer?.transferred_count ?? 0);
+      setMessage(count > 0
+        ? "Instruksi pengalihan " + count + " Agent aktif tersimpan. Executor akan memvalidasi ulang seluruh pemilik dan penerima sebelum transfer atomik."
+        : "Tidak ada Agent aktif yang perlu dialihkan.");
+      setTransferSuccessorId("");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Pengalihan seluruh Agent gagal disimpan.");
+    } finally { setBusy(false); }
+  }
+
   async function cancelDeletion(requestId: string) {
     setBusy(true); setError(""); setMessage("");
     try {
@@ -241,7 +258,7 @@ export default function AccountDataLifecyclePanel({ apiBase, accessToken }: Prop
         {openDeletion && (
           <div className="settings-layout" aria-label="Pengalihan kepemilikan sebelum penghapusan akun">
             <h4>Pengalihan kepemilikan Agent / Organisasi</h4>
-            <p className="muted">Masukkan ID resource yang benar-benar Anda miliki dan ID pengguna penerima. Backend memvalidasi kepemilikan, status akun penerima, dan keanggotaan organisasi sebelum instruksi disimpan.</p>
+            <p className="muted">Masukkan ID resource untuk satu pengalihan, atau gunakan aksi massal Agent untuk mengalihkan seluruh Agent aktif ke satu penerima. Backend memvalidasi pemilik aktif, status akun penerima, konflik kepemilikan dan keanggotaan organisasi sebelum instruksi disimpan.</p>
             <label>Jenis resource
               <select value={transferType} onChange={(event) => setTransferType(event.target.value as "agent" | "organization")}>
                 <option value="agent">AI Agent</option>
@@ -257,6 +274,11 @@ export default function AccountDataLifecyclePanel({ apiBase, accessToken }: Prop
             <button type="button" className="button-quiet" disabled={busy || !openDeletion || !transferResourceId.trim() || !transferSuccessorId.trim()} onClick={() => void createOwnershipTransfer(openDeletion.id)}>
               {busy ? "Menyimpan…" : "Simpan instruksi pengalihan"}
             </button>
+            {transferType === "agent" && (
+              <button type="button" className="button-quiet" disabled={busy || !openDeletion || !transferSuccessorId.trim()} onClick={() => void createAllAgentOwnershipTransfers(openDeletion.id)}>
+                {busy ? "Memproses…" : "Alihkan seluruh Agent aktif ke penerima ini"}
+              </button>
+            )}
           </div>
         )}
         {openDeletion ? <p className="notice">Sudah ada permintaan aktif. Batalkan permintaan tersebut sebelum mengajukan ulang.</p> : (
