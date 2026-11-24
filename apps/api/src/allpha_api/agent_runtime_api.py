@@ -295,8 +295,8 @@ def _validate_knowledge_context_provenance(
         source_version = ref.get("source_version")
         location = ref.get("source_location")
         try:
-            uuid.UUID(ref.get("source_id", ""))
-            uuid.UUID(ref.get("chunk_id", ""))
+            source_id = str(uuid.UUID(ref.get("source_id", "")))
+            chunk_id = str(uuid.UUID(ref.get("chunk_id", "")))
         except (ValueError, TypeError, AttributeError):
             raise HTTPException(status_code=409, detail={
                 "code": "TOOL_PLAN_KNOWLEDGE_PROVENANCE_INVALID",
@@ -337,9 +337,9 @@ def _validate_knowledge_context_provenance(
                     "message": "Metadata provider/index Knowledge pada rencana tidak valid.",
                 })
         normalized.append({
-            "source_id": ref["source_id"],
+            "source_id": source_id,
             "source_version": source_version,
-            "chunk_id": ref["chunk_id"],
+            "chunk_id": chunk_id,
             "source_location": {"kind": location["kind"], "index": location["index"]},
             "sensitivity": ref["sensitivity"],
             "content_sha256": ref["content_sha256"],
