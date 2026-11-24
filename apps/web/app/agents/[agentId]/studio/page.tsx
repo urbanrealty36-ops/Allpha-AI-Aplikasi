@@ -24,6 +24,8 @@ type Capability = {
 };
 type SkillVersion = { id: string; version: number; created_at: string; snapshot: { name?: string; changelog?: string; status?: string } };
 type ConsumerGrant = { id: string; requester_user_id: string; skill_id: string; granted_scopes: string[]; allowed_tool_keys?: string[]; max_tool_calls?: number; max_tool_runtime_seconds?: number; status: string; expires_at?: string | null; granted_at: string; revoked_at?: string | null; revoke_reason?: string | null };
+type PublicSkillPublication = { id: string; agent_id: string; slug: string; name: string; description: string; category: string; version: number; status: string; publication_terms: Record<string, unknown> };
+type SkillInstallation = { id: string; agent_id: string; source_agent_id: string; source_skill_id: string; source_version: number; installed_skill_id: string; status: "active"|"revoked"|"expired"; license_terms_snapshot: Record<string, unknown>; license_terms_digest: string; license_expires_at?: string | null; accepted_at: string; created_at: string };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
 async function readError(response: Response) {
@@ -90,6 +92,12 @@ export default function AgentStudioPage() {
   const [allowConsumerTools, setAllowConsumerTools] = useState(false);
   const [consumerMaxToolCalls, setConsumerMaxToolCalls] = useState("1");
   const [consumerMaxToolRuntime, setConsumerMaxToolRuntime] = useState("3");
+  const [publicSkillPublications, setPublicSkillPublications] = useState<PublicSkillPublication[]>([]);
+  const [skillInstallations, setSkillInstallations] = useState<SkillInstallation[]>([]);
+  const [selectedInstallSkillId, setSelectedInstallSkillId] = useState("");
+  const [acceptSkillLicense, setAcceptSkillLicense] = useState(false);
+  const [installError, setInstallError] = useState("");
+  const [installBusy, setInstallBusy] = useState(false);
 
   const supportsConsumerTools = (dependencies: string[]) =>
     dependencies.length > 0 && dependencies.length <= 5
@@ -123,6 +131,7 @@ export default function AgentStudioPage() {
       setRegisteredTools(Array.isArray(toolsBody.items) ? toolsBody.items.filter((tool: RegisteredTool) => tool.executable) : []);
       setKnowledgeSources(Array.isArray(knowledgeBody.items) ? knowledgeBody.items : []);
       setConsumerGrants(Array.isArray(grantsBody.items) ? grantsBody.items : []);
+      void loadSkillInstallations(active);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Agent Studio tidak dapat dimuat.");
     } finally { setLoading(false); }
@@ -172,6 +181,63 @@ export default function AgentStudioPage() {
       await load(session);
     } catch (cause) { setError(cause instanceof SyntaxError ? "JSON Schema, tests, model requirements, rubric, provenance, dan terms harus berupa JSON valid." : cause instanceof Error ? cause.message : "Skill tidak dapat disimpan."); }
     finally { setSaving(false); }
+  }
+
+  async function loadSkillInstallations(active: Session) {
+    setInstallError("");
+    const headers = { Authorization: "Bearer " + active.access_token };
+    try {
+      const [catalogResponse, installationsResponse] = await Promise.all([
+        fetch(apiBase + "/v1/agent-skills/publications?limit=100", {cache:"no-store"}),
+        fetch(apiBase + "/v1/agents/" + encodeURIComponent(agentId) + "/skill-installations", {headers,cache:"no-store"}),
+      ]);
+      if (!catalogResponse.ok) throw new Error(await readError(catalogResponse));
+      if (!installationsResponse.ok) throw new Error(await readError(installationsResponse));
+      const [catalogBody, installationsBody] = await Promise.all([catalogResponse.json(),installationsResponse.json()]);
+      setPublicSkillPublications(Array.isArray(catalogBody.items) ? catalogBody.items.filter((item: PublicSkillPublication)=>item.agent_id!==agentId) : []);
+      setSkillInstallations(Array.isArray(installationsBody.items) ? installationsBody.items : []);
+    } catch(cause) {
+      setInstallError(cause instanceof Error ? cause.message : "Katalog dan lisensi Skill tidak dapat dimuat.");
+    }
+  }
+
+  async function installPublishedSkill(publication: PublicSkillPublication) {
+    if (!session || !acceptSkillLicense) { setInstallError("Persetujuan lisensi wajib diberikan."); return; }
+    setInstallBusy(true); setInstallError(""); setNotice("");
+    try {
+      const response = await fetch(apiBase + "/v1/agents/" + encodeURIComponent(agentId) + "/skills/install", {
+        method:"POST",
+        headers:{Authorization:"Bearer "+session.access_token,"Content-Type":"application/json"},
+        body:JSON.stringify({
+          source_agent_id:publication.agent_id,source_skill_id:publication.id,source_version:publication.version,
+          accept_license:true,idempotency_key:crypto.randomUUID(),
+        }),
+      });
+      if(!response.ok) throw new Error(await readError(response));
+      const body=await response.json();
+      setNotice("Skill terpasang sebagai draft. Lisensi dan snapshot sumber tercatat; tinjau batasan lalu publikasikan melalui lifecycle owner/operator.");
+      setAcceptSkillLicense(false);setSelectedInstallSkillId("");
+      await Promise.all([load(session),loadSkillInstallations(session)]);
+      if(!body?.installation?.id) throw new Error("Database tidak mengembalikan bukti instalasi Skill.");
+    } catch(cause) { setInstallError(cause instanceof Error ? cause.message : "Instalasi Skill gagal."); }
+    finally { setInstallBusy(false); }
+  }
+
+  async function revokeSkillInstallation(installation: SkillInstallation) {
+    if(!session) return;
+    const reason=window.prompt("Alasan pencabutan lisensi (minimal 8 karakter):");
+    if(!reason || reason.trim().length<8) return;
+    setInstallBusy(true);setInstallError("");setNotice("");
+    try {
+      const response=await fetch(apiBase+"/v1/agents/"+encodeURIComponent(agentId)+"/skill-installations/"+encodeURIComponent(installation.id)+"/revoke",{
+        method:"POST",headers:{Authorization:"Bearer "+session.access_token,"Content-Type":"application/json"},
+        body:JSON.stringify({reason:reason.trim()}),
+      });
+      if(!response.ok) throw new Error(await readError(response));
+      setNotice("Instalasi lisensi dicabut. Agent Runtime menolak Skill ini dan Passport publik menyembunyikannya.");
+      await Promise.all([load(session),loadSkillInstallations(session)]);
+    } catch(cause) { setInstallError(cause instanceof Error ? cause.message : "Pencabutan lisensi gagal."); }
+    finally { setInstallBusy(false); }
   }
 
   async function retrieveKnowledge() {
@@ -434,6 +500,18 @@ export default function AgentStudioPage() {
           <label className="grid gap-1 text-sm">Changelog<input value={changelog} onChange={e => setChangelog(e.target.value)} maxLength={2000} className="rounded-lg border px-3 py-2"/></label>
           <button disabled={saving || !session} className="rounded-xl bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">{saving ? "Menyimpan…" : "Buat Skill draft"}</button>
         </form>
+        <section className="space-y-3 rounded-2xl border p-4">
+          <div><h3 className="font-semibold">Install Skill dari Agent publik</h3><p className="text-xs text-neutral-500">Instalasi memerlukan persetujuan lisensi, menyimpan snapshot sumber dan membuat draft lokal. Draft harus ditinjau sebelum dapat dipakai Runtime.</p></div>
+          {installError && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{installError}</p>}
+          <label className="grid gap-1 text-sm">Skill publik
+            <select value={selectedInstallSkillId} onChange={event=>{setSelectedInstallSkillId(event.target.value);setAcceptSkillLicense(false);}} className="rounded-lg border px-3 py-2">
+              <option value="">Pilih Skill yang dipublikasikan</option>
+              {publicSkillPublications.map(item=><option key={item.id+"-"+item.version} value={item.id}>{item.name} · {item.category} · v{item.version} · {item.agent_id.slice(0,8)}</option>)}
+            </select>
+          </label>
+          {selectedInstallSkillId && publicSkillPublications.filter(item=>item.id===selectedInstallSkillId).map(item=><div key={item.id} className="rounded-xl bg-neutral-50 p-3 text-xs"><p className="font-semibold">{item.name} · v{item.version}</p><p className="mt-1 text-neutral-600">{item.description}</p><p className="mt-2 font-semibold">Terms / license snapshot</p><pre className="mt-1 overflow-auto whitespace-pre-wrap">{JSON.stringify(item.publication_terms,null,2)}</pre><label className="mt-3 flex items-start gap-2"><input type="checkbox" checked={acceptSkillLicense} onChange={event=>setAcceptSkillLicense(event.target.checked)} className="mt-0.5"/><span>Saya menyetujui terms dan lisensi yang ditampilkan untuk versi Skill ini.</span></label><button type="button" disabled={installBusy||!acceptSkillLicense} onClick={()=>void installPublishedSkill(item)} className="mt-3 rounded-lg bg-neutral-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">{installBusy?"Memproses…":"Terima lisensi & install sebagai draft"}</button></div>)}
+          <div className="space-y-2 border-t pt-3"><p className="text-sm font-semibold">Instalasi dan lisensi Agent ini</p>{skillInstallations.length===0?<p className="text-xs text-neutral-500">Belum ada Skill yang di-install.</p>:skillInstallations.map(item=><div key={item.id} className="rounded-lg border p-3 text-xs"><p className="font-semibold">Source Skill {item.source_skill_id} · v{item.source_version}</p><p className="text-neutral-500">Installed Skill {item.installed_skill_id} · {item.status}</p><p className="text-neutral-500">License SHA-256: {item.license_terms_digest.slice(0,16)}… {item.license_expires_at?"· Exp: "+new Date(item.license_expires_at).toLocaleDateString("id-ID"):"· tanpa expiry"}</p>{item.status==="active"&&<button type="button" disabled={installBusy} onClick={()=>void revokeSkillInstallation(item)} className="mt-2 rounded-lg border border-rose-300 px-3 py-1.5 font-semibold text-rose-700 disabled:opacity-50">Cabut lisensi</button>}</div>)}</div>
+        </section>
         <div className="space-y-3 border-t pt-4">
           {loading ? <p className="text-sm text-neutral-500">Memuat Skill…</p> : skills.length === 0 ? <p className="rounded-xl border border-dashed p-4 text-sm text-neutral-600">Belum ada Skill untuk Agent ini.</p> : skills.map(skill => <article key={skill.id} className="rounded-xl border p-3">
             <div className="flex flex-wrap items-start justify-between gap-2"><div><h3 className="font-semibold">{skill.name}</h3><p className="text-xs text-neutral-500">{skill.slug} · v{skill.version}</p></div><span className="rounded-full border px-2 py-1 text-xs">{skill.status}</span></div>
