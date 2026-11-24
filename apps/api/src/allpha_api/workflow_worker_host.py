@@ -76,7 +76,7 @@ def enabled() -> bool:
     return _enabled()
 
 
-async def serve_enabled() -> None:
+async def serve_enabled(*, stop_event: asyncio.Event | None = None) -> None:
     """Run the Workflow consumer when its own flag is enabled."""
     if not _enabled():
         return
@@ -88,13 +88,14 @@ async def serve_enabled() -> None:
     except ValueError as exc:
         raise SystemExit(f"Workflow worker configuration invalid: {exc}") from exc
 
-    stop = asyncio.Event()
-    loop = asyncio.get_running_loop()
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        try:
-            loop.add_signal_handler(sig, stop.set)
-        except (NotImplementedError, RuntimeError):
-            log.debug("Signal handler unavailable for %s", sig.name)
+    stop = stop_event or asyncio.Event()
+    if stop_event is None:
+        loop = asyncio.get_running_loop()
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            try:
+                loop.add_signal_handler(sig, stop.set)
+            except (NotImplementedError, RuntimeError):
+                log.debug("Signal handler unavailable for %s", sig.name)
     log.info(
         "Workflow worker enabled; poll_seconds=%s batch_limit=%s lease_seconds=%s",
         poll_interval, limit, lease_seconds,
