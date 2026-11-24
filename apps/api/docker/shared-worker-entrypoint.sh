@@ -31,6 +31,11 @@ MaxScanSize 50M
 StreamMaxLength 20M
 CLAMD_CONFIG
 
+    cat > /run/clamav/clamdscan.conf <<'CLAMDSCAN_CONFIG'
+LocalSocket /run/clamav/clamd.ctl
+CLAMDSCAN_CONFIG
+
+    echo "Starting ClamAV daemon for Knowledge document scanning"
     gosu clamav clamd --config-file=/run/clamav/clamd.conf --foreground=true &
     CLAMD_PID=$!
     cleanup() {
@@ -41,15 +46,9 @@ CLAMD_CONFIG
 
     READY=0
     for attempt in $(seq 1 60); do
-        if gosu worker clamdscan --ping=1 >/dev/null 2>&1; then
+        if gosu worker clamdscan --config-file=/run/clamav/clamdscan.conf --ping=1 >/dev/null 2>&1; then
             READY=1
             break
-        fi
-        if ! kill -0 "$CLAMD_PID" 2>/dev/null; then
-            wait "$CLAMD_PID" || true
-            echo "Shared worker disabled: ClamAV daemon exited during startup" >&2
-            cat /var/log/clamav/clamav.log >&2 || true
-            exit 1
         fi
         sleep 2
     done
@@ -59,6 +58,7 @@ CLAMD_CONFIG
         cat /var/log/clamav/clamav.log >&2 || true
         exit 1
     fi
+    echo "ClamAV scanner is ready; starting shared Allpha consumers"
 fi
 
 exec gosu worker "$@"
