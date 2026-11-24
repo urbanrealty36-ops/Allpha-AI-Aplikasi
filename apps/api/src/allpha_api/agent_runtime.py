@@ -214,7 +214,7 @@ class AgentRuntime:
                 raise AgentRuntimeBlocked(f"required permission scope is missing: {key}")
         if envelope.knowledge_context_state not in {"not_configured", "empty", "available"}:
             raise AgentRuntimeBlocked("Knowledge context state is invalid")
-        if len(envelope.knowledge_context_refs) > 8:
+        if not isinstance(envelope.knowledge_context_refs, tuple) or len(envelope.knowledge_context_refs) > 8:
             raise AgentRuntimeBlocked("Knowledge context reference count exceeds runtime limits")
         if (envelope.knowledge_context_state == "available") != bool(envelope.knowledge_context_refs):
             raise AgentRuntimeBlocked("Knowledge context state and references are inconsistent")
@@ -225,17 +225,34 @@ class AgentRuntime:
             for ref in envelope.knowledge_context_refs:
                 if not isinstance(ref, dict) or "content" in ref:
                     raise AgentRuntimeBlocked("Knowledge context references must be content-free")
+                try:
+                    uuid.UUID(ref.get("source_id", ""))
+                    uuid.UUID(ref.get("chunk_id", ""))
+                except (ValueError, TypeError, AttributeError):
+                    raise AgentRuntimeBlocked("Knowledge context source/chunk identifiers are invalid")
+                location = ref.get("source_location")
                 if (
-                    not isinstance(ref.get("source_id"), str) or not ref["source_id"]
-                    or not isinstance(ref.get("chunk_id"), str) or not ref["chunk_id"]
-                    or not isinstance(ref.get("source_version"), int)
+                    not isinstance(ref.get("source_version"), int)
                     or isinstance(ref.get("source_version"), bool) or ref["source_version"] < 1
                     or not isinstance(ref.get("content_sha256"), str) or len(ref["content_sha256"]) != 64
+                    or any(char not in "0123456789abcdef" for char in ref["content_sha256"])
                     or not isinstance(ref.get("retrieved_content_sha256"), str) or len(ref["retrieved_content_sha256"]) != 64
+                    or any(char not in "0123456789abcdef" for char in ref["retrieved_content_sha256"])
+                    or ref.get("sensitivity") not in {"public", "internal", "confidential", "restricted"}
+                    or ref.get("retrieval_method") not in {"vector", "keyword", "hybrid"}
+                    or not isinstance(location, dict) or set(location) != {"kind", "index"}
+                    or location.get("kind") not in {"document", "page", "paragraph"}
+                    or not isinstance(location.get("index"), int)
+                    or isinstance(location.get("index"), bool) or location["index"] < 1
                 ):
                     raise AgentRuntimeBlocked("Knowledge context citation metadata is invalid")
-        elif envelope.knowledge_context_refs or envelope.knowledge_context_sha256 not in {None, ""}:
-            raise AgentRuntimeBlocked("Empty Knowledge context cannot carry references or digest")
+        elif envelope.knowledge_context_refs or (
+            envelope.knowledge_context_sha256 is not None
+            and (not isinstance(envelope.knowledge_context_sha256, str)
+                 or len(envelope.knowledge_context_sha256) != 64
+                 or any(char not in "0123456789abcdef" for char in envelope.knowledge_context_sha256))
+        ):
+            raise AgentRuntimeBlocked("Empty Knowledge context cannot carry references or invalid digest")
         if time.monotonic() >= envelope.deadline_monotonic:
             raise AgentRuntimeBlocked("task deadline has expired")
 
