@@ -546,8 +546,8 @@ def test_supabase_keyword_repository_rejects_content_digest_mismatch(monkeypatch
             "source_location": {}, "source_version": 2,
             "content_sha256": hashlib.sha256(b"original private text").hexdigest(),
             "agent_knowledge_sources": {
-                "id": "source-a", "source_version": 2, "status": "ready",
-                "sensitivity": "internal",
+                "id": "source-a", "owner_id": "owner-a", "agent_id": "agent-a",
+                "source_version": 2, "status": "ready", "sensitivity": "internal",
             },
         }]
 
