@@ -1,6 +1,9 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Platform, Pressable, Text, TextInput, View } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
+import { File as ExpoFile } from "expo-file-system";
+import { fetch as expoFetch } from "expo/fetch";
+import * as SecureStore from "expo-secure-store";
 
 type DraftTitle = {
   id: string;
@@ -70,6 +73,119 @@ async function request<T>(getAccessToken: Props["getAccessToken"], path: string,
   return body as T;
 }
 
+
+type NativeResumableUploadInit = {
+  item: CreatorMedia;
+  already_uploaded: boolean;
+  tus_endpoint?: string;
+  upload_token?: string;
+  upload_metadata?: Record<string, string>;
+  chunk_size_bytes?: number;
+};
+
+type PersistedNativeCinemaUpload = {
+  contentId: string;
+  mediaId: string;
+  filename: string;
+  size: number;
+  sha256: string;
+};
+
+function base64Ascii(value: string): string {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  let output = "";
+  for (let i = 0; i < value.length; i += 3) {
+    const a = value.charCodeAt(i) & 255;
+    const hasB = i + 1 < value.length;
+    const hasC = i + 2 < value.length;
+    const b = hasB ? value.charCodeAt(i + 1) & 255 : 0;
+    const c = hasC ? value.charCodeAt(i + 2) & 255 : 0;
+    output += alphabet[a >> 2];
+    output += alphabet[((a & 3) << 4) | (b >> 4)];
+    output += hasB ? alphabet[((b & 15) << 2) | (c >> 6)] : "=";
+    output += hasC ? alphabet[c & 63] : "=";
+  }
+  return output;
+}
+
+async function uploadNativeFileWithTus(
+  file: ExpoFile,
+  init: NativeResumableUploadInit,
+  apiKey: string,
+  mediaId: string,
+  onProgress: (percent: number) => void,
+): Promise<void> {
+  if (!init.tus_endpoint || !init.upload_token || !init.upload_metadata) {
+    throw new Error("Kontrak upload resumable dari server tidak lengkap.");
+  }
+  const urlKey = "allpha:cinema:tus:" + mediaId;
+  let uploadUrl = await SecureStore.getItemAsync(urlKey);
+  const headers = {
+    "Tus-Resumable": "1.0.0",
+    apikey: apiKey,
+    "x-signature": init.upload_token,
+  };
+  const readOffset = async (target: string): Promise<number> => {
+    const response = await expoFetch(target, { method: "HEAD", headers });
+    if (response.status === 404 || response.status === 410) return -1;
+    if (!response.ok) throw new Error("Sesi resumable Storage tidak dapat dilanjutkan.");
+    const offset = Number(response.headers.get("Upload-Offset"));
+    if (!Number.isSafeInteger(offset) || offset < 0 || offset > file.size) {
+      throw new Error("Offset upload resumable dari Storage tidak valid.");
+    }
+    return offset;
+  };
+  let offset = uploadUrl ? await readOffset(uploadUrl) : -1;
+  if (offset < 0) {
+    await SecureStore.deleteItemAsync(urlKey);
+    const metadata = Object.entries(init.upload_metadata)
+      .map(([key, value]) => key + " " + base64Ascii(value))
+      .join(",");
+    const created = await expoFetch(init.tus_endpoint, {
+      method: "POST",
+      headers: {
+        ...headers,
+        "Upload-Length": String(file.size),
+        "Upload-Metadata": metadata,
+      },
+    });
+    if (created.status === 409) throw new Error("MEDIA_OBJECT_ALREADY_EXISTS");
+    if (created.status !== 201) throw new Error("Storage menolak pembuatan sesi upload resumable.");
+    const location = created.headers.get("Location");
+    if (!location) throw new Error("Storage tidak mengembalikan URL sesi resumable.");
+    uploadUrl = new URL(location, init.tus_endpoint).toString();
+    await SecureStore.setItemAsync(urlKey, uploadUrl);
+    offset = 0;
+  }
+  onProgress(Math.min(100, Math.floor((offset / file.size) * 100)));
+  const chunkSize = init.chunk_size_bytes || 6 * 1024 * 1024;
+  while (offset < file.size) {
+    const chunk = file.slice(offset, Math.min(file.size, offset + chunkSize));
+    const response = await expoFetch(uploadUrl!, {
+      method: "PATCH",
+      headers: {
+        ...headers,
+        "Upload-Offset": String(offset),
+        "Content-Type": "application/offset+octet-stream",
+      },
+      body: chunk,
+    });
+    if (response.status === 409) {
+      const refreshed = await readOffset(uploadUrl!);
+      if (refreshed < 0) throw new Error("Sesi upload resumable telah kedaluwarsa; coba lanjutkan kembali.");
+      offset = refreshed;
+      continue;
+    }
+    if (response.status !== 204) throw new Error("Chunk video gagal dikirim; sesi tersimpan untuk dilanjutkan.");
+    const nextOffset = Number(response.headers.get("Upload-Offset"));
+    offset = Number.isSafeInteger(nextOffset) && nextOffset > offset ? nextOffset : offset + chunk.size;
+    onProgress(Math.min(100, Math.floor((offset / file.size) * 100)));
+  }
+  const finalOffset = await readOffset(uploadUrl!);
+  if (finalOffset !== file.size) throw new Error("Storage belum mengonfirmasi seluruh byte upload.");
+  onProgress(100);
+}
+
 function Action({ title, onPress, disabled = false, secondary = false }: {
   title: string; onPress: () => void; disabled?: boolean; secondary?: boolean;
 }) {
@@ -90,6 +206,7 @@ export function AiCinemaCreatorWorkspace({ getAccessToken }: Props) {
   const [uploadAsset, setUploadAsset] = useState<UploadAsset | null>(null);
   const [uploadDraftId, setUploadDraftId] = useState("");
   const [uploadIdempotencyKey, setUploadIdempotencyKey] = useState("");
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [selectedMediaId, setSelectedMediaId] = useState("");
   const [selectedTitleId, setSelectedTitleId] = useState("");
   const [title, setTitle] = useState("");
@@ -236,24 +353,75 @@ export function AiCinemaCreatorWorkspace({ getAccessToken }: Props) {
 
   async function uploadCinemaMedia() {
     if (!uploadAsset) return;
-    if (uploadAsset.size != null && (uploadAsset.size <= 0 || uploadAsset.size > 50 * 1024 * 1024)) { setError("Ukuran video harus lebih dari 0 dan maksimal 50 MiB."); return; }
-    setSaving(true); setError(""); setNotice("");
+    setSaving(true); setError(""); setNotice(""); setUploadProgress(0);
     try {
-      let contentId = uploadDraftId;
-      if (!contentId) {
-        const draft = await request<{ item: { id: string } }>(getAccessToken, "/v1/content", { method: "POST", body: JSON.stringify({ body: "", visibility: "private", content_type: "video" }) });
-        contentId = draft.item.id; setUploadDraftId(contentId);
+      const file = new ExpoFile(uploadAsset.uri);
+      const fileSize = file.size;
+      const mediaType = uploadAsset.mimeType || "video/mp4";
+      if (fileSize <= 0 || fileSize > 50 * 1024 * 1024) {
+        throw new Error("Ukuran video harus lebih dari 0 dan maksimal 50 MiB.");
       }
-      const idempotencyKey = uploadIdempotencyKey || createClientUuid();
-      setUploadIdempotencyKey(idempotencyKey);
-      const form = new FormData();
-      form.append("file", { uri: uploadAsset.uri, name: uploadAsset.name, type: uploadAsset.mimeType || "video/mp4" } as any);
-      const uploaded = await request<{ item: CreatorMedia }>(getAccessToken, "/v1/content/" + encodeURIComponent(contentId) + "/media", { method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: form });
-      setUploadAsset(null); setUploadDraftId(""); setUploadIdempotencyKey("");
-      setNotice("Video diterima pipeline media Allpha (" + (uploaded.item?.status || "uploaded") + "). Tunggu pemindaian dan transcode; media dapat dipilih setelah ready dan scan clean.");
+      if (!mediaType.startsWith("video/")) throw new Error("Pilih file video MP4 atau WebM.");
+      const digest = await file.digest("SHA-256");
+      const sessionKey = "allpha:cinema:upload:" + (selectedTitleId || "unassigned");
+      const raw = await SecureStore.getItemAsync(sessionKey);
+      let saved: PersistedNativeCinemaUpload | null = null;
+      try { saved = raw ? JSON.parse(raw) as PersistedNativeCinemaUpload : null; } catch { saved = null; }
+      const sameSavedFile = Boolean(
+        saved && saved.filename === uploadAsset.name && saved.size === fileSize && saved.sha256 === digest,
+      );
+      let contentId = sameSavedFile ? saved!.contentId : "";
+      let mediaId = sameSavedFile ? saved!.mediaId : "";
+      if (!contentId) {
+        const draft = await request<{ item: { id: string } }>(getAccessToken, "/v1/content", {
+          method: "POST",
+          body: JSON.stringify({ body: "", visibility: "private", content_type: "video" }),
+        });
+        contentId = draft.item.id;
+        mediaId = createClientUuid();
+        const next: PersistedNativeCinemaUpload = {
+          contentId, mediaId, filename: uploadAsset.name, size: fileSize, sha256: digest,
+        };
+        await SecureStore.setItemAsync(sessionKey, JSON.stringify(next));
+      }
+      setUploadDraftId(contentId);
+      setUploadIdempotencyKey(mediaId);
+      const init = await request<NativeResumableUploadInit>(
+        getAccessToken,
+        "/v1/content/" + encodeURIComponent(contentId) + "/media/resumable",
+        {
+          method: "POST",
+          headers: { "Idempotency-Key": mediaId },
+          body: JSON.stringify({
+            filename: uploadAsset.name,
+            media_type: mediaType,
+            size_bytes: fileSize,
+            sha256: digest,
+          }),
+        },
+      );
+      if (!init.already_uploaded) {
+        const publishableKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+        if (!publishableKey) throw new Error("Kunci publik Supabase belum dikonfigurasi untuk upload resumable.");
+        try {
+          await uploadNativeFileWithTus(file, init, publishableKey, mediaId, setUploadProgress);
+        } catch (cause) {
+          if (!(cause instanceof Error) || cause.message !== "MEDIA_OBJECT_ALREADY_EXISTS") throw cause;
+        }
+        await request(
+          getAccessToken,
+          "/v1/content/" + encodeURIComponent(contentId) + "/media/" + encodeURIComponent(mediaId) + "/complete",
+          { method: "POST" },
+        );
+      }
+      await SecureStore.deleteItemAsync(sessionKey);
+      await SecureStore.deleteItemAsync("allpha:cinema:tus:" + mediaId);
+      setUploadAsset(null); setUploadDraftId(""); setUploadIdempotencyKey(""); setUploadProgress(100);
+      setNotice("Upload resumable tersimpan. Media masuk pipeline scan dan transcode; pilih media setelah status ready dan scan clean.");
       await loadTitles();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Upload video AI Cinema gagal."); }
-    finally { setSaving(false); }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Upload video AI Cinema gagal. Sesi tersimpan untuk dicoba kembali.");
+    } finally { setSaving(false); }
   }
 
   async function createTitle() {
