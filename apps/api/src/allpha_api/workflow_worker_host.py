@@ -71,12 +71,15 @@ async def run_forever(
             pass
 
 
-def main() -> None:
-    logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
-    if not _enabled():
-        log.info("Workflow worker is disabled; set ALLPHA_WORKFLOW_WORKER_ENABLED=true in an approved worker environment to enable")
-        return
+def enabled() -> bool:
+    """Expose the explicit worker gate to the shared Railway worker host."""
+    return _enabled()
 
+
+async def serve_enabled() -> None:
+    """Run the Workflow consumer when its own flag is enabled."""
+    if not _enabled():
+        return
     poll_interval = _bounded_int("ALLPHA_WORKFLOW_POLL_INTERVAL_SECONDS", 5, 1, 60)
     limit = _bounded_int("ALLPHA_WORKFLOW_BATCH_LIMIT", 25, 1, 100)
     lease_seconds = _bounded_int("ALLPHA_WORKFLOW_LEASE_SECONDS", 30, 5, 120)
@@ -85,23 +88,29 @@ def main() -> None:
     except ValueError as exc:
         raise SystemExit(f"Workflow worker configuration invalid: {exc}") from exc
 
-    async def serve() -> None:
-        stop = asyncio.Event()
-        loop = asyncio.get_running_loop()
-        for sig in (signal.SIGINT, signal.SIGTERM):
-            try:
-                loop.add_signal_handler(sig, stop.set)
-            except (NotImplementedError, RuntimeError):
-                log.debug("Signal handler unavailable for %s", sig.name)
-        await run_forever(
-            store,
-            poll_interval_seconds=poll_interval,
-            limit=limit,
-            lease_seconds=lease_seconds,
-            stop_event=stop,
-        )
+    stop = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(sig, stop.set)
+        except (NotImplementedError, RuntimeError):
+            log.debug("Signal handler unavailable for %s", sig.name)
+    log.info(
+        "Workflow worker enabled; poll_seconds=%s batch_limit=%s lease_seconds=%s",
+        poll_interval, limit, lease_seconds,
+    )
+    await run_forever(
+        store, poll_interval_seconds=poll_interval, limit=limit,
+        lease_seconds=lease_seconds, stop_event=stop,
+    )
 
-    asyncio.run(serve())
+
+def main() -> None:
+    logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
+    if not _enabled():
+        log.info("Workflow worker is disabled; shared host remains available for other worker domains")
+        return
+    asyncio.run(serve_enabled())
 
 
 if __name__ == "__main__":
