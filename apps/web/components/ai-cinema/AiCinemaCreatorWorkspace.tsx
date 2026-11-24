@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { getBrowserSupabase } from "@/lib/supabase";
+import { getBrowserSupabase, getBrowserSupabasePublishableKey } from "@/lib/supabase";
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
@@ -669,9 +669,10 @@ export default function AiCinemaCreatorWorkspace() {
       );
       if (!init.already_uploaded) {
         const supabase = getBrowserSupabase();
-        if (!supabase) throw new Error("Autentikasi Storage belum tersedia.");
+        const publishableKey = getBrowserSupabasePublishableKey();
+        if (!supabase || !publishableKey) throw new Error("Autentikasi Storage belum tersedia.");
         try {
-          await uploadFileWithTus(uploadFile, init, supabase.supabaseKey, mediaId, setUploadProgress);
+          await uploadFileWithTus(uploadFile, init, publishableKey, mediaId, setUploadProgress);
         } catch (cause) {
           if (!(cause instanceof Error) || cause.message !== "MEDIA_OBJECT_ALREADY_EXISTS") throw cause;
         }
