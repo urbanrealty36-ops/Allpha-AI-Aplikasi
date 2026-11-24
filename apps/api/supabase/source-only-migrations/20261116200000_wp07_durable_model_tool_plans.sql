@@ -36,7 +36,7 @@ create table if not exists public.agent_runtime_tool_plans (
   knowledge_context_state text not null default 'not_configured'
     check (knowledge_context_state in ('not_configured','empty','available')),
   error_code text check (error_code is null or char_length(error_code) between 1 and 120),
-  task_id uuid references public.agent_runtime_tasks(id) on delete set null,
+  task_id uuid references public.agent_runtime_tasks(id) on delete cascade,
   expires_at timestamptz not null default (now() + interval '10 minutes'),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
