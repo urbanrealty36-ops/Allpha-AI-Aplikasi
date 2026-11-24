@@ -35,6 +35,7 @@ on:
       - "apps/api/supabase/migrations/20261123165316_eng_p03_source_policy_classification.sql"
       - "apps/api/supabase/migrations/20261124012454_eng_p03_requeue_audit_trail.sql"
       - "apps/api/supabase/migrations/20261124015229_eng_p03_account_export_deletion_lifecycle.sql"
+      - "apps/api/supabase/migrations/20261124020721_eng_p03_account_deletion_rpc_ambiguity_fix.sql"
       - "apps/web/app/account/AccountDataLifecyclePanel.tsx"
       - "apps/client/components/AccountDataLifecycleScreen.tsx"
       - "apps/api/src/allpha_api/stripe_billing_api.py"
