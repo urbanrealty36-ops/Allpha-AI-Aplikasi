@@ -17,6 +17,7 @@ FILES=[
  MIGRATIONS/"20261124045115_eng_p07_knowledge_document_enqueue.sql",
  MIGRATIONS/"20261124045158_eng_p07_knowledge_document_failure_atomic.sql",
  MIGRATIONS/"20261124050240_eng_p07_knowledge_source_delete_fence.sql",
+ MIGRATIONS/"20261124052416_eng_p07_delete_fence_owner_atomicity.sql",
 ]
 NAME="allpha-p07-knowledge-"+uuid.uuid4().hex[:8]
 OWNER="11111111-1111-4111-8111-111111111111"
@@ -67,6 +68,12 @@ create extension if not exists pgcrypto with schema extensions;
 create function auth.uid() returns uuid language sql stable as $uid$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $uid$;
 create table auth.users(id uuid primary key);
 create table public.ai_agents(id uuid primary key);
+create table public.agent_ownerships(
+ agent_id uuid not null references public.ai_agents(id),
+ owner_user_id uuid not null references auth.users(id),
+ ownership_role text not null,status text not null,
+ primary key(agent_id,owner_user_id,ownership_role)
+);
 create table public.agent_knowledge_sources(
  id uuid primary key,agent_id uuid not null,owner_id uuid not null,filename text not null,
  media_type text not null,size_bytes bigint not null,sha256 text not null,storage_path text not null,
@@ -98,6 +105,8 @@ grant all on storage.objects to authenticated,service_role;
   psql(f"""
 insert into auth.users(id) values('{OWNER}');
 insert into public.ai_agents(id) values('{AGENT}');
+insert into public.agent_ownerships(agent_id,owner_user_id,ownership_role,status)
+ values('{AGENT}','{OWNER}','owner','active');
 insert into public.agent_knowledge_sources(id,agent_id,owner_id,filename,media_type,size_bytes,sha256,storage_path,status,processing_stage,provenance)
 values('{SOURCE}','{AGENT}','{OWNER}','notes.txt','text/plain',5,encode(extensions.digest('alpha','sha256'),'hex'),
  '{OWNER}/{AGENT}/{SOURCE}/notes.txt','quarantined','awaiting_malware_scan','{{"sensitivity":"internal"}}');
@@ -198,6 +207,12 @@ begin
  end if;
 end $do$;
 """)
+  unauthorized_delete=psql(f"""
+set role service_role;
+select public.begin_agent_knowledge_source_delete('{SOURCE_RETRY}','{AGENT}','99999999-9999-4999-8999-999999999999');
+""",check=False)
+  if unauthorized_delete.returncode==0 or "AGENT_OWNER_REQUIRED" not in unauthorized_delete.stderr:
+   raise RuntimeError("Knowledge source deletion fence accepted a non-owner")
   psql(f"""
 set role service_role;
 select public.begin_agent_knowledge_source_delete('{SOURCE}','{AGENT}','{OWNER}');
