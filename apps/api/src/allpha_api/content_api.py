@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 import httpx
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
@@ -44,6 +44,14 @@ class ContentCreate(BaseModel):
     visibility: str = Field(default="public", pattern="^(public|followers|private)$")
     content_type: str = Field(default="text", pattern="^(text|image|video|audio|story)$")
     ai_agent_id: uuid.UUID | None = None
+
+
+class ResumableMediaInit(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    filename: str = Field(min_length=1, max_length=120)
+    media_type: str = Field(min_length=1, max_length=80)
+    size_bytes: int = Field(gt=0, le=VIDEO_LIMIT)
+    sha256: str = Field(pattern="^[0-9a-f]{64}$")
 
 
 class ContentUpdate(BaseModel):
@@ -222,7 +230,267 @@ async def list_content_versions(content_id: uuid.UUID, request: Request, user: d
     return {"items": rows or [], "limit": 50}
 
 
+async def _create_resumable_upload_token(storage_path: str) -> tuple[str, str]:
+    base, key = _config()
+    signed_path = (
+        f"{base}/storage/v1/object/upload/sign/content-media/"
+        f"{quote(storage_path, safe='/')}"
+    )
+    headers = {
+        "apikey": key,
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(15, connect=5)) as client:
+            response = await client.post(signed_path, headers=headers, json={"upsert": False})
+    except httpx.HTTPError as exc:
+        raise HTTPException(503, detail={
+            "code": "CONTENT_UPLOAD_SIGNING_UNAVAILABLE",
+            "message": "Otorisasi unggah resumable sementara tidak tersedia.",
+        }) from exc
+    if response.status_code >= 300:
+        raise HTTPException(503, detail={
+            "code": "CONTENT_UPLOAD_SIGNING_FAILED",
+            "message": "Storage tidak dapat menerbitkan token unggah terbatas.",
+        })
+    try:
+        token = response.json().get("token")
+    except (ValueError, AttributeError):
+        token = None
+    if not isinstance(token, str) or not token.strip():
+        raise HTTPException(503, detail={
+            "code": "CONTENT_UPLOAD_SIGNING_INVALID",
+            "message": "Storage mengembalikan token unggah yang tidak valid.",
+        })
+    parts = urlsplit(base)
+    host = parts.netloc
+    if host.endswith(".supabase.co"):
+        host = host[:-len(".supabase.co")] + ".storage.supabase.co"
+    endpoint = f"{parts.scheme}://{host}/storage/v1/upload/resumable"
+    return token, endpoint
+
+
+def _media_signature_valid(media_type: str, data: bytes) -> bool:
+    signatures = {
+        "image/jpeg": lambda b: b.startswith(bytes.fromhex("ffd8ff")),
+        "image/png": lambda b: b.startswith(bytes.fromhex("89504e470d0a1a0a")),
+        "image/webp": lambda b: len(b) >= 12 and b[:4] == b"RIFF" and b[8:12] == b"WEBP",
+        "video/mp4": lambda b: len(b) >= 12 and b[4:8] == b"ftyp",
+        "video/webm": lambda b: b.startswith(bytes.fromhex("1a45dfa3")),
+        "audio/mpeg": lambda b: b.startswith(b"ID3") or (len(b) >= 2 and b[0] == 0xFF and (b[1] & 0xE0) == 0xE0),
+        "audio/mp4": lambda b: len(b) >= 12 and b[4:8] == b"ftyp",
+        "audio/aac": lambda b: len(b) >= 2 and b[0] == 0xFF and (b[1] & 0xF6) == 0xF0,
+        "audio/ogg": lambda b: b.startswith(b"OggS"),
+        "audio/wav": lambda b: len(b) >= 12 and b[:4] == b"RIFF" and b[8:12] == b"WAVE",
+        "audio/webm": lambda b: b.startswith(bytes.fromhex("1a45dfa3")),
+    }
+    checker = signatures.get(media_type)
+    return bool(checker and checker(data))
+
+
+@router.post("/{content_id}/media/resumable", status_code=201)
+async def init_resumable_media_upload(
+    content_id: uuid.UUID,
+    payload: ResumableMediaInit,
+    request: Request,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    content = await _owner_content(content_id, str(user["id"]))
+    if content["status"] not in ("draft", "failed"):
+        raise HTTPException(409, detail={
+            "code": "CONTENT_NOT_EDITABLE",
+            "message": "Media hanya dapat ditambahkan ke draft.",
+        })
+    media_type = payload.media_type.lower().split(";")[0].strip()
+    spec = ALLOWED_MEDIA.get(media_type)
+    if not spec:
+        raise HTTPException(415, detail={
+            "code": "MEDIA_TYPE_UNSUPPORTED",
+            "message": "Format media tidak didukung oleh pipeline Allpha.",
+        })
+    if payload.size_bytes > spec[1]:
+        raise HTTPException(413, detail={
+            "code": "MEDIA_TOO_LARGE",
+            "message": "Ukuran media melampaui batas yang dikonfigurasi untuk format ini.",
+        })
+    raw_key = request.headers.get("Idempotency-Key")
+    try:
+        media_id = str(uuid.UUID(raw_key)) if raw_key else ""
+    except (ValueError, AttributeError) as exc:
+        raise HTTPException(400, detail={
+            "code": "MEDIA_IDEMPOTENCY_KEY_INVALID",
+            "message": "Idempotency-Key wajib berupa UUID yang valid.",
+        }) from exc
+    if not raw_key:
+        raise HTTPException(400, detail={
+            "code": "MEDIA_IDEMPOTENCY_KEY_REQUIRED",
+            "message": "Idempotency-Key wajib dikirim untuk unggah resumable.",
+        })
+    safe_name = re.sub(
+        r"[^a-zA-Z0-9._-]+", "-",
+        payload.filename.split("/")[-1].split("\\\\")[-1],
+    )[:100].strip(".-") or "media"
+    storage_path = f"{user['id']}/{content_id}/{media_id}-{safe_name}"
+    existing = await _server_db("GET", "content_media", params={
+        "select": MEDIA_FIELDS, "id": f"eq.{media_id}",
+        "owner_id": f"eq.{user['id']}", "limit": "1",
+    })
+    prior = existing[0] if existing else None
+    if prior:
+        if (
+            str(prior.get("content_id")) != str(content_id)
+            or prior.get("sha256") != payload.sha256
+            or prior.get("media_type") != media_type
+            or int(prior.get("size_bytes") or 0) != payload.size_bytes
+            or prior.get("filename") != safe_name
+        ):
+            raise HTTPException(409, detail={
+                "code": "MEDIA_IDEMPOTENCY_KEY_REUSED",
+                "message": "Idempotency-Key sudah terikat ke file yang berbeda.",
+            })
+        if prior.get("status") in ("uploaded", "processing", "ready"):
+            return {"item": prior, "already_uploaded": True}
+        if prior.get("status") == "failed":
+            reset = await _server_db("PATCH", "content_media", params={
+                "id": f"eq.{media_id}", "owner_id": f"eq.{user['id']}",
+                "status": "eq.failed", "select": MEDIA_FIELDS,
+            }, body={"status": "uploading"}, prefer="return=representation")
+            if not reset:
+                raise HTTPException(409, detail={
+                    "code": "MEDIA_UPLOAD_STATE_CONFLICT",
+                    "message": "Status unggahan berubah; muat ulang sebelum mencoba lagi.",
+                })
+            prior = reset[0]
+        elif prior.get("status") != "uploading":
+            raise HTTPException(409, detail={
+                "code": "MEDIA_UPLOAD_STATE_CONFLICT",
+                "message": "Media tidak berada pada status yang dapat dilanjutkan.",
+            })
+        storage_path = str(prior["storage_path"])
+    else:
+        reserved = await _server_db("POST", "content_media", body={
+            "id": media_id, "content_id": str(content_id), "owner_id": user["id"],
+            "bucket_id": "content-media", "storage_path": storage_path,
+            "filename": safe_name, "media_type": media_type,
+            "size_bytes": payload.size_bytes, "sha256": payload.sha256,
+            "status": "uploading",
+        }, prefer="return=representation")
+        if not reserved:
+            raise HTTPException(503, detail={
+                "code": "MEDIA_UPLOAD_RESERVATION_UNCONFIRMED",
+                "message": "Reservasi unggah belum dapat dikonfirmasi.",
+            })
+        prior = reserved[0]
+
+    token, endpoint = await _create_resumable_upload_token(storage_path)
+    return {
+        "item": prior,
+        "already_uploaded": False,
+        "tus_endpoint": endpoint,
+        "upload_token": token,
+        "upload_metadata": {
+            "bucketName": "content-media",
+            "objectName": storage_path,
+            "contentType": media_type,
+            "cacheControl": "3600",
+        },
+        "chunk_size_bytes": 6 * 1024 * 1024,
+        "upload_token_expires_in_seconds": 7200,
+    }
+
+
+@router.post("/{content_id}/media/{media_id}/complete")
+async def complete_resumable_media_upload(
+    content_id: uuid.UUID,
+    media_id: uuid.UUID,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    content = await _owner_content(content_id, str(user["id"]))
+    media_rows = await _server_db("GET", "content_media", params={
+        "select": MEDIA_FIELDS, "id": f"eq.{media_id}",
+        "content_id": f"eq.{content_id}", "owner_id": f"eq.{user['id']}",
+        "limit": "1",
+    })
+    if not media_rows:
+        raise HTTPException(404, detail={
+            "code": "MEDIA_UPLOAD_NOT_FOUND",
+            "message": "Sesi unggah tidak ditemukan.",
+        })
+    media = media_rows[0]
+    if media.get("status") in ("uploaded", "processing", "ready"):
+        return {"item": media, "idempotent_replay": True}
+    if media.get("status") != "uploading":
+        raise HTTPException(409, detail={
+            "code": "MEDIA_UPLOAD_STATE_CONFLICT",
+            "message": "Sesi unggah tidak berada pada status uploading.",
+        })
+    try:
+        stored = await _storage(
+            "GET",
+            f"{media['bucket_id']}/{media['storage_path']}",
+        )
+    except HTTPException as exc:
+        raise HTTPException(409, detail={
+            "code": "MEDIA_UPLOAD_INCOMPLETE",
+            "message": "Objek Storage belum tersedia; lanjutkan unggah lalu coba konfirmasi kembali.",
+        }) from exc
+    data = stored.content
+    if len(data) != int(media["size_bytes"]):
+        raise HTTPException(409, detail={
+            "code": "MEDIA_UPLOAD_SIZE_MISMATCH",
+            "message": "Ukuran objek Storage belum sesuai dengan reservasi unggah.",
+        })
+    import hashlib
+    if hashlib.sha256(data).hexdigest() != media["sha256"]:
+        raise HTTPException(422, detail={
+            "code": "MEDIA_UPLOAD_HASH_MISMATCH",
+            "message": "Hash objek Storage tidak sesuai dengan fingerprint unggah.",
+        })
+    if not _media_signature_valid(str(media["media_type"]), data[:32]):
+        raise HTTPException(422, detail={
+            "code": "MEDIA_SIGNATURE_INVALID",
+            "message": "Isi file tidak sesuai dengan format media yang dipilih.",
+        })
+    content_type = (
+        "story" if content.get("content_type") == "story"
+        else "video" if str(media["media_type"]).startswith("video/")
+        else "audio" if str(media["media_type"]).startswith("audio/")
+        else "image"
+    )
+    updated_content = await _server_db("PATCH", "content_items", params={
+        "id": f"eq.{content_id}", "owner_id": f"eq.{user['id']}",
+        "status": "in.(draft,failed)", "version": f"eq.{int(content.get('version') or 1)}",
+        "select": CONTENT_FIELDS,
+    }, body={
+        "status": "draft", "content_type": content_type,
+        "version": int(content.get("version") or 1) + 1,
+    }, prefer="return=representation")
+    if not updated_content:
+        raise HTTPException(409, detail={
+            "code": "CONTENT_UPLOAD_CONFLICT",
+            "message": "Draft berubah saat unggah selesai; muat ulang sebelum konfirmasi.",
+        })
+    updated_media = await _server_db("PATCH", "content_media", params={
+        "id": f"eq.{media_id}", "owner_id": f"eq.{user['id']}",
+        "status": "eq.uploading", "select": MEDIA_FIELDS,
+    }, body={"status": "uploaded"}, prefer="return=representation")
+    if not updated_media:
+        latest = await _server_db("GET", "content_media", params={
+            "select": MEDIA_FIELDS, "id": f"eq.{media_id}",
+            "owner_id": f"eq.{user['id']}", "limit": "1",
+        })
+        if latest and latest[0].get("status") in ("uploaded", "processing", "ready"):
+            return {"item": latest[0], "idempotent_replay": True}
+        raise HTTPException(409, detail={
+            "code": "MEDIA_UPLOAD_STATE_CONFLICT",
+            "message": "Status media berubah; muat ulang sebelum konfirmasi.",
+        })
+    return {"item": updated_media[0], "content": updated_content[0], "idempotent_replay": False}
+
+
 @router.post("/{content_id}/media", status_code=201)
+async def upload_media@router.post("/{content_id}/media", status_code=201)
 async def upload_media(content_id: uuid.UUID, request: Request, file: UploadFile = File(...), user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     content = await _owner_content(content_id, str(user["id"]))
     if content["status"] not in ("draft", "failed"):
