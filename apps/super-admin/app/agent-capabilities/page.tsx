@@ -7,6 +7,7 @@ type Session = { access_token:string; refresh_token:string; expires_at:number; u
 type Operator = { id:string; email?:string; scopes:string[] };
 type Capability = { id:string; agent_id:string; created_by:string; capability_key:string; description:string; required_permission_scopes:string[]; risk_level:string; status:string; created_at:string };
 type RuntimePolicy = { id:string; agent_id:string; policy_version:number; policy_digest:string; approved_tool_keys:string[]; required_permission_scopes:string[]; risk_constraints?:Record<string,unknown>; status:string; created_at?:string; approved_at?:string };
+type RegisteredTool = { key:string; name:string; risk_level:string; execution_class:string; required_permission_scopes:string[]; executable:boolean };
 type AuthPayload = { access_token?:string; refresh_token?:string; expires_in?:number; user?:{id:string;email?:string}; error_description?:string; msg?:string };
 const apiBase=(process.env.NEXT_PUBLIC_API_BASE_URL||(process.env.NODE_ENV==="production"?"https://api.allpha.web.id":"http://localhost:8000")).replace(/\/$/,"");
 const supabaseUrl=(process.env.NEXT_PUBLIC_SUPABASE_URL||"").replace(/\/$/,"");
@@ -54,11 +55,14 @@ export default function AgentCapabilitiesGovernancePage(){
   const [policyDrafts,setPolicyDrafts]=useState<RuntimePolicy[]>([]);
   const [policyApproved,setPolicyApproved]=useState<RuntimePolicy[]>([]);
   const [policyRevoked,setPolicyRevoked]=useState<RuntimePolicy[]>([]);
+  const [registeredTools,setRegisteredTools]=useState<RegisteredTool[]>([]);
 
   const load=useCallback(async(active:Session)=>{
     const access=await read<{operator:Operator}>(await apiFetch("/v1/admin/operator/access",active));
     if(!access.operator.scopes.includes("platform:capabilities.review"))throw new Error("Scope platform:capabilities.review diperlukan.");
     setOperator(access.operator);
+    const toolsBody=await read<{items:RegisteredTool[]}>(await apiFetch("/v1/tools",active));
+    setRegisteredTools((toolsBody.items||[]).filter(tool=>tool.executable));
     const body=await read<{items:Capability[]}>(await apiFetch("/v1/admin/operator/capabilities?limit=100",active));
     const items=body.items||[];setRequests(items);
     const agentIds=[...new Set(items.map(item=>item.agent_id))];
@@ -118,6 +122,8 @@ export default function AgentCapabilitiesGovernancePage(){
     if(!policyAgentId.trim()||!Number.isInteger(Number(policyVersion))||Number(policyVersion)<1||!tools.length){
       setError("Agent UUID, policy version dan minimal satu tool key wajib diisi.");return;
     }
+    const unknownTools=tools.filter(key=>!registeredTools.some(tool=>tool.key===key));
+    if(unknownTools.length){setError("Tool key tidak terdaftar: "+unknownTools.join(", "));return;}
     setBusy(true);setError("");setNotice("");
     try{
       await read(await apiFetch("/v1/admin/operator/runtime-policies",session,{method:"POST",body:JSON.stringify({
@@ -184,7 +190,7 @@ export default function AgentCapabilitiesGovernancePage(){
         <div className="grid gap-3 md:grid-cols-[1fr_auto]"><label className="grid gap-1 text-sm">Target Agent UUID<input className={field} value={policyAgentId} onChange={e=>setPolicyAgentId(e.target.value)} placeholder="UUID Agent"/></label><button type="button" disabled={busy||!policyAgentId.trim()} onClick={()=>void loadPolicyInventory()} className="self-end rounded-xl border px-4 py-2 text-sm disabled:opacity-50">Load policy inventory</button></div>
         <form onSubmit={createRuntimePolicy} className="grid gap-3 rounded-xl bg-slate-50 p-3 dark:bg-slate-900 md:grid-cols-2">
           <label className="grid gap-1 text-sm">Policy version<input className={field} type="number" min="1" step="1" value={policyVersion} onChange={e=>setPolicyVersion(e.target.value)} required/></label>
-          <label className="grid gap-1 text-sm">Approved tool keys (comma separated)<input className={field} value={policyTools} onChange={e=>setPolicyTools(e.target.value)} placeholder="web_search, knowledge_search" required/></label>
+          <label className="grid gap-1 text-sm">Approved tool keys (comma separated)<input className={field} value={policyTools} onChange={e=>setPolicyTools(e.target.value)} placeholder="web_search, knowledge_search" required/></label><p className="text-xs text-slate-500 md:col-span-2">Registered tools: {registeredTools.map(tool=>tool.key+" · "+tool.risk_level).join(", ")||"Tool registry belum tersedia."}</p>
           <label className="grid gap-1 text-sm md:col-span-2">Required permission scopes (comma separated)<input className={field} value={policyScopes} onChange={e=>setPolicyScopes(e.target.value)} placeholder="network.read, knowledge.read"/></label>
           <label className="grid gap-1 text-sm md:col-span-2">Risk constraints JSON<textarea className={field} rows={3} value={policyConstraints} onChange={e=>setPolicyConstraints(e.target.value)}/></label>
           <button disabled={busy||!operator?.scopes.includes("platform:capabilities.review")} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 md:col-span-2">Create runtime policy draft</button>
