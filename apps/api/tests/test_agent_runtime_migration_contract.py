@@ -79,7 +79,7 @@ def test_durable_tool_plan_reservations_are_owner_idempotent_and_do_not_store_ra
     assert "foreign key (skill_id, agent_id)" in sql
     assert "enable row level security" in sql
     assert "grant all on public.agent_runtime_tool_plans to service_role" in sql
-    assert "raw user intent and private memory are not stored" in sql
+    assert "raw user intent, private memory and knowledge text are not stored" in sql
 
 
 def test_runtime_heartbeat_and_retry_migrations_preserve_uncertain_effects():
