@@ -567,6 +567,35 @@ async def _execute_planned_task(
     plan = _stored_tool_plan(row)
     if plan is None:
         raise HTTPException(status_code=409, detail={"code": "TASK_PLAN_MISSING", "message": "Rencana tool tidak tersedia."})
+    task_input_payload = row.get("input_payload") if isinstance(row.get("input_payload"), dict) else {}
+    knowledge_refs, knowledge_digest, knowledge_state = _validate_knowledge_context_provenance(
+        task_input_payload.get("knowledge_context_refs") or [],
+        task_input_payload.get("knowledge_context_sha256") or hashlib.sha256(b"[]").hexdigest(),
+        task_input_payload.get("knowledge_context_state") or "not_configured",
+    )
+    if knowledge_state == "available":
+        policy_resolver = load_policy_resolver_from_environment()
+        if policy_resolver is None:
+            raise AgentRuntimePersistenceError("Knowledge policy resolver is unavailable at task execution")
+        try:
+            resolved_knowledge_policy = await policy_resolver.resolve(owner_id=owner_id, agent_id=str(row["agent_id"]))
+        except KnowledgePolicyDenied as exc:
+            raise HTTPException(status_code=403, detail={
+                "code": "KNOWLEDGE_POLICY_REVOKED",
+                "message": "Izin Knowledge telah dicabut sebelum Agent task dieksekusi.",
+            }) from exc
+        except KnowledgePolicyUnavailable as exc:
+            raise AgentRuntimePersistenceError("Knowledge policy cannot be revalidated at task execution") from exc
+        if any(ref["sensitivity"] not in resolved_knowledge_policy.allowed_sensitivities for ref in knowledge_refs):
+            raise HTTPException(status_code=403, detail={
+                "code": "KNOWLEDGE_POLICY_SCOPE_CHANGED",
+                "message": "Klasifikasi Knowledge tidak lagi diizinkan untuk Agent context.",
+            })
+        if not await store.validate_knowledge_context_refs(owner_id, str(row["agent_id"]), knowledge_refs):
+            raise HTTPException(status_code=409, detail={
+                "code": "TOOL_PLAN_KNOWLEDGE_SNAPSHOT_STALE",
+                "message": "Sumber atau chunk Knowledge berubah sebelum eksekusi. Buat rencana baru.",
+            })
     agent = await store.get_agent(owner_id, str(row["agent_id"]))
     skill = await store.get_skill(owner_id, str(row["agent_id"]), str(row["skill_id"]), version=int(row.get("skill_version") or 0))
     if not agent or not skill or skill.get("status") != "published":
@@ -758,6 +787,9 @@ async def _execute_planned_task(
                 idempotency_key=f"{row['idempotency_key']}:{step['step_id']}",
                 trace_id=str(row["trace_id"]), deadline_monotonic=deadline,
                 max_tool_calls=max_calls, max_runtime_seconds=max_runtime,
+                knowledge_context_refs=tuple(knowledge_refs),
+                knowledge_context_sha256=knowledge_digest,
+                knowledge_context_state=knowledge_state,
             )
             task = AgentTask(envelope)
 
