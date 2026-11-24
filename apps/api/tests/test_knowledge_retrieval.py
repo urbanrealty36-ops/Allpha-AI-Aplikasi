@@ -50,7 +50,7 @@ class Repo:
 def hit(**overrides):
     value = dict(
         owner_id="owner-a", agent_id="agent-a", source_id="source-a", source_version=1,
-        chunk_id="chunk-a", content="matching source excerpt", content_sha256="a" * 64,
+        chunk_id="chunk-a", content="matching source excerpt", content_sha256=hashlib.sha256(b"matching source excerpt").hexdigest(),
         source_location={"kind":"page","index":1}, sensitivity="internal",
         retrieval_method="hybrid", score=0.5, index_generation=None,
     )
@@ -556,5 +556,15 @@ def test_supabase_keyword_repository_rejects_content_digest_mismatch(monkeypatch
                 owner_id="owner-a", agent_id="agent-a", query="private phrase",
                 allowed_sensitivities=["internal"], limit=5, trace_id="trace-digest",
             )
+
+    asyncio.run(scenario())
+
+
+
+def test_retrieval_service_rejects_content_digest_mismatch():
+    async def scenario():
+        repo = Repo(hits=[hit(content="tampered excerpt", content_sha256=hashlib.sha256(b"original excerpt").hexdigest())])
+        with pytest.raises(KnowledgeRetrievalUnavailable, match="content digest"):
+            await KnowledgeRetrievalService(repo, Policy()).retrieve(internal_request())
 
     asyncio.run(scenario())
