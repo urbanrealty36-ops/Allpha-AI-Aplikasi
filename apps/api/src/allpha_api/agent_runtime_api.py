@@ -262,7 +262,7 @@ def _validate_knowledge_context_provenance(
     refs: Any, digest: Any, state: Any,
 ) -> tuple[list[dict[str, Any]], str, str]:
     empty_digest = hashlib.sha256(b"[]").hexdigest()
-    if state not in {"not_configured", "empty", "available"}:
+    if not isinstance(state, str) or state not in {"not_configured", "empty", "available"}:
         raise HTTPException(status_code=409, detail={
             "code": "TOOL_PLAN_KNOWLEDGE_PROVENANCE_INVALID",
             "message": "Status provenance Knowledge pada rencana tidak valid.",
@@ -277,7 +277,7 @@ def _validate_knowledge_context_provenance(
             "code": "TOOL_PLAN_KNOWLEDGE_PROVENANCE_INVALID",
             "message": "Daftar referensi Knowledge pada rencana tidak valid.",
         })
-    if (state == "available") != bool(refs):
+    if (state == "available") != bool(refs) or (state == "available" and digest == empty_digest):
         raise HTTPException(status_code=409, detail={
             "code": "TOOL_PLAN_KNOWLEDGE_PROVENANCE_INVALID",
             "message": "Status dan daftar referensi Knowledge pada rencana tidak konsisten.",
@@ -296,11 +296,14 @@ def _validate_knowledge_context_provenance(
             not isinstance(ref.get("source_id"), str) or not ref["source_id"]
             or not isinstance(ref.get("chunk_id"), str) or not ref["chunk_id"]
             or not isinstance(source_version, int) or isinstance(source_version, bool) or source_version < 1
-            or ref.get("sensitivity") not in {"public", "internal", "confidential", "restricted"}
-            or ref.get("retrieval_method") not in {"vector", "keyword", "hybrid"}
+            or not isinstance(ref.get("sensitivity"), str)
+            or ref["sensitivity"] not in {"public", "internal", "confidential", "restricted"}
+            or not isinstance(ref.get("retrieval_method"), str)
+            or ref["retrieval_method"] not in {"vector", "keyword", "hybrid"}
             or not isinstance(location, dict)
             or set(location) != {"kind", "index"}
-            or location.get("kind") not in {"document", "page", "paragraph"}
+            or not isinstance(location.get("kind"), str)
+            or location["kind"] not in {"document", "page", "paragraph"}
             or not isinstance(location.get("index"), int) or isinstance(location.get("index"), bool)
             or location["index"] < 1
             or not isinstance(score, (int, float)) or isinstance(score, bool) or not math.isfinite(float(score))
@@ -315,6 +318,12 @@ def _validate_knowledge_context_provenance(
                 raise HTTPException(status_code=409, detail={
                     "code": "TOOL_PLAN_KNOWLEDGE_PROVENANCE_INVALID",
                     "message": "Digest referensi Knowledge pada rencana tidak valid.",
+                })
+        for optional_key in ("provider_id", "model_id", "model_version", "index_generation"):
+            if ref.get(optional_key) is not None and not isinstance(ref.get(optional_key), str):
+                raise HTTPException(status_code=409, detail={
+                    "code": "TOOL_PLAN_KNOWLEDGE_PROVENANCE_INVALID",
+                    "message": "Metadata provider/index Knowledge pada rencana tidak valid.",
                 })
         normalized.append({
             "source_id": ref["source_id"],
