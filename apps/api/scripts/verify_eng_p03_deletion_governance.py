@@ -12,6 +12,7 @@ STORAGE_DISPOSITION_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123143130_
 SOURCE_METADATA_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123143201_eng_p03_deletion_source_registry_metadata.sql"
 REQUEUE_AUDIT_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124012454_eng_p03_requeue_audit_trail.sql"
 RETENTION_PRECISION_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123170511_eng_p03_retention_legal_basis_precision.sql"
+OWNER_DIRECTIVE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123170014_eng_p03_owner_directed_retention_baseline.sql"
 OWNERSHIP_TRANSFER_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123173919_eng_p03_account_deletion_ownership_transfers.sql"
 GOVERNANCE_RETRY_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123182248_eng_p03_governance_policy_gate_and_retry.sql"
 FK_ACTION_GATE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124010741_eng_p03_fk_action_integrity_gate.sql"
@@ -366,6 +367,20 @@ insert into public.account_data_retention_policies(
  ('session_scoped',0,'owner-directive-2026-11-23-v1','UU No. 27/2022 Pasal 42-44: CI-only synthetic retention fixture',null,null,true,'product_owner_directive','CI_ONLY'),
  ('public_catalog',0,'owner-directive-2026-11-23-v1','UU No. 27/2022 Pasal 42-44: CI-only synthetic retention fixture',null,null,true,'product_owner_directive','CI_ONLY');
 """)
+        # Reuse only the canonical owner-directive function definitions here. The
+        # production migration's 106-source backfill is intentionally not replayed
+        # into this 10-source fixture.
+        owner_source=OWNER_DIRECTIVE_MIGRATION.read_text(encoding="utf-8")
+        owner_lower=owner_source.lower()
+        for function_name in (
+            "public.prepare_account_deletion_execution",
+            "public.evaluate_account_deletion_governance",
+            "public.execute_account_deletion_execution_job",
+        ):
+            marker="create or replace function "+function_name
+            start=owner_lower.index(marker)
+            end=owner_lower.index("$function$;",start)+len("$function$;")
+            psql(owner_source[start:end])
         for migration in (
             OWNERSHIP_TRANSFER_MIGRATION,GOVERNANCE_RETRY_MIGRATION,
             RETENTION_PRECISION_MIGRATION,FK_ACTION_GATE_MIGRATION,EXPORT_DELETION_MIGRATION,
