@@ -34,6 +34,11 @@ def psql(sql:str,check:bool=True)->subprocess.CompletedProcess[str]:
 
 def main()->None:
  if not MIGRATION.is_file():raise RuntimeError(f"Missing P08 migration: {MIGRATION}")
+ batch_sql=BATCH_MIGRATION.read_text(encoding="utf-8")
+ for required in ("allpha-memory-retention","*/5 * * * *","cron.unschedule","expire_agent_memory_items_batch(500)"):
+  if required not in batch_sql:raise RuntimeError(f"P08 migration is missing canonical bounded pg_cron schedule contract: {required}")
+ worker_host=(ROOT/"apps/api/src/allpha_api/agent_runtime_worker.py").read_text(encoding="utf-8")
+ if "memory_retention_worker" in worker_host:raise RuntimeError("P08 must reuse canonical pg_cron, not add a duplicate Railway retention worker")
  run(["docker","run","-d","--rm","--name",NAME,"-e","POSTGRES_PASSWORD=ci-only","postgres:17-alpine"])
  try:
   ready=False;streak=0
