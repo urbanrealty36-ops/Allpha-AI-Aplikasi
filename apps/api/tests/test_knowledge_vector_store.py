@@ -62,8 +62,8 @@ def test_vector_sink_requires_lease_fence():
 def test_vector_sink_delegates_atomic_upsert_with_deterministic_idempotency_key():
     class Repo:
         def __init__(self): self.calls = []
-        async def upsert_batch(self, records, *, expected_source_version, idempotency_key):
-            self.calls.append((records, expected_source_version, idempotency_key))
+        async def upsert_batch(self, records, *, expected_source_version, job_id, lease_token, idempotency_key):
+            self.calls.append((records, expected_source_version, job_id, lease_token, idempotency_key))
     async def scenario():
         job, request, response = fixture_values()
         repo = Repo()
@@ -71,7 +71,8 @@ def test_vector_sink_delegates_atomic_upsert_with_deterministic_idempotency_key(
         await IdempotentKnowledgeVectorSink(repo)(job, request, response)
         assert len(repo.calls) == 2
         assert repo.calls[0][1] == 1
-        assert repo.calls[0][2] == repo.calls[1][2]
+        assert repo.calls[0][2:4] == ("job-1", "lease-a")
+        assert repo.calls[0][4] == repo.calls[1][4]
         assert repo.calls[0][0] == repo.calls[1][0]
     asyncio.run(scenario())
 
@@ -81,7 +82,8 @@ def test_vector_sink_does_not_turn_conflicting_replay_into_new_idempotency_key()
         def __init__(self):
             self.payload_by_key = {}
             self.keys = []
-        async def upsert_batch(self, records, *, expected_source_version, idempotency_key):
+        async def upsert_batch(self, records, *, expected_source_version, job_id, lease_token, idempotency_key):
+            assert (job_id, lease_token) == ("job-1", "lease-a")
             payload = tuple(records)
             self.keys.append(idempotency_key)
             prior = self.payload_by_key.get(idempotency_key)
