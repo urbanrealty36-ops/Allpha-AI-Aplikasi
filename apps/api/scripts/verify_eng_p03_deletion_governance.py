@@ -4,6 +4,13 @@ from pathlib import Path
 import subprocess,sys,time,uuid
 
 ROOT=Path(__file__).resolve().parents[3]
+EXECUTOR_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123142156_eng_p03_account_deletion_executor.sql"
+DEPENDENCY_REQUEUE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123142329_eng_p03_deletion_dependency_requeue.sql"
+RETENTION_CANONICAL_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123142451_eng_p03_retention_canonical_data_classes.sql"
+LEGAL_HOLD_REQUEUE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123142930_eng_p03_legal_hold_release_requeue.sql"
+STORAGE_DISPOSITION_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123143130_eng_p03_storage_disposition_gate.sql"
+SOURCE_METADATA_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123143201_eng_p03_source_registry_metadata.sql"
+SOURCE_CLASSIFICATION_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123165316_eng_p03_source_policy_classification.sql"
 MIGRATION=ROOT/"apps/api/supabase/migrations/20261123192200_eng_p03_deletion_legal_hold_governance_worker.sql"
 SOURCE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123153243_eng_p03_account_deletion_specialized_source_handlers.sql"
 OWNER_SCOPE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123153456_eng_p03_agent_skill_deletion_owner_scope.sql"
@@ -46,8 +53,13 @@ create role anon nologin;
 create role authenticated nologin;
 create role service_role nologin bypassrls;
 create schema auth;
-create extension if not exists pgcrypto;
+create schema extensions;
+create extension if not exists pgcrypto with schema extensions;
+create schema private;
 create table auth.users(id uuid primary key);
+create function auth.uid() returns uuid language sql stable as $
+ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid
+$;
 create function auth.role() returns text language sql stable as $$
  select nullif(current_setting('request.jwt.claim.role',true),'')
 $$;
@@ -85,11 +97,32 @@ create table public.account_lifecycle_events(
  export_job_id uuid,
  user_id uuid,
  subject_ref text not null,
- event_type text not null check(event_type in ('export_requested','export_started','export_completed','export_failed','deletion_requested','deletion_cancelled','deletion_scheduled','deletion_started','deletion_blocked','deletion_completed','deletion_failed')),
+ event_type text not null check(event_type in ('export_requested','export_started','export_completed','export_failed','deletion_requested','deletion_cancelled','deletion_scheduled','deletion_started','deletion_blocked','deletion_unblocked','deletion_policy_pending','deletion_completed','deletion_failed')),
  metadata jsonb not null check(jsonb_typeof(metadata)='object'),
  recorded_at timestamptz not null default now()
 );
+create table private.account_export_sources(
+ source_key text primary key, table_name text not null, filter_kind text not null,
+ owner_columns text[] not null default '{}', sort_order integer not null default 100, enabled boolean not null default true
+);
+insert into private.account_export_sources(source_key,table_name,filter_kind) values
+ ('unmapped_source','messages','participant_conversations'),
+ ('agent_skills_owned','agent_skills','owned_agents'),
+ ('agent_runtime_checkpoints','agent_runtime_checkpoints','owned_runtime_tasks'),
+ ('agent_runtime_effect_receipts','agent_runtime_effect_receipts','owned_runtime_tasks'),
+ ('content_comments_on_owned','content_comments','owned_content'),
+ ('content_reactions_on_owned','content_reactions','content_activity'),
+ ('messages_in_conversations','messages','conversation_messages'),
+ ('community_posts_in_memberships','community_posts','member_communities'),
+ ('workspace_documents_in_memberships','workspace_documents','member_workspaces'),
+ ('workspace_annotations_in_memberships','workspace_annotations','member_workspaces');
 """)
+        for migration in (
+            EXECUTOR_MIGRATION,DEPENDENCY_REQUEUE_MIGRATION,RETENTION_CANONICAL_MIGRATION,
+            LEGAL_HOLD_REQUEUE_MIGRATION,STORAGE_DISPOSITION_MIGRATION,SOURCE_METADATA_MIGRATION,
+            SOURCE_CLASSIFICATION_MIGRATION,
+        ):
+            psql(migration.read_text(encoding="utf-8"))
         psql(MIGRATION.read_text(encoding="utf-8"))
         psql(MIGRATION.read_text(encoding="utf-8")) # repeatable forward migration
         psql(f"""
@@ -157,16 +190,7 @@ end $$;
 """)
         # Exercise the specialized source handlers in an isolated PostgreSQL database.
         psql("""
-create schema private;
 grant usage on schema private to service_role;
-create table private.account_export_sources(
- source_key text primary key, table_name text not null, filter_kind text not null,
- owner_columns text[] not null default '{}', sort_order integer not null default 100, enabled boolean not null default true
-);
-create table public.account_deletion_source_policies(
- source_key text primary key,data_class text,deletion_action text,policy_version text,reason text,
- active boolean not null default false,approved_by uuid,approved_at timestamptz
-);
 create table public.agent_ownerships(agent_id uuid,owner_user_id uuid,ownership_role text,status text);
 create table public.agent_skills(id uuid primary key,agent_id uuid,created_by uuid);
 create table public.agent_runtime_tasks(id uuid primary key,owner_user_id uuid);
@@ -179,43 +203,12 @@ create table public.messages(id uuid primary key,sender_user_id uuid,conversatio
 create table public.community_posts(id uuid primary key,author_id uuid,community_id uuid);
 create table public.workspace_documents(id uuid primary key,created_by uuid,workspace_id uuid);
 create table public.workspace_annotations(id uuid primary key,author_id uuid,workspace_id uuid);
-insert into private.account_export_sources(source_key,table_name,filter_kind) values
- ('unmapped_source','messages','participant_conversations'),
- ('agent_skills_owned','agent_skills','owned_agents'),
- ('agent_runtime_checkpoints','agent_runtime_checkpoints','owned_runtime_tasks'),
- ('agent_runtime_effect_receipts','agent_runtime_effect_receipts','owned_runtime_tasks'),
- ('content_comments_on_owned','content_comments','owned_content'),
- ('content_reactions_on_owned','content_reactions','content_activity'),
- ('messages_in_conversations','messages','conversation_messages'),
- ('community_posts_in_memberships','community_posts','member_communities'),
- ('workspace_documents_in_memberships','workspace_documents','member_workspaces'),
- ('workspace_annotations_in_memberships','workspace_annotations','member_workspaces');
 """)
         psql(f"create function public.list_account_deletion_source_registry() returns boolean language sql as {dollar_quote} select true {dollar_quote};")
         source_sql=SOURCE_MIGRATION.read_text(encoding="utf-8").split("\ndo " + chr(36) + chr(36),1)[0]
         psql(source_sql)
         psql(OWNER_SCOPE_MIGRATION.read_text(encoding="utf-8"))
         psql(CANONICAL_REGISTRY_MIGRATION.read_text(encoding="utf-8"))
-        psql(f"""
-create function public.execute_account_deletion_execution_job(uuid,uuid)
-returns boolean language plpgsql as {dollar_quote}
-declare v_rule record; v_step record; v_sql text; v_job record; v_rows bigint;
-begin
-    if true then
-        if v_rule.fk_column is null then raise exception 'composite_foreign_key_requires_manual_handler'; end if;
-        if v_step.action='delete_rows' then
-          v_sql:=format('DELETE FROM %I.%I WHERE %I::text = $1',v_rule.child_schema,v_rule.child_table,v_rule.fk_column);
-        else
-          v_sql:=format('UPDATE %I.%I SET %I=NULL WHERE %I::text = $1',
-            v_rule.child_schema,v_rule.child_table,v_rule.fk_column,v_rule.fk_column);
-        end if;
-        execute v_sql using v_job.user_id::text;
-        get diagnostics v_rows=row_count;
-    end if;
-    return false;
-end;
-{dollar_quote};
-""")
         psql(FK_GUARD_MIGRATION.read_text(encoding="utf-8"))
         psql(f"""
 do {dollar_quote}
