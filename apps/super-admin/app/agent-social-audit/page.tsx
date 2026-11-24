@@ -19,6 +19,9 @@ type Governance = { policies: SocialPolicy[]; approvals: SocialApproval[]; autom
 type OwnershipAudit = { id: string; request_id: string; agent_id: string; event_type: string; from_owner_subject_ref: string; to_owner_subject_ref: string; details: Record<string, unknown>; created_at: string };
 type ConsentAudit = { id: string; agent_id: string; owner_subject_ref: string; event_type: string; consent_version: number; disclosure_snapshot: Record<string, unknown>; created_at: string };
 type OwnershipAuditPayload = { ownership_transfers: OwnershipAudit[]; passport_consents: ConsentAudit[] };
+type SkillInstallAudit = { id: string; agent_id: string; source_agent_id: string; source_skill_id: string; source_version: number; installed_skill_id: string; installer_subject_ref: string; license_terms_snapshot: Record<string, unknown>; license_terms_digest: string; license_expires_at?: string | null; accepted_at: string; status: string; created_at: string; revoked_at?: string | null; revocation_reason?: string | null };
+type SkillInstallEventAudit = { id: string; installation_id: string; agent_id: string; source_agent_id: string; source_skill_id: string; event_type: string; actor_subject_ref: string; source_version: number; source_snapshot_digest: string; license_terms_digest: string; details: Record<string, unknown>; created_at: string };
+type SkillInstallationAuditPayload = { installations: SkillInstallAudit[]; events: SkillInstallEventAudit[] };
 type Payload = { access_token?: string; refresh_token?: string; expires_in?: number; user?: { id: string; email?: string }; error_description?: string; msg?: string };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 const authUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || "").replace(/\/$/, "");
@@ -44,6 +47,8 @@ export default function AgentSocialAuditPage() {
   const [governance,setGovernance] = useState<Governance|null>(null);
   const [ownershipAudit,setOwnershipAudit] = useState<OwnershipAudit[]>([]);
   const [consentAudit,setConsentAudit] = useState<ConsentAudit[]>([]);
+  const [skillInstallAudit,setSkillInstallAudit] = useState<SkillInstallAudit[]>([]);
+  const [skillInstallEvents,setSkillInstallEvents] = useState<SkillInstallEventAudit[]>([]);
   const [busy,setBusy] = useState(false);
   const [error,setError] = useState("");
   const [notice,setNotice] = useState("");
@@ -69,7 +74,15 @@ export default function AgentSocialAuditPage() {
     const ownershipBody = await ownershipResponse.json().catch(() => ({})) as OwnershipAuditPayload;
     if (!ownershipResponse.ok) throw new Error("Audit transfer kepemilikan dan Passport tidak dapat diakses.");
     setSession(current); setItems(body.items || []); setGovernance(governanceBody as Governance);
+    let skillInstallResponse = await fetch(apiBase + "/v1/admin/operator/agent-skills/installations/audit?limit=100", { headers: { Authorization: "Bearer " + current.access_token, Accept: "application/json" }, cache: "no-store" });
+    if (skillInstallResponse.status === 401) {
+      current = await refresh(current);
+      skillInstallResponse = await fetch(apiBase + "/v1/admin/operator/agent-skills/installations/audit?limit=100", { headers: { Authorization: "Bearer " + current.access_token, Accept: "application/json" }, cache: "no-store" });
+    }
+    const skillInstallBody = await skillInstallResponse.json().catch(() => ({})) as SkillInstallationAuditPayload;
+    if (!skillInstallResponse.ok) throw new Error("Audit instalasi dan lisensi Skill tidak dapat diakses.");
     setOwnershipAudit(ownershipBody.ownership_transfers || []); setConsentAudit(ownershipBody.passport_consents || []);
+    setSkillInstallAudit(skillInstallBody.installations || []); setSkillInstallEvents(skillInstallBody.events || []);
   },[]);
   async function login(event: FormEvent) {
     event.preventDefault(); setBusy(true); setError("");
@@ -87,6 +100,12 @@ export default function AgentSocialAuditPage() {
     {error && <p role="alert" className="notice error">{error}</p>}{notice && <p role="status" className="notice">{notice}</p>}
     {!session ? <section className="panel"><h2>Operator authentication</h2><p className="muted">Login Human saja tidak cukup. API memeriksa grant operator dan scope platform:security.audit.read pada setiap request.</p><form onSubmit={login} className="formGrid"><label>Email<input type="email" value={email} onChange={e=>setEmail(e.target.value)} required autoComplete="username"/></label><label>Password<input type="password" value={password} onChange={e=>setPassword(e.target.value)} required autoComplete="current-password"/></label><button type="submit" disabled={busy}>{busy?"Memverifikasi…":"Login & buka audit"}</button></form></section> : <section className="panel"><header className="panelHead"><div><h2>Social action audit events</h2><p className="muted">{items.length} event terbaru · {session.user.email || session.user.id}</p></div><button onClick={reload} disabled={busy}>{busy?"Memuat…":"Refresh"}</button></header>{items.length===0?<p className="muted">Belum ada event audit sosial.</p>:<div className="tableWrap"><table><thead><tr><th>Waktu</th><th>Event</th><th>Outcome</th><th>Owner / Agent</th><th>Approval</th><th>Metadata</th></tr></thead><tbody>{items.map(item=><tr key={item.id}><td>{new Date(item.created_at).toLocaleString("id-ID")}</td><td><strong>{item.event_type}</strong></td><td><span className={"pill "+(item.outcome==="allowed"?"online":item.outcome==="denied"?"warning":"offline")}>{item.outcome}</span></td><td><code>{item.owner_user_id}</code><br/><code>{item.agent_id}</code></td><td><code>{item.approval_id || "—"}</code></td><td><pre>{JSON.stringify(item.metadata,null,2)}</pre></td></tr>)}</tbody></table></div>}</section>}
     {session && governance && <>
+      <section className="panel"><header className="panelHead"><div><h2>Agent Skill Installation & License Governance</h2><p className="muted">Read-only · {skillInstallAudit.length} installations · {skillInstallEvents.length} lifecycle events</p></div></header>
+        <h3 className="subhead">Installed Skill entitlements</h3>
+        {skillInstallAudit.length===0?<p className="muted">Belum ada instalasi Skill.</p>:<div className="tableWrap"><table><thead><tr><th>Agent</th><th>Source Skill</th><th>Installed Skill</th><th>License</th><th>Status</th><th>Installer ref</th></tr></thead><tbody>{skillInstallAudit.map(item=><tr key={item.id}><td><code>{item.agent_id}</code></td><td><code>{item.source_skill_id}</code><br/>v{item.source_version}</td><td><code>{item.installed_skill_id}</code></td><td><code>{item.license_terms_digest}</code><pre>{JSON.stringify(item.license_terms_snapshot,null,2)}</pre>{item.license_expires_at&&<small>Exp: {new Date(item.license_expires_at).toLocaleString("id-ID")}</small>}</td><td>{item.status}{item.revocation_reason&&<p>{item.revocation_reason}</p>}</td><td><code>{item.installer_subject_ref}</code></td></tr>)}</tbody></table></div>}
+        <h3 className="subhead">Install / revoke event history</h3>
+        {skillInstallEvents.length===0?<p className="muted">Belum ada event instalasi atau pencabutan.</p>:<div className="tableWrap"><table><thead><tr><th>Waktu</th><th>Event</th><th>Agent / Installation</th><th>Source Skill</th><th>Actor ref</th><th>License digest</th></tr></thead><tbody>{skillInstallEvents.map(item=><tr key={item.id}><td>{new Date(item.created_at).toLocaleString("id-ID")}</td><td>{item.event_type}</td><td><code>{item.agent_id}</code><br/><code>{item.installation_id}</code></td><td><code>{item.source_skill_id}</code> · v{item.source_version}</td><td><code>{item.actor_subject_ref}</code></td><td><code>{item.license_terms_digest}</code><pre>{JSON.stringify(item.details,null,2)}</pre></td></tr>)}</tbody></table></div>}
+      </section>
       <section className="panel"><header className="panelHead"><div><h2>Agent Ownership & Passport Consent Audit</h2><p className="muted">Read-only · pseudonymous owner references · {ownershipAudit.length} transfer events · {consentAudit.length} consent events</p></div></header>
         <h3 className="subhead">Ownership transfer lifecycle</h3>
         {ownershipAudit.length===0?<p className="muted">Belum ada transfer kepemilikan Agent.</p>:<div className="tableWrap"><table><thead><tr><th>Waktu</th><th>Agent / Request</th><th>Event</th><th>Previous owner ref</th><th>New owner ref</th><th>Effects</th></tr></thead><tbody>{ownershipAudit.map(item=><tr key={item.id}><td>{new Date(item.created_at).toLocaleString("id-ID")}</td><td><code>{item.agent_id}</code><br/><code>{item.request_id}</code></td><td>{item.event_type}</td><td><code>{item.from_owner_subject_ref}</code></td><td><code>{item.to_owner_subject_ref}</code></td><td><pre>{JSON.stringify(item.details,null,2)}</pre></td></tr>)}</tbody></table></div>}
