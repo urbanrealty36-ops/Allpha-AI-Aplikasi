@@ -233,5 +233,6 @@ def test_knowledge_context_snapshot_rejects_untrusted_source_location_metadata()
     hit = RetrievalHit(
         **{**hit.__dict__, "source_location": {"kind": "page", "index": 3, "raw_text": "must not persist"}}
     )
-    with pytest.raises(Exception, match="source location"):
+    from allpha_api.knowledge_retrieval import KnowledgeRetrievalUnavailable
+    with pytest.raises(KnowledgeRetrievalUnavailable, match="source location"):
         _knowledge_context_snapshot([hit])
