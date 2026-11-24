@@ -86,7 +86,7 @@ def knowledge_hit(content="Owner-approved document excerpt."):
         chunk_id="chunk-a",
         content=content,
         content_sha256=hashlib.sha256(content.encode("utf-8")).hexdigest(),
-        source_location={"page": 3},
+        source_location={"kind": "page", "index": 3},
         sensitivity="internal",
         retrieval_method="keyword",
         score=0.0,
@@ -101,7 +101,7 @@ def test_knowledge_context_snapshot_keeps_prompt_content_separate_from_citation_
         "source_id": "source-a",
         "source_version": 4,
         "chunk_id": "chunk-a",
-        "source_location": {"page": 3},
+        "source_location": {"kind": "page", "index": 3},
         "sensitivity": "internal",
         "content_sha256": hit.content_sha256,
         "retrieved_content_sha256": hit.content_sha256,
@@ -225,3 +225,13 @@ def test_agent_runtime_bounds_long_intent_before_knowledge_retrieval():
         assert digest == hashlib.sha256(b"[]").hexdigest()
 
     asyncio.run(scenario())
+
+
+
+def test_knowledge_context_snapshot_rejects_untrusted_source_location_metadata():
+    hit = knowledge_hit()
+    hit = RetrievalHit(
+        **{**hit.__dict__, "source_location": {"kind": "page", "index": 3, "raw_text": "must not persist"}}
+    )
+    with pytest.raises(Exception, match="source location"):
+        _knowledge_context_snapshot([hit])
