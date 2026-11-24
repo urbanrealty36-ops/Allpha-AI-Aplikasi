@@ -25,6 +25,8 @@ jobs:
         run: python apps/api/scripts/verify_eng_p05_agent_identity.py
       - name: Verify ENG-P06 Skill versioning, licensed installation and revocation on disposable PostgreSQL 17
         run: python apps/api/scripts/verify_eng_p06_skill_version_rollover.py
+      - name: Verify ENG-P06 Skill installation, license expiry and revocation on disposable PostgreSQL 17
+        run: python apps/api/scripts/verify_eng_p06_skill_installation.py
 
   web-build:
     runs-on: ubuntu-latest
