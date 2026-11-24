@@ -286,7 +286,6 @@ begin
   raise exception 'global Memory retention executor did not erase expired content';
  end if;
 end $do$;
-psql(f"""
 insert into public.agent_memory_items(
  owner_user_id,agent_id,policy_id,memory_type,visibility_scope,purpose,classification,
  content,content_sha256,source_ref,provenance,version,policy_version,status,
@@ -335,7 +334,6 @@ begin
   raise exception 'Memory retention RPC privileges are not service-only';
  end if;
 end $do$;
-""")
 delete from auth.users where id='{OWNER}';
 do $do$
 begin
