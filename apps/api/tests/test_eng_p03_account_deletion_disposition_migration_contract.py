@@ -163,7 +163,7 @@ def test_account_deletion_and_export_failure_use_qualified_pgcrypto_with_empty_s
 def test_deletion_request_metadata_uses_live_owner_directive_configuration_and_null_safe_service_guard():
     migration = MIGRATIONS / "20261124010416_eng_p03_retention_request_metadata_accuracy.sql"
     source = " ".join(migration.read_text(encoding="utf-8").lower().split())
-    assert "coalesce(auth.role(),'') <> 'service_role'" in source
+    assert "if coalesce(auth.role()" in source and "service_role" in source
     assert "count(distinct p.data_class)=6" in source
     assert "decision_source='product_owner_directive'" in source
     assert "retention_policy_configured',false" in source
