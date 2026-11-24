@@ -211,11 +211,11 @@ end $do$;
 
         # Explicit owner acceptance, idempotent replay, and immutable license evidence.
         psql(f"""
-set role authenticated;
+set role service_role;
 select set_config('request.jwt.claim.sub','{OWNER}',false);
 select set_config('request.jwt.claim.role','authenticated',false);
-select public.install_agent_skill('{TARGET_AGENT}','{SOURCE_AGENT}','{SOURCE_SKILL}',5,true,'p06-install-key-0001');
-select public.install_agent_skill('{TARGET_AGENT}','{SOURCE_AGENT}','{SOURCE_SKILL}',5,true,'p06-install-key-0001');
+select public.install_agent_skill('{TARGET_AGENT}','{SOURCE_AGENT}','{SOURCE_SKILL}',5,true,'p06-install-key-0001', '11111111-1111-4111-8111-111111111111');
+select public.install_agent_skill('{TARGET_AGENT}','{SOURCE_AGENT}','{SOURCE_SKILL}',5,true,'p06-install-key-0001', '11111111-1111-4111-8111-111111111111');
 reset role;
 do $do$
 begin
@@ -250,14 +250,13 @@ end $do$;
 
         # Owner revocation is immutable, removes public Passport visibility and disables Runtime.
         psql(f"""
-set role authenticated;
+set role service_role;
 select set_config('request.jwt.claim.sub','{OWNER}',false);
 select set_config('request.jwt.claim.role','authenticated',false);
 select public.revoke_agent_skill_installation(
  '{TARGET_AGENT}',
  (select id from public.agent_skill_installations where agent_id='{TARGET_AGENT}'),
- 'Owner revoked the source license'
-);
+ 'Owner revoked the source license', '11111111-1111-4111-8111-111111111111');
 reset role;
 do $do$
 begin
@@ -281,19 +280,19 @@ end $do$;
 
         # Re-install after revocation, then materialize expiry as an auditable lifecycle event.
         psql(f"""
-set role authenticated;
+set role service_role;
 select set_config('request.jwt.claim.sub','{OWNER}',false);
 select set_config('request.jwt.claim.role','authenticated',false);
-select public.install_agent_skill('{TARGET_AGENT}','{SOURCE_AGENT}','{SOURCE_SKILL}',5,true,'p06-install-key-0002');
+select public.install_agent_skill('{TARGET_AGENT}','{SOURCE_AGENT}','{SOURCE_SKILL}',5,true,'p06-install-key-0002', '11111111-1111-4111-8111-111111111111');
 reset role;
 update public.agent_skill_installations set license_expires_at=clock_timestamp()-interval '1 second'
  where agent_id='{TARGET_AGENT}' and status='active';
 """)
         psql(f"""
-set role authenticated;
+set role service_role;
 select set_config('request.jwt.claim.sub','{OWNER}',false);
 select set_config('request.jwt.claim.role','authenticated',false);
-select public.expire_agent_skill_installations('{TARGET_AGENT}');
+select public.expire_agent_skill_installations('{TARGET_AGENT}', '11111111-1111-4111-8111-111111111111');
 reset role;
 do $do$
 begin
@@ -311,7 +310,7 @@ end $do$;
 
         # Paid licenses cannot be installed without a Billing entitlement.
         psql(f"""
-set role authenticated;
+set role service_role;
 select set_config('request.jwt.claim.sub','{OWNER}',false);
 select set_config('request.jwt.claim.role','authenticated',false);
 update public.agent_skills set status='draft' where id='{SOURCE_SKILL}';
@@ -326,7 +325,7 @@ reset role;
 set role authenticated;
 select set_config('request.jwt.claim.sub','{OWNER}',false);
 select set_config('request.jwt.claim.role','authenticated',false);
-select public.install_agent_skill('{TARGET_AGENT}','{SOURCE_AGENT}','{SOURCE_SKILL}',8,true,'p06-paid-license-denied');
+select public.install_agent_skill('{TARGET_AGENT}','{SOURCE_AGENT}','{SOURCE_SKILL}',8,true,'p06-paid-license-denied', '11111111-1111-4111-8111-111111111111');
 """, check=False)
         if paid.returncode == 0 or "SKILL_LICENSE_ENTITLEMENT_REQUIRED" not in paid.stderr:
             raise RuntimeError("Paid Skill installation bypassed the Billing entitlement gate")
@@ -335,11 +334,27 @@ select public.install_agent_skill('{TARGET_AGENT}','{SOURCE_AGENT}','{SOURCE_SKI
 set role authenticated;
 select set_config('request.jwt.claim.sub','{OWNER}',false);
 select set_config('request.jwt.claim.role','authenticated',false);
-select public.install_agent_skill('{TARGET_AGENT}','{SOURCE_AGENT}','{SOURCE_SKILL}',8,false,'p06-license-not-accepted');
+select public.install_agent_skill('{TARGET_AGENT}','{SOURCE_AGENT}','{SOURCE_SKILL}',8,false,'p06-license-not-accepted', '11111111-1111-4111-8111-111111111111');
 """, check=False)
         if denied.returncode == 0 or "SKILL_LICENSE_ACCEPTANCE_REQUIRED" not in denied.stderr:
             raise RuntimeError("Skill installation unexpectedly succeeded without explicit license acceptance")
 
+        psql("""
+do $do$
+begin
+ if has_function_privilege('authenticated','public.install_agent_skill(uuid,uuid,uuid,integer,boolean,text,uuid)','EXECUTE')
+    or has_function_privilege('anon','public.install_agent_skill(uuid,uuid,uuid,integer,boolean,text,uuid)','EXECUTE')
+    or has_function_privilege('authenticated','public.revoke_agent_skill_installation(uuid,uuid,text,uuid)','EXECUTE')
+    or has_function_privilege('authenticated','public.expire_agent_skill_installations(uuid,uuid)','EXECUTE') then
+   raise exception 'client roles must not execute privileged Skill lifecycle functions';
+ end if;
+ if not has_function_privilege('service_role','public.install_agent_skill(uuid,uuid,uuid,integer,boolean,text,uuid)','EXECUTE')
+    or not has_function_privilege('service_role','public.revoke_agent_skill_installation(uuid,uuid,text,uuid)','EXECUTE')
+    or not has_function_privilege('service_role','public.expire_agent_skill_installations(uuid,uuid)','EXECUTE') then
+   raise exception 'FastAPI service role lacks Skill lifecycle RPC execution';
+ end if;
+end $do$;
+""")
         print("PASS: ENG-P06 PostgreSQL 17 Skill versioning, explicit license acceptance, idempotent installation, local draft clone, Passport publication, revocation, expiry, paid-entitlement gate and P03 export/retention.")
     finally:
         run(["docker", "rm", "--force", NAME], check=False)
