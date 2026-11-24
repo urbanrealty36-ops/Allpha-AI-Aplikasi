@@ -40,7 +40,7 @@ def test_model_policy_approval_persists_actor_reference_and_audit(monkeypatch):
     install_operator(["platform:capabilities.review.high_risk"])
     install_grant(monkeypatch, ["platform:capabilities.review.high_risk"])
     current = {
-        "id": CONFIG_ID, "provider_id": "provider-x", "model_id": "model-x",
+        "id": CONFIG_ID, "capability": "text_generation", "provider_id": "provider-x", "model_id": "model-x",
         "model_version": "v1", "pricing_version": "price-v1", "policy_version": "policy-v2",
         "status": "active", "policy_approved": False, "effective_at": "2026-10-16T00:00:00+00:00",
     }
