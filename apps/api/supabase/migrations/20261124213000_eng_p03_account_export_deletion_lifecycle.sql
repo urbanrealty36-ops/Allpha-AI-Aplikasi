@@ -404,7 +404,7 @@ $old$;
   v_policy_version text;
   v_export_gate jsonb;
   v_export_until timestamptz;
-$ new$;
+$new$;
   v_old_eval_gate text := $old$
     select array_agg(required.data_class order by required.data_class) into v_missing_classes
 $old$;
