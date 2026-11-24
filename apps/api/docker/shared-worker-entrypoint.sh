@@ -54,7 +54,7 @@ CLAMDSCAN_CONFIG
 
     READY=0
     for attempt in $(seq 1 30); do
-        if timeout 3s gosu worker clamdscan --config-file=/run/clamav/clamdscan.conf --ping=1 >/dev/null 2>&1; then
+        if timeout 3s gosu worker clamdscan --config-file=/run/clamav/clamdscan.conf --ping=1; then
             READY=1
             break
         fi
@@ -66,7 +66,12 @@ CLAMDSCAN_CONFIG
 
     if [ "$READY" -ne 1 ]; then
         echo "Knowledge document consumer disabled: ClamAV daemon did not become ready; other shared consumers will continue" >&2
-        cat /var/log/clamav/clamav.log >&2 || true
+        echo "ClamAV worker identity and socket diagnostics:" >&2
+        id worker >&2 || true
+        ls -ld /run/clamav >&2 || true
+        ls -la /run/clamav >&2 || true
+        ps -o pid,ppid,rss,stat,comm -p "$CLAMD_PID" >&2 || true
+        tail -n 80 /var/log/clamav/clamav.log >&2 || true
         export ALLPHA_KNOWLEDGE_DOCUMENT_WORKER_ENABLED=false
     else
         echo "ClamAV scanner is ready; starting shared Allpha consumers"
