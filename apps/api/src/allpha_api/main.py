@@ -1122,9 +1122,21 @@ class AgentUpdate(BaseModel):
     boundaries: dict[str, Any] | None = None
     visibility: Literal["private", "public"] | None = None
     status: Literal["draft", "active", "archived"] | None = None
+    public_owner_attribution: bool | None = None
 
 
-_AGENT_FIELDS = "id,handle,display_name,description,avatar_url,persona,disclosure,boundaries,visibility,status,created_by,created_at,updated_at"
+class AgentPublish(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_version: int = Field(ge=1)
+    public_owner_attribution: bool = False
+
+
+class AgentRevokePublication(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_version: int = Field(ge=1)
+
+
+_AGENT_FIELDS = "id,handle,display_name,description,avatar_url,persona,disclosure,boundaries,visibility,status,created_by,created_at,updated_at,version,public_owner_attribution,published_at,revoked_at"
 
 
 @app.get("/v1/agents", tags=["agents"])
@@ -1175,21 +1187,52 @@ async def update_my_agent(agent_id: uuid.UUID, payload: AgentUpdate, request: Re
     if not changes:
         raise HTTPException(status_code=422, detail={"code": "EMPTY_UPDATE", "message": "Tidak ada perubahan Agent."})
     token = request.state.supabase_access_token
-    ownership = await user_db_request(
-        "GET", "agent_ownerships", token,
-        params={"select": "agent_id,ownership_role,status", "agent_id": f"eq.{agent_id}",
-                "owner_user_id": f"eq.{user['id']}", "ownership_role": "eq.owner", "status": "eq.active", "limit": "1"},
+    current = await user_db_request(
+        "GET", "ai_agents", token,
+        params={"select": _AGENT_FIELDS, "id": f"eq.{agent_id}", "limit": "1"},
     )
-    if not ownership:
+    if not current:
         raise HTTPException(status_code=404, detail={"code": "AGENT_NOT_FOUND", "message": "Agent tidak ditemukan."})
-    rows = await user_db_request(
-        "PATCH", "ai_agents", token,
-        params={"id": f"eq.{agent_id}", "select": _AGENT_FIELDS},
-        body=changes, prefer="return=representation",
+    result = await user_db_request(
+        "POST", "rpc/update_my_ai_agent", token,
+        body={
+            "p_agent_id": str(agent_id),
+            "p_expected_version": current[0]["version"],
+            "p_changes": changes,
+        },
     )
-    if not rows:
-        raise HTTPException(status_code=404, detail={"code": "AGENT_NOT_FOUND", "message": "Agent tidak ditemukan."})
-    return {"agent": rows[0], "ownership": {"owner_user_id": user["id"], "role": "owner", "status": "active"}}
+    if not result:
+        raise HTTPException(status_code=409, detail={"code": "AGENT_VERSION_CONFLICT", "message": "Identitas Agent berubah. Muat ulang sebelum menyimpan."})
+    agent = result[0] if isinstance(result, list) else result
+    return {"agent": agent, "ownership": {"owner_user_id": user["id"], "role": "owner", "status": "active"}}
+
+
+@app.post("/v1/agents/{agent_id}/publish", tags=["agents"])
+async def publish_my_agent(agent_id: uuid.UUID, payload: AgentPublish, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    result = await user_db_request(
+        "POST", "rpc/publish_my_ai_agent", request.state.supabase_access_token,
+        body={
+            "p_agent_id": str(agent_id),
+            "p_expected_version": payload.expected_version,
+            "p_public_owner_attribution": payload.public_owner_attribution,
+        },
+    )
+    if not result:
+        raise HTTPException(status_code=409, detail={"code": "AGENT_VERSION_CONFLICT_OR_NOT_OWNED", "message": "Agent berubah atau tidak berada dalam kepemilikan Anda."})
+    agent = result[0] if isinstance(result, list) else result
+    return {"agent": agent, "ownership": {"owner_user_id": user["id"], "role": "owner", "status": "active"}}
+
+
+@app.post("/v1/agents/{agent_id}/revoke-publication", tags=["agents"])
+async def revoke_my_agent_publication(agent_id: uuid.UUID, payload: AgentRevokePublication, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    result = await user_db_request(
+        "POST", "rpc/revoke_my_ai_agent_publication", request.state.supabase_access_token,
+        body={"p_agent_id": str(agent_id), "p_expected_version": payload.expected_version},
+    )
+    if not result:
+        raise HTTPException(status_code=409, detail={"code": "AGENT_VERSION_CONFLICT_OR_NOT_OWNED", "message": "Agent berubah atau tidak berada dalam kepemilikan Anda."})
+    agent = result[0] if isinstance(result, list) else result
+    return {"agent": agent, "ownership": {"owner_user_id": user["id"], "role": "owner", "status": "active"}}
 
 
 @app.get("/v1/agent-passports/{handle}", tags=["agents"])
@@ -1200,7 +1243,7 @@ async def get_public_agent_passport(handle: str) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail={"code": "AGENT_NOT_FOUND", "message": "Passport Agent tidak ditemukan."})
     rows = await user_db_request(
         "GET", "ai_agents", None,
-        params={"select": "id,handle,display_name,description,avatar_url,disclosure,visibility,status,created_at",
+        params={"select": "id,handle,display_name,description,avatar_url,disclosure,visibility,status,created_at,version,published_at,public_owner_attribution",
                 "handle": f"eq.{handle}", "visibility": "eq.public", "status": "eq.active", "limit": "1"},
     )
     if not rows:
@@ -1219,7 +1262,15 @@ async def get_public_agent_passport(handle: str) -> dict[str, Any]:
                 "agent_id": f"eq.{passport['id']}", "status": "eq.approved",
                 "order": "created_at.desc", "limit": "50"},
     )
-    return {"passport": passport, "skills": skills or [], "capabilities": capabilities or []}
+    owner_attribution = None
+    if passport.get("public_owner_attribution"):
+        owner_rows = await user_db_request(
+            "POST", "rpc/get_public_agent_owner_attribution", None,
+            body={"p_agent_id": passport["id"]},
+        )
+        if owner_rows:
+            owner_attribution = owner_rows[0] if isinstance(owner_rows, list) else owner_rows
+    return {"passport": passport, "owner_attribution": owner_attribution, "skills": skills or [], "capabilities": capabilities or []}
 
 
 @app.get("/v1/agents/{agent_id}", tags=["agents"])
@@ -1240,6 +1291,23 @@ async def get_my_agent(agent_id: uuid.UUID, request: Request, user: dict[str, An
         raise HTTPException(status_code=404, detail={"code": "AGENT_NOT_FOUND", "message": "Agent tidak ditemukan."})
     owner = ownership[0]
     return {"agent": rows[0], "ownership": {"owner_user_id": user["id"], "role": owner["ownership_role"], "status": owner["status"], "since": owner["created_at"]}}
+
+
+@app.get("/v1/agents/{agent_id}/versions", tags=["agents"])
+async def list_my_agent_identity_versions(agent_id: uuid.UUID, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    token = request.state.supabase_access_token
+    agent = await user_db_request(
+        "GET", "ai_agents", token,
+        params={"select": "id,version", "id": f"eq.{agent_id}", "limit": "1"},
+    )
+    if not agent:
+        raise HTTPException(status_code=404, detail={"code": "AGENT_NOT_FOUND", "message": "Agent tidak ditemukan."})
+    versions = await user_db_request(
+        "GET", "agent_identity_versions", token,
+        params={"select": "id,agent_id,version,event_type,snapshot,snapshot_sha256,recorded_at",
+                "agent_id": f"eq.{agent_id}", "order": "version.desc", "limit": "50"},
+    )
+    return {"agent_id": str(agent_id), "current_version": agent[0]["version"], "items": versions or []}
 
 
 # ENG-P06 — owner-managed reusable Skills and declared capability requests.
