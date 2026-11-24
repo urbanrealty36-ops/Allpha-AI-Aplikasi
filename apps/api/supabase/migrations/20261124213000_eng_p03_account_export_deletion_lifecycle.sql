@@ -2,6 +2,15 @@
 -- No retention duration is invented here. Without an active, sourced account_export_artifact
 -- policy, the request remains blocked and no account data is deleted.
 
+alter table public.account_data_retention_policies
+  drop constraint if exists account_data_retention_policies_data_class_check;
+alter table public.account_data_retention_policies
+  add constraint account_data_retention_policies_data_class_check
+  check (data_class = any (array[
+    'owner_private','agent_operational','tenant_shared','published_knowledge',
+    'session_scoped','public_catalog','account_export_artifact'
+  ]::text[]));
+
 alter table public.account_deletion_requests
   add column if not exists export_job_id uuid,
   add column if not exists idempotency_key text;
