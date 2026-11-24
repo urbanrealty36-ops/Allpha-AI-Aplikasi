@@ -9,11 +9,16 @@ type WorkflowDefinition = {
   id: string; workflow_key: string; version: number; status: string;
   digest: string; definition: Record<string, unknown>; created_at: string;
 };
+type WorkflowApproval = {
+  id: string; step_id: string; message: string; context?: Record<string, unknown>;
+  status: string; decision_note?: string | null;
+};
 type WorkflowRun = {
   id: string; definition_id: string; definition_version: number; status: string;
   trace_id: string; created_at: string; updated_at: string; completed_at?: string | null;
   steps?: Array<{ id: string; node_key: string; node_kind: string; status: string; output_payload?: Record<string, unknown> | null; error_code?: string | null }>;
   events?: Array<{ sequence: number; event_type: string; step_key?: string | null; created_at: string; details?: Record<string, unknown> }>;
+  approvals?: WorkflowApproval[];
 };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 const initialDefinition = JSON.stringify({
@@ -151,6 +156,19 @@ export default function WorkflowsPage() {
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Detail run tidak dapat dimuat."); }
   }
 
+  async function decideApproval(runId: string, stepId: string, approvalId: string, decision: "approve" | "reject") {
+    setSaving(true); setError(""); setNotice("");
+    try {
+      await request(`/v1/workflows/runs/${encodeURIComponent(runId)}/steps/${encodeURIComponent(stepId)}/${decision}`, {
+        method: "POST", body: JSON.stringify({ approval_id: approvalId, decision_note: null })
+      });
+      setNotice(decision === "approve" ? "Approval workflow disetujui; worker dapat melanjutkan." : "Approval workflow ditolak; run dihentikan.");
+      await refresh();
+      await inspectRun(runId);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Keputusan approval tidak dapat disimpan."); }
+    finally { setSaving(false); }
+  }
+
   async function cancelRun(runId: string) {
     setSaving(true); setError(""); setNotice("");
     try {
@@ -206,7 +224,10 @@ export default function WorkflowsPage() {
         <div className="list-heading"><div><span className="section-kicker">RUN DETAIL / TRACE</span><h2>Detail run</h2></div><button type="button" className="button-quiet" onClick={() => void inspectRun(selectedRun.id)}>Refresh detail</button></div>
         <p className="detail-id">Run ID: {selectedRun.id}</p><p>Status: <strong>{selectedRun.status}</strong> · Version: {selectedRun.definition_version} · Trace: {selectedRun.trace_id}</p>
         <h3>Steps / checkpoints</h3>
-        {!selectedRun.steps?.length ? <p className="empty-state">Belum ada step yang dikembalikan.</p> : <div className="workflow-list">{selectedRun.steps.map(step => <article className="step-row" key={step.id}><strong>{step.node_key} <small>({step.node_kind})</small></strong><span>Status: {step.status}</span>{step.error_code && <span className="notice error">{step.error_code}</span>}{step.output_payload && <pre>{JSON.stringify(step.output_payload, null, 2)}</pre>}</article>)}</div>}
+        {!selectedRun.steps?.length ? <p className="empty-state">Belum ada step yang dikembalikan.</p> : <div className="workflow-list">{selectedRun.steps.map(step => {
+          const approval = selectedRun.approvals?.find(item => item.step_id === step.id && item.status === "pending");
+          return <article className="step-row" key={step.id}><strong>{step.node_key} <small>({step.node_kind})</small></strong><span>Status: {step.status}</span>{step.error_code && <span className="notice error">{step.error_code}</span>}{approval && <div className="approval-panel"><p>{approval.message}</p><div className="approval-actions"><button type="button" className="button-primary" disabled={saving} onClick={() => void decideApproval(selectedRun.id, step.id, approval.id, "approve")}>Setujui</button><button type="button" className="button-danger" disabled={saving} onClick={() => void decideApproval(selectedRun.id, step.id, approval.id, "reject")}>Tolak</button></div></div>}{step.output_payload && <pre>{JSON.stringify(step.output_payload, null, 2)}</pre>}</article>;
+        })}</div>}
         <h3>Event log</h3>
         {!selectedRun.events?.length ? <p className="empty-state">Belum ada event.</p> : <ol className="workflow-events">{selectedRun.events.map(event => <li key={event.sequence}><strong>{event.event_type}</strong>{event.step_key && <span> · {event.step_key}</span>}<small>{new Date(event.created_at).toLocaleString("id-ID")}</small></li>)}</ol>}
       </section>}
