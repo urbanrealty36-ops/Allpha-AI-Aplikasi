@@ -296,11 +296,21 @@ def _identity(value: object) -> str:
     return value
 
 
+def _reject_duplicate_json_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    """Reject ambiguous JSON objects at every nesting level."""
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON object key")
+        result[key] = value
+    return result
+
+
 def _parse_response(body: bytes, digest: str) -> tuple[DocumentScanReceipt, str]:
     """Strict schema validation; any deviation is untrusted, never clean."""
     invalid = DocumentScannerUnavailable("remote scanner response does not match the Allpha contract")
     try:
-        payload = json.loads(body.decode("utf-8"))
+        payload = json.loads(body.decode("utf-8"), object_pairs_hook=_reject_duplicate_json_keys)
         if not isinstance(payload, dict) or set(payload) != {"contract_version", "verdict", "sha256", "scanner"}:
             raise ValueError("unexpected top-level fields")
         scanner = payload["scanner"]
