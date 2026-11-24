@@ -527,8 +527,8 @@ def test_public_route_fails_closed_on_revoked_knowledge_consent_before_search():
                 delattr(app.state, "knowledge_retrieval_service")
             else:
                 app.state.knowledge_retrieval_service = prior
-        assert response.status_code == 503
-        assert response.json()["error"]["code"] == "KNOWLEDGE_RETRIEVAL_UNAVAILABLE"
+        assert response.status_code == 403
+        assert response.json()["error"]["code"] == "KNOWLEDGE_ACCESS_DENIED"
         assert repo.search_args is None
 
     asyncio.run(scenario())
