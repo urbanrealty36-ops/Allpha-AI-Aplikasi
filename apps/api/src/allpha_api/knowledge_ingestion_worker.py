@@ -75,7 +75,7 @@ def _validate_source_storage_identity(source: dict, job: dict) -> str:
         or not filename
         or filename in {".", ".."}
         or "/" in filename
-        or "\\\\" in filename
+        or "\\" in filename
         or any(ord(char) < 32 or ord(char) == 127 for char in filename)
     ):
         raise KnowledgeStorageIdentityMismatch("source filename is not a safe object-key segment")
