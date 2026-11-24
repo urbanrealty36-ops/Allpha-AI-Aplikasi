@@ -15,6 +15,7 @@ from allpha_api.knowledge_worker import (
     SupabaseKnowledgeJobStore,
     WorkerConfigurationError,
 )
+from allpha_api.knowledge_vector_store import IdempotentKnowledgeVectorSink
 
 
 def _load_factory(path: str):
@@ -28,6 +29,16 @@ def _load_factory(path: str):
     if not callable(factory):
         raise WorkerConfigurationError("Knowledge vector sink factory is not callable")
     return factory
+
+
+def _require_canonical_vector_sink(value) -> IdempotentKnowledgeVectorSink:
+    if not isinstance(value, IdempotentKnowledgeVectorSink):
+        raise WorkerConfigurationError(
+            "vector sink factory must return the canonical IdempotentKnowledgeVectorSink"
+        )
+    if not callable(getattr(value.repository, "upsert_batch", None)):
+        raise WorkerConfigurationError("vector repository must implement atomic upsert_batch")
+    return value
 
 
 async def build_worker() -> KnowledgeEmbeddingWorker:
@@ -44,8 +55,7 @@ async def build_worker() -> KnowledgeEmbeddingWorker:
     vector_sink = factory()
     if inspect.isawaitable(vector_sink):
         vector_sink = await vector_sink
-    if not callable(vector_sink):
-        raise WorkerConfigurationError("Knowledge vector sink factory must return an async callable")
+    vector_sink = _require_canonical_vector_sink(vector_sink)
     router = await build_embedding_router_from_environment()
     if router is None:
         raise WorkerConfigurationError("approved embedding provider profile is not configured")
