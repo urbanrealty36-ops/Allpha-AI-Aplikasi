@@ -4,7 +4,7 @@ from pathlib import Path
 import subprocess, sys, time, uuid
 
 ROOT = Path(__file__).resolve().parents[3]
-MIGRATION = ROOT / "apps/api/supabase/migrations/20261122180000_eng_p06_skill_version_rollover_runtime_pinning.sql"
+MIGRATION = ROOT / "apps/api/supabase/migrations/20261122154257_eng_p06_skill_version_rollover_runtime_pinning.sql"
 NAME = "allpha-p06-" + uuid.uuid4().hex[:8]
 OWNER = "11111111-1111-4111-8111-111111111111"
 AGENT = "22222222-2222-4222-8222-222222222222"
