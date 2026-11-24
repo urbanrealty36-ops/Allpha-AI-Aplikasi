@@ -938,3 +938,51 @@ This is an evidence refresh inside the existing fixed plan. It does not create a
 - **Outstanding ENG-P03 DoD:** the isolated PostgreSQL 17 verifier covers legal holds and specialized source handlers, and API/worker unit contracts cover lease/retry/provider behavior, but a complete synthetic end-to-end export→deletion→Storage→DB→audit journey has not yet been executed. The original remote migration ledger entry `20261123142156_eng_p03_account_deletion_executor` still has no corresponding source file in the repo tree; recover the exact source or prove later versioned migrations fully supersede it before claiming reproducible migration history. Keep production deletion disabled until the isolated journey is verified.
 - **Phase status / next phase:** ENG-P03 remains `in_progress`, not complete. ENG-P04 remains `implemented` (not `integration_verified`); ENG-P05 remains `blocked` behind P03 and P04 DoD. Once both prerequisites have evidence, the next implementation phase is ENG-P05 Agent Identity, followed by ENG-P06 Agent Studio/Skills.
 - **Coverage:** Web CHANGE; API/DB CHANGE; Native CHANGE; Super Admin INTEGRATE/CHANGE (governance).
+
+
+
+## 40.17 ENG-P03 export-before-deletion gate, source parity, and worker evidence — 2026-11-24
+
+**Status: implementation slice applied; ENG-P03 remains in_progress.** This entry records live database and repository evidence. It does not mark the full account lifecycle complete.
+
+### Production integration fix
+
+- Applied Supabase migration `20261124015229 / eng_p03_account_export_deletion_lifecycle` to canonical project `dvdziauyvuhcnqhrrvww`.
+- Fixed a real API/database contract mismatch: FastAPI called `create_account_deletion_request_for_actor(uuid,text)`, while production previously exposed only the one-argument RPC. The migration now exposes the idempotency-key two-argument RPC and removes the obsolete one-argument signature.
+- Added and verified `private.account_deletion_export_gate(uuid,uuid)`; both `prepare_account_deletion_execution` and `evaluate_account_deletion_governance` now gate deletion on a succeeded export artifact and owner download confirmation.
+- Added and verified `account_export_jobs.download_confirmed_at` and `account_deletion_requests.export_job_id`. The owner-confirmation RPC is `public.confirm_account_deletion_export_download(uuid)`.
+- Live catalog query returned: two-argument RPC present, one-argument RPC absent, export gate present, both prepare/governance functions call the gate, and both lifecycle columns present.
+- Web and Native already call the FastAPI `/confirm-export-download` route; FastAPI persists confirmation through the canonical Supabase RPC.
+
+### Migration source parity
+
+- Restored the original executor migration source and the missing versioned P03 migration sources.
+- Compared the 43 P03 migrations in the Supabase migration ledger with the 43 P03 SQL migration files in `main`: **43/43 exact version/name matches; 0 missing; 0 extra**.
+- The export-before-deletion migration source is versioned as `20261124015229_eng_p03_account_export_deletion_lifecycle.sql`, matching the applied ledger.
+
+### Live dependency and data-safety snapshot
+
+- Active FK dependency rules: 140 total, 0 with `resolution_action='block'`.
+- Active source policies: 106 total, 0 with `deletion_action='block'`.
+- No active legal holds, billing subscriptions, deletion requests, export jobs, execution jobs, Storage jobs, or ownership-transfer requests at the time of the snapshot.
+- Auth users: 1; active pseudonymous identity subjects: 1. No account was deleted or anonymized by this migration.
+
+### Worker/runtime evidence
+
+- Railway production service `allpha-social-graph-outbox-worker` is sourced from this repository/main and starts `allpha-social-account-lifecycle-worker`.
+- Runtime logs show the shared account lifecycle worker starting and successfully calling `claim_account_export_jobs`, `enqueue_expired_account_export_artifacts`, `claim_account_export_artifact_cleanup_jobs`, and `evaluate_account_deletion_governance` (HTTP 200).
+- `ACCOUNT_DELETION_EXECUTION_ENABLED` is not present in the worker service variable-name inventory. Destructive deletion execution therefore remains default-off; this is intentional until the isolated export→Storage cleanup→database cleanup→audit-result path is proven end-to-end.
+
+### Verification
+
+- Focused P03/P04 regression and Allpha Smoke passed on commit `2048ce5c656e6a60cdafef7a01feda9368e7531e`.
+- A stronger isolated PostgreSQL 17 verifier is being extended to exercise the two-argument deletion request, export gate, authenticated download confirmation, and audit event. Latest run is pending on the current implementation commit; do not treat it as passed until GitHub Actions reports success.
+- Synthetic production data was not inserted; real-account testing and Native EAS remain deferred.
+
+### Remaining P03 blockers
+
+1. Complete and pass the isolated end-to-end export→deletion→Storage cleanup→database cleanup→audit-result scenario, including worker lease/retry/recovery.
+2. Verify the executor's final tombstone/Auth identity transition and immutable billing/credit/legal-hold preservation in that same isolated scenario.
+3. Keep production deletion execution disabled until those checks pass; do not delete real accounts as a substitute for isolated verification.
+
+**Phase state:** ENG-P03 `in_progress`; ENG-P04 remains `in_progress` pending its integration/release gate; ENG-P05 remains blocked by the canonical P03/P04 dependencies. Do not advance the operational phase status until the outstanding evidence above exists.
