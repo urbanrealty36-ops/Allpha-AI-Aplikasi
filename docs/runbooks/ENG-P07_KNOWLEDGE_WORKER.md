@@ -46,11 +46,18 @@ response-size limits and strict receipt validation are enforced by the adapter.
 
 ### Local ClamAV worker image
 - `ALLPHA_DOCUMENT_SCANNER_MODE=clamd`
+- `ALLPHA_DOCUMENT_SCANNER_ID=clamav-local`
+- `ALLPHA_DOCUMENT_SCANNER_ENGINE_VERSION` (exact output version from the deployed ClamAV binary)
+- `ALLPHA_DOCUMENT_SCANNER_SIGNATURE_VERSION` (exact database/signature identity from the deployed ClamAV binary, formatted as `<database-version>/<database-timestamp>`)
 
 The dedicated Knowledge worker image includes ClamAV and its daemon configuration.
 Do not set this mode on an image that does not contain the scanner binary/daemon.
-A missing scanner or missing engine/signature identity must leave the source
-quarantined and the job failed/retryable according to the worker error class.
+The worker startup and each scan require the configured engine/signature pins to
+match the actual binary output exactly. Missing pins or runtime version drift keep
+the source quarantined; an untrusted verdict is never converted to a clean receipt.
+Pin values must be taken from the actual deployed image/daemon and must not be
+copied from examples or guessed. A missing scanner remains unavailable and the
+job follows the worker's retry/error classification.
 
 ## Embedding and vector indexing
 
