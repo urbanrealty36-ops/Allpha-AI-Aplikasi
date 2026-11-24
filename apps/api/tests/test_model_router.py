@@ -120,7 +120,7 @@ def test_canonical_router_fails_closed_without_sensitivity_policy():
 
 def test_canonical_router_retries_only_transient_adapter_failures():
     async def scenario():
-        adapter = FakeAdapter([ModelRouterTransient("temporary"), response()])
+        adapter = FakeAdapter([ModelRouterTransient("temporary", safe_to_retry=True), response()])
         router = CanonicalModelRouter(
             routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1", max_attempts=2)},
             adapters={"router-policy": adapter},
@@ -150,19 +150,24 @@ def test_canonical_router_rejects_wrong_model_identity_without_retry():
 def test_canonical_router_times_out_and_returns_retryable_failure():
     async def scenario():
         class HangingAdapter:
+            def __init__(self):
+                self.calls = 0
             async def embed(self, payload, *, model_id):
+                self.calls += 1
                 await asyncio.sleep(0.05)
                 return response()
+        adapter = HangingAdapter()
         router = CanonicalModelRouter(
-            routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1", max_attempts=1)},
-            adapters={"router-policy": HangingAdapter()},
+            routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1", max_attempts=3)},
+            adapters={"router-policy": adapter},
             retry_delay_seconds=0,
         )
         payload = request().model_copy(update={"timeout_ms": 5})
         with pytest.raises(ModelRouterRejected) as error:
             await router.embed(payload)
-        assert error.value.failure.code == "MODEL_ROUTER_TIMEOUT"
-        assert error.value.failure.retryable is True
+        assert error.value.failure.code == "MODEL_ROUTER_OUTCOME_UNKNOWN"
+        assert error.value.failure.retryable is False
+        assert adapter.calls == 1
     asyncio.run(scenario())
 
 
@@ -311,4 +316,24 @@ def test_runtime_router_fails_closed_when_cost_policy_approval_is_not_verified()
             router.require_runtime_ready()
         with pytest.raises(ModelRouterUnavailable, match="unverified"):
             await router.embed(request())
+    asyncio.run(scenario())
+
+
+
+def test_canonical_router_does_not_retry_transient_failure_with_unknown_provider_outcome():
+    async def scenario():
+        adapter = FakeAdapter([
+            ModelRouterTransient("provider may have accepted request", safe_to_retry=False),
+            response(),
+        ])
+        router = CanonicalModelRouter(
+            routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1", max_attempts=3)},
+            adapters={"router-policy": adapter},
+            retry_delay_seconds=0,
+        )
+        with pytest.raises(ModelRouterRejected) as error:
+            await router.embed(request())
+        assert error.value.failure.code == "MODEL_ROUTER_OUTCOME_UNKNOWN"
+        assert error.value.failure.retryable is False
+        assert adapter.calls == 1
     asyncio.run(scenario())
