@@ -9,7 +9,7 @@ set search_path = ''
 as $$
 declare v_subject_ref text;
 begin
-  v_subject_ref := encode(public.digest(new.id::text,'sha256'),'hex');
+  v_subject_ref := encode(extensions.digest(new.id::text,'sha256'),'hex');
   insert into private.account_identity_subjects(subject_id,subject_ref,status)
   values(new.id,v_subject_ref,'active')
   on conflict(subject_id) do nothing;
@@ -31,7 +31,7 @@ after insert on auth.users
 for each row execute function private.ensure_account_identity_subject_from_auth_user();
 
 insert into private.account_identity_subjects(subject_id,subject_ref,status)
-select u.id,encode(public.digest(u.id::text,'sha256'),'hex'),'active'
+select u.id,encode(extensions.digest(u.id::text,'sha256'),'hex'),'active'
 from auth.users u
 on conflict(subject_id) do nothing;
 
@@ -41,7 +41,7 @@ begin
     select 1 from auth.users u
     left join private.account_identity_subjects s on s.subject_id=u.id
     where s.subject_id is null or s.status<>'active'
-      or s.subject_ref<>encode(public.digest(u.id::text,'sha256'),'hex')
+      or s.subject_ref<>encode(extensions.digest(u.id::text,'sha256'),'hex')
   ) then
     raise exception 'account_identity_subject_backfill_incomplete';
   end if;
@@ -136,7 +136,7 @@ begin
     if position(v_old in v_definition)=0 then raise exception 'agent_transfer_rpc_validation_anchor_missing'; end if;
     v_definition:=replace(v_definition,v_old,v_new);
   end if;
-  v_definition:=replace(v_definition,'encode(digest(u.id::text,','encode(public.digest(u.id::text,');
+  v_definition:=replace(v_definition,'encode(digest(u.id::text,','encode(extensions.digest(u.id::text,');
   execute v_definition;
 
   -- Governance requires a transfer only for an active owner-role row.
