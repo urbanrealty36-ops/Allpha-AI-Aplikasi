@@ -213,7 +213,7 @@ class AgentRuntime:
                 raise AgentRuntimeBlocked(f"tool is not approved by runtime policy: {key}")
             if not set(tool.required_permission_scopes).issubset(auth.granted_scopes):
                 raise AgentRuntimeBlocked(f"required permission scope is missing: {key}")
-        if envelope.knowledge_context_state not in {"not_configured", "empty", "available"}:
+        if not isinstance(envelope.knowledge_context_state, str) or envelope.knowledge_context_state not in {"not_configured", "empty", "available"}:
             raise AgentRuntimeBlocked("Knowledge context state is invalid")
         if not isinstance(envelope.knowledge_context_refs, tuple) or len(envelope.knowledge_context_refs) > 8:
             raise AgentRuntimeBlocked("Knowledge context reference count exceeds runtime limits")
@@ -252,7 +252,10 @@ class AgentRuntime:
                     raise AgentRuntimeBlocked("Knowledge context citation metadata is invalid")
         else:
             empty_digest = hashlib.sha256(b"[]").hexdigest()
-            if envelope.knowledge_context_refs or envelope.knowledge_context_sha256 not in {None, empty_digest}:
+            if envelope.knowledge_context_refs or (
+                envelope.knowledge_context_sha256 is not None
+                and envelope.knowledge_context_sha256 != empty_digest
+            ):
                 raise AgentRuntimeBlocked("Empty Knowledge context cannot carry references or a non-empty digest")
         if time.monotonic() >= envelope.deadline_monotonic:
             raise AgentRuntimeBlocked("task deadline has expired")
