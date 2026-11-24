@@ -36,6 +36,7 @@ GOVERNANCE_RETRY_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123182248_eng
 FK_ACTION_GATE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124010741_eng_p03_fk_action_integrity_gate.sql"
 EXPORT_DELETION_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124015229_eng_p03_account_export_deletion_lifecycle.sql"
 DELETION_RPC_AMBIGUITY_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124020721_eng_p03_account_deletion_rpc_ambiguity_fix.sql"
+STORAGE_CLAIM_ID_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124025000_eng_p03_storage_claim_id_qualification.sql"
 ACCOUNT_LIFECYCLE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123191600_eng_p03_account_export_and_deletion_request_lifecycle.sql"
 MIGRATION=ROOT/"apps/api/supabase/migrations/20261123192200_eng_p03_deletion_legal_hold_governance_worker.sql"
 SOURCE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123153243_eng_p03_account_deletion_specialized_source_handlers.sql"
@@ -533,6 +534,7 @@ insert into public.account_data_retention_policies(
             REQUEUE_AUDIT_MIGRATION,
             EXPORT_DELETION_MIGRATION,
             DELETION_RPC_AMBIGUITY_MIGRATION,
+            STORAGE_CLAIM_ID_MIGRATION,
         ):
             psql(migration.read_text(encoding="utf-8"))
         psql("alter table public.account_deletion_execution_jobs alter column user_id drop not null;")
