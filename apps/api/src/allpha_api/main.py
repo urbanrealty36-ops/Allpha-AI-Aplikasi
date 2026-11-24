@@ -1280,6 +1280,10 @@ async def list_public_agent_skill_publications(
 
 @app.get("/v1/agents/{agent_id}/skill-installations", tags=["agents"])
 async def list_agent_skill_installations(agent_id: uuid.UUID, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    await user_db_request(
+        "POST", "rpc/expire_agent_skill_installations", request.state.supabase_access_token,
+        body={"p_agent_id": str(agent_id)},
+    )
     rows = await user_db_request(
         "GET", "agent_skill_installations", request.state.supabase_access_token,
         params={"select": "*", "agent_id": f"eq.{agent_id}", "order": "created_at.desc", "limit": "100"},
