@@ -22,7 +22,7 @@ def test_model_cost_migration_is_fail_closed_and_operator_only():
     assert "create unique index if not exists ai_model_cost_one_active_version" in sql
 
 
-APPROVAL = ROOT / "supabase" / "migrations" / "20261124061000_eng_p09_model_policy_approval_metadata.sql"
+APPROVAL = ROOT / "supabase" / "migrations" / "20261124064458_eng_p09_model_policy_approval_metadata.sql"
 
 
 def test_model_policy_approval_is_auditable_and_separate_from_tariff_activation():
