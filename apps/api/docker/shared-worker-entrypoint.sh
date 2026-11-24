@@ -4,8 +4,13 @@ set -eu
 KNOWLEDGE_ENABLED="$(printf '%s' "${ALLPHA_KNOWLEDGE_DOCUMENT_WORKER_ENABLED:-false}" | tr '[:upper:]' '[:lower:]')"
 SCANNER_MODE="$(printf '%s' "${ALLPHA_DOCUMENT_SCANNER_MODE:-}" | tr '[:upper:]' '[:lower:]')"
 SCANNER_URL="${ALLPHA_DOCUMENT_SCANNER_URL:-}"
+CLAMAV_ENABLED="$(printf '%s' "${ALLPHA_CLAMAV_ENABLED:-false}" | tr '[:upper:]' '[:lower:]')"
 
-if [ "$KNOWLEDGE_ENABLED" = "true" ] && [ -z "$SCANNER_URL" ] && [ "$SCANNER_MODE" = "clamd" ]; then
+if [ "$KNOWLEDGE_ENABLED" = "true" ] && [ -z "$SCANNER_URL" ]; then
+    if [ "$SCANNER_MODE" != "clamd" ] || [ "$CLAMAV_ENABLED" != "true" ]; then
+        echo "Knowledge document consumer disabled: configure the authenticated remote scanner or explicitly enable local ClamAV on a memory-eligible service" >&2
+        export ALLPHA_KNOWLEDGE_DOCUMENT_WORKER_ENABLED=false
+    else
     mkdir -p /run/clamav
     mkdir -p /var/log/clamav
     touch /var/log/clamav/clamav.log
@@ -75,6 +80,7 @@ CLAMDSCAN_CONFIG
         export ALLPHA_KNOWLEDGE_DOCUMENT_WORKER_ENABLED=false
     else
         echo "ClamAV scanner is ready; starting shared Allpha consumers"
+    fi
     fi
 fi
 
