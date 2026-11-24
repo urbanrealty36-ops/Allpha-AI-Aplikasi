@@ -7,6 +7,7 @@ the credential or write directly to runtime tables.
 from __future__ import annotations
 
 import os
+import uuid
 from datetime import datetime, timezone
 from typing import Any
 
@@ -134,6 +135,60 @@ class AgentRuntimeStore:
             "status": "eq.approved", "limit": "1",
         })
         return rows[0] if rows and rows[0].get("policy_version") else None
+
+    async def validate_knowledge_context_refs(
+        self, owner_id: str, agent_id: str, refs: list[dict[str, Any]],
+    ) -> bool:
+        """Revalidate current owner/Agent source and chunk versions before tool execution."""
+        if not refs:
+            return True
+        if not isinstance(refs, list) or len(refs) > 8:
+            raise AgentRuntimePersistenceError("Knowledge citation reference list is invalid")
+        source_ids: set[str] = set()
+        chunk_ids: set[str] = set()
+        for ref in refs:
+            if not isinstance(ref, dict):
+                raise AgentRuntimePersistenceError("Knowledge citation reference is malformed")
+            try:
+                source_id = str(uuid.UUID(str(ref.get("source_id") or "")))
+                chunk_id = str(uuid.UUID(str(ref.get("chunk_id") or "")))
+            except (ValueError, TypeError, AttributeError) as exc:
+                raise AgentRuntimePersistenceError("Knowledge citation source/chunk ID is invalid") from exc
+            source_ids.add(source_id)
+            chunk_ids.add(chunk_id)
+        sources = await self.request("GET", "agent_knowledge_sources", params={
+            "select": "id,owner_id,agent_id,source_version,status,sensitivity",
+            "id": "in.(" + ",".join(sorted(source_ids)) + ")",
+            "owner_id": f"eq.{owner_id}",
+            "agent_id": f"eq.{agent_id}",
+            "status": "eq.ready",
+        })
+        chunks = await self.request("GET", "agent_knowledge_chunks", params={
+            "select": "id,source_id,owner_id,agent_id,source_version,content_sha256",
+            "id": "in.(" + ",".join(sorted(chunk_ids)) + ")",
+            "owner_id": f"eq.{owner_id}",
+            "agent_id": f"eq.{agent_id}",
+        })
+        if not isinstance(sources, list) or not isinstance(chunks, list):
+            raise AgentRuntimePersistenceError("Knowledge citation verification returned invalid data")
+        source_map = {str(row.get("id")): row for row in sources if isinstance(row, dict)}
+        chunk_map = {str(row.get("id")): row for row in chunks if isinstance(row, dict)}
+        for ref in refs:
+            source = source_map.get(ref["source_id"])
+            chunk = chunk_map.get(ref["chunk_id"])
+            if (
+                not source or not chunk
+                or source.get("owner_id") != owner_id or source.get("agent_id") != agent_id
+                or source.get("status") != "ready"
+                or source.get("source_version") != ref.get("source_version")
+                or source.get("sensitivity") != ref.get("sensitivity")
+                or chunk.get("owner_id") != owner_id or chunk.get("agent_id") != agent_id
+                or chunk.get("source_id") != ref.get("source_id")
+                or chunk.get("source_version") != ref.get("source_version")
+                or chunk.get("content_sha256") != ref.get("content_sha256")
+            ):
+                return False
+        return True
 
     async def get_approved_runtime_policy(self, agent_id: str, policy_id: str) -> dict[str, Any] | None:
         rows = await self.request("GET", "agent_runtime_policies", params={
