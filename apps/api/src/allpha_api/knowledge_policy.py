@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import importlib
 import os
+import uuid
 from dataclasses import dataclass
 from typing import Callable, Protocol
 
@@ -29,6 +30,10 @@ class KnowledgePolicySnapshot:
     owner_id: str
     agent_id: str
     allowed_sensitivities: tuple[str, ...]
+    allowed_source_ids: tuple[str, ...]
+    audience: str
+    grant_version: str
+    decision_reference: str
     knowledge_consent_granted: bool
     consent_version: str
     consent_revoked: bool
@@ -48,6 +53,10 @@ class ResolvedKnowledgePolicy:
     policy_version: str
     consent_version: str
     allowed_sensitivities: tuple[str, ...]
+    allowed_source_ids: tuple[str, ...]
+    audience: str
+    grant_version: str
+    decision_reference: str
     purpose: str = RETRIEVAL_PURPOSE
 
 
@@ -75,6 +84,9 @@ class VersionedKnowledgePolicyResolver:
             or not snapshot.consent_version.strip()
             or not isinstance(snapshot.resolved_at_version, str)
             or not snapshot.resolved_at_version.strip()
+            or not isinstance(snapshot.audience, str) or not snapshot.audience.strip()
+            or not isinstance(snapshot.grant_version, str) or not snapshot.grant_version.strip()
+            or not isinstance(snapshot.decision_reference, str) or not snapshot.decision_reference.strip()
             or not isinstance(snapshot.owner_id, str)
             or snapshot.owner_id != owner_id
             or not isinstance(snapshot.agent_id, str)
@@ -96,6 +108,25 @@ class VersionedKnowledgePolicyResolver:
         ):
             raise KnowledgePolicyUnavailable("retrieval purpose is not permitted by policy")
         if (
+            not isinstance(snapshot.allowed_source_ids, (tuple, list))
+            or not snapshot.allowed_source_ids
+            or len(snapshot.allowed_source_ids) > 500
+            or any(not isinstance(value, str) or not value.strip() for value in snapshot.allowed_source_ids)
+        ):
+            raise KnowledgePolicyUnavailable("knowledge source grant scope is missing or invalid")
+        source_ids: list[str] = []
+        for value in snapshot.allowed_source_ids:
+            try:
+                canonical_source_id = str(uuid.UUID(value))
+            except (ValueError, TypeError, AttributeError) as exc:
+                raise KnowledgePolicyUnavailable("knowledge source grant scope contains an invalid source ID") from exc
+            if canonical_source_id != value.lower():
+                raise KnowledgePolicyUnavailable("knowledge source grant scope contains a non-canonical source ID")
+            source_ids.append(canonical_source_id)
+        source_ids = list(dict.fromkeys(source_ids))
+        if not source_ids:
+            raise KnowledgePolicyUnavailable("knowledge source grant scope is empty")
+        if (
             not isinstance(snapshot.allowed_sensitivities, (tuple, list))
             or any(not isinstance(value, str) for value in snapshot.allowed_sensitivities)
         ):
@@ -107,6 +138,10 @@ class VersionedKnowledgePolicyResolver:
             policy_version=snapshot.policy_version,
             consent_version=snapshot.consent_version,
             allowed_sensitivities=sensitivities,
+            allowed_source_ids=tuple(source_ids),
+            audience=snapshot.audience,
+            grant_version=snapshot.grant_version,
+            decision_reference=snapshot.decision_reference,
         )
 
 
