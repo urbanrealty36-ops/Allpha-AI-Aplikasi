@@ -23,11 +23,11 @@ def test_public_skill_publication_catalog_is_anonymous_and_paged(monkeypatch):
     async def fake_db(method, path, token, **kwargs):
         calls.append((method, path, token, kwargs))
         return [{"id": SOURCE_SKILL, "agent_id": SOURCE_AGENT, "version": 3, "publication_terms": {"license": "owner"}}]
-    monkeypatch.setattr("allpha_api.main.user_db_request", fake_db)
+    monkeypatch.setattr("allpha_api.main.privileged_rest_request", fake_db)
     response = client.get("/v1/agent-skills/publications?agent_id=" + SOURCE_AGENT + "&limit=200&offset=-2")
     assert response.status_code == 200
     assert response.json()["items"][0]["id"] == SOURCE_SKILL
-    assert calls[0][0:3] == ("GET", "agent_skill_publications", None)
+    assert calls[0][0:2] == ("GET", "agent_skill_publications")
     assert calls[0][3]["params"]["limit"] == "100"
     assert calls[0][3]["params"]["offset"] == "0"
 
@@ -35,12 +35,15 @@ def test_public_skill_publication_catalog_is_anonymous_and_paged(monkeypatch):
 def test_agent_skill_installation_list_requires_auth_and_uses_owner_scoped_table(monkeypatch):
     assert client.get(f"/v1/agents/{AGENT}/skill-installations").status_code == 401
     calls = []
+    service_calls = []
     async def fake_db(method, path, token, **kwargs):
         calls.append((method, path, token, kwargs))
-        if path == "rpc/expire_agent_skill_installations":
-            return 0
         return [{"id": INSTALLATION, "agent_id": AGENT, "status": "active"}]
+    async def fake_service(function_name, *, body):
+        service_calls.append((function_name, body))
+        return 0
     monkeypatch.setattr("allpha_api.main.user_db_request", fake_db)
+    monkeypatch.setattr("allpha_api.main.service_db_request", fake_service)
     app.dependency_overrides[current_user] = auth_as("owner-a")
     try:
         response = client.get(f"/v1/agents/{AGENT}/skill-installations", headers={"Authorization": "Bearer test"})
@@ -48,11 +51,10 @@ def test_agent_skill_installation_list_requires_auth_and_uses_owner_scoped_table
         app.dependency_overrides.clear()
     assert response.status_code == 200
     assert response.json()["items"][0]["id"] == INSTALLATION
-    assert [call[1] for call in calls] == ["rpc/expire_agent_skill_installations", "agent_skill_installations"]
-    assert calls[0][0:3] == ("POST", "rpc/expire_agent_skill_installations", "token-owner-a")
-    assert calls[0][3]["body"] == {"p_agent_id": AGENT}
-    assert calls[1][0:3] == ("GET", "agent_skill_installations", "token-owner-a")
-    assert calls[1][3]["params"]["agent_id"] == "eq." + AGENT
+    assert service_calls == [("expire_agent_skill_installations", {"p_agent_id": AGENT, "p_actor_user_id": "owner-a"})]
+    assert len(calls) == 1
+    assert calls[0][0:3] == ("GET", "agent_skill_installations", "token-owner-a")
+    assert calls[0][3]["params"]["agent_id"] == "eq." + AGENT
 
 
 def test_skill_installation_requires_explicit_license_acceptance(monkeypatch):
@@ -76,10 +78,10 @@ def test_skill_installation_requires_explicit_license_acceptance(monkeypatch):
 
 def test_skill_installation_uses_canonical_transactional_rpc(monkeypatch):
     calls = []
-    async def fake_db(method, path, token, **kwargs):
-        calls.append((method, path, token, kwargs))
-        return [{"installation": {"id": INSTALLATION, "status": "active"}, "installed_skill_id": "55555555-5555-4555-8555-555555555555", "idempotent_replay": False}]
-    monkeypatch.setattr("allpha_api.main.user_db_request", fake_db)
+    async def fake_service(function_name, *, body):
+        calls.append((function_name, body))
+        return {"installation": {"id": INSTALLATION, "status": "active"}, "installed_skill_id": "55555555-5555-4555-8555-555555555555", "idempotent_replay": False}
+    monkeypatch.setattr("allpha_api.main.service_db_request", fake_service)
     app.dependency_overrides[current_user] = auth_as("owner-a")
     try:
         response = client.post(f"/v1/agents/{AGENT}/skills/install",
@@ -89,19 +91,20 @@ def test_skill_installation_uses_canonical_transactional_rpc(monkeypatch):
     finally:
         app.dependency_overrides.clear()
     assert response.status_code == 201
-    assert calls[0][0:3] == ("POST", "rpc/install_agent_skill", "token-owner-a")
-    assert calls[0][3]["body"] == {
+    assert calls[0][0] == "install_agent_skill"
+    assert calls[0][1] == {
         "p_agent_id": AGENT, "p_source_agent_id": SOURCE_AGENT, "p_source_skill_id": SOURCE_SKILL,
         "p_source_version": 3, "p_accept_license": True, "p_idempotency_key": "install-key-0001",
+        "p_actor_user_id": "owner-a",
     }
 
 
 def test_skill_installation_revoke_requires_owner_reason_and_calls_rpc(monkeypatch):
     calls = []
-    async def fake_db(method, path, token, **kwargs):
-        calls.append((method, path, token, kwargs))
-        return [{"installation": {"id": INSTALLATION, "status": "revoked"}, "runtime_authorized": False}]
-    monkeypatch.setattr("allpha_api.main.user_db_request", fake_db)
+    async def fake_service(function_name, *, body):
+        calls.append((function_name, body))
+        return {"installation": {"id": INSTALLATION, "status": "revoked"}, "runtime_authorized": False}
+    monkeypatch.setattr("allpha_api.main.service_db_request", fake_service)
     app.dependency_overrides[current_user] = auth_as("owner-a")
     try:
         response = client.post(f"/v1/agents/{AGENT}/skill-installations/{INSTALLATION}/revoke",
@@ -109,9 +112,10 @@ def test_skill_installation_revoke_requires_owner_reason_and_calls_rpc(monkeypat
     finally:
         app.dependency_overrides.clear()
     assert response.status_code == 200
-    assert calls[0][0:3] == ("POST", "rpc/revoke_agent_skill_installation", "token-owner-a")
-    assert calls[0][3]["body"] == {
-        "p_agent_id": AGENT, "p_installation_id": INSTALLATION, "p_reason": "License terms no longer accepted",
+    assert calls[0][0] == "revoke_agent_skill_installation"
+    assert calls[0][1] == {
+        "p_agent_id": AGENT, "p_installation_id": INSTALLATION,
+        "p_reason": "License terms no longer accepted", "p_actor_user_id": "owner-a",
     }
 
 
