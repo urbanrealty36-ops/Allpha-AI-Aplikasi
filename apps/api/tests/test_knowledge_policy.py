@@ -23,7 +23,9 @@ def snapshot(**overrides):
         decision_reference="decision-42",
         knowledge_consent_granted=True,
         consent_version="knowledge-consent.v2",
+        consent_expires_at=None,
         consent_revoked=False,
+        grant_expires_at=None,
         allowed_purposes=("agent_context_retrieval",),
         grants_active=True,
         resolved_at_version="snapshot-42",
@@ -337,4 +339,49 @@ def test_source_authorization_requires_exact_source_sensitivity_and_purpose():
             await resolver.authorize_source(owner_id="owner-a", agent_id="agent-a", source_id="00000000-0000-0000-0000-0000000000c8", sensitivity="internal", purpose="knowledge_ingestion")
         with pytest.raises(KnowledgePolicyDenied):
             await resolver.authorize_source(owner_id="owner-a", agent_id="agent-a", source_id="00000000-0000-0000-0000-0000000000c9", sensitivity="restricted", purpose="knowledge_ingestion")
+    asyncio.run(scenario())
+
+
+def test_versioned_policy_denies_expired_consent_and_source_grant():
+    from datetime import datetime, timedelta, timezone
+
+    expired = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
+
+    async def scenario():
+        with pytest.raises(KnowledgePolicyDenied, match="expired or revoked"):
+            await VersionedKnowledgePolicyResolver(
+                Provider(snapshot(consent_expires_at=expired))
+            ).resolve(owner_id="owner-a", agent_id="agent-a")
+        with pytest.raises(KnowledgePolicyDenied, match="expired or revoked"):
+            await VersionedKnowledgePolicyResolver(
+                Provider(snapshot(grant_expires_at=expired))
+            ).resolve(owner_id="owner-a", agent_id="agent-a")
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("field,value", [
+    ("consent_expires_at", "2026-11-24T12:00:00"),
+    ("grant_expires_at", "not-a-timestamp"),
+])
+def test_versioned_policy_rejects_invalid_expiry(field, value):
+    async def scenario():
+        with pytest.raises(KnowledgePolicyUnavailable, match="expiry"):
+            await VersionedKnowledgePolicyResolver(
+                Provider(snapshot(**{field: value}))
+            ).resolve(owner_id="owner-a", agent_id="agent-a")
+    asyncio.run(scenario())
+
+
+def test_versioned_policy_preserves_consent_and_grant_expiry():
+    from datetime import datetime, timedelta, timezone
+
+    future = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+
+    async def scenario():
+        resolved = await VersionedKnowledgePolicyResolver(
+            Provider(snapshot(consent_expires_at=future, grant_expires_at=future))
+        ).resolve(owner_id="owner-a", agent_id="agent-a")
+        assert resolved.consent_expires_at == future
+        assert resolved.grant_expires_at == future
     asyncio.run(scenario())
