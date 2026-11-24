@@ -205,7 +205,7 @@ async def list_account_exports(
         "account_export_jobs",
         request.state.supabase_access_token,
         params={
-            "select": "id,status,progress_percent,progress_stage,requested_at,started_at,completed_at,failed_at,expires_at,error_code,file_size_bytes,manifest",
+            "select": "id,status,progress_percent,progress_stage,requested_at,started_at,completed_at,failed_at,expires_at,download_confirmed_at,error_code,file_size_bytes,manifest",
             "user_id": f"eq.{user['id']}",
             "order": "requested_at.desc",
             "limit": "50",
@@ -225,7 +225,7 @@ async def get_account_export_download(
         "account_export_jobs",
         request.state.supabase_access_token,
         params={
-            "select": "id,user_id,status,storage_bucket,storage_path,file_size_bytes,file_sha256,expires_at",
+            "select": "id,user_id,status,storage_bucket,storage_path,file_size_bytes,file_sha256,expires_at,download_confirmed_at",
             "id": f"eq.{job_id}",
             "user_id": f"eq.{user['id']}",
             "limit": "1",
@@ -237,11 +237,29 @@ async def get_account_export_download(
             detail={"code": "ACCOUNT_EXPORT_NOT_FOUND", "message": "Ekspor akun tidak ditemukan."},
         )
     job = rows[0]
-    if job.get("status") == "expired" or _export_artifact_expired(job.get("expires_at")):
+    if job.get("status") == "expired":
         raise HTTPException(
             status_code=410,
-            detail={"code": "ACCOUNT_EXPORT_EXPIRED", "message": "Masa akses arsip ekspor telah berakhir."},
+            detail={"code": "ACCOUNT_EXPORT_EXPIRED", "message": "Arsip ekspor sudah dibersihkan."},
         )
+    if _export_artifact_expired(job.get("expires_at")) and not job.get("download_confirmed_at"):
+        linked = await user_db_request(
+            "GET",
+            "account_deletion_requests",
+            request.state.supabase_access_token,
+            params={
+                "select": "id,status",
+                "user_id": f"eq.{user['id']}",
+                "export_job_id": f"eq.{job_id}",
+                "status": "in.(awaiting_policy,scheduled,processing,blocked_legal_hold,blocked_dependency)",
+                "limit": "1",
+            },
+        )
+        if not isinstance(linked, list) or len(linked) != 1:
+            raise HTTPException(
+                status_code=410,
+                detail={"code": "ACCOUNT_EXPORT_EXPIRED", "message": "Masa akses arsip ekspor telah berakhir."},
+            )
     if job.get("status") != "succeeded":
         raise HTTPException(
             status_code=409,
@@ -313,6 +331,29 @@ async def list_account_deletion_requests(
     return {"items": rows if isinstance(rows, list) else []}
 
 
+@router.post("/v1/me/deletion-requests/{request_id}/confirm-export-download")
+async def confirm_account_deletion_export_download(
+    request_id: uuid.UUID,
+    request: Request,
+    user: dict[str, Any] = Depends(current_session_user),
+) -> dict[str, Any]:
+    result = await user_db_request(
+        "POST",
+        "rpc/confirm_account_deletion_export_download",
+        request.state.supabase_access_token,
+        body={"p_request_id": str(request_id)},
+    )
+    if not isinstance(result, dict) or result.get("status") != "confirmed":
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "ACCOUNT_EXPORT_CONFIRMATION_FAILED", "message": "Konfirmasi unduhan arsip belum dapat dicatat."},
+        )
+    return {
+        "confirmation": result,
+        "message": "Konfirmasi unduhan tersimpan. Permintaan penghapusan akan dievaluasi kembali sesuai retensi data dan legal hold.",
+    }
+
+
 @router.post("/v1/me/deletion-requests", status_code=202)
 async def request_account_deletion(
     payload: AccountDeletionRequestCreate,
@@ -347,9 +388,9 @@ async def request_account_deletion(
             "status": request_row.get("export_status"),
         },
         "message": (
-            "Permintaan tercatat dan arsip ekspor dibuat lebih dahulu. Penghapusan "
-            "menunggu ekspor selesai, kebijakan retensi artefak ekspor yang valid, "
-            "retensi data, legal hold, dan seluruh dependency; belum ada data yang dihapus."
+            "Permintaan tercatat dan arsip ekspor dibuat lebih dahulu. Setelah arsip "
+            "berhasil diunduh dan dikonfirmasi, penghapusan akan menunggu retensi data, "
+            "legal hold, dan seluruh dependency; belum ada data yang dihapus."
         ),
     }
 
