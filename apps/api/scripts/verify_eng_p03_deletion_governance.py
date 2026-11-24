@@ -57,9 +57,9 @@ create schema extensions;
 create extension if not exists pgcrypto with schema extensions;
 create schema private;
 create table auth.users(id uuid primary key);
-create function auth.uid() returns uuid language sql stable as $
+create function auth.uid() returns uuid language sql stable as $uid$
  select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid
-$;
+$uid$;
 create function auth.role() returns text language sql stable as $$
  select nullif(current_setting('request.jwt.claim.role',true),'')
 $$;
