@@ -20,6 +20,7 @@ FILES=[
  MIGRATIONS/"20261124052416_eng_p07_delete_fence_owner_atomicity.sql",
  MIGRATIONS/"20261124052559_eng_p07_delete_fence_authorize_before_lookup.sql",
  MIGRATIONS/"20261124081300_eng_p07_knowledge_job_lease_heartbeat.sql",
+ MIGRATIONS/"20261124091500_eng_p07_knowledge_source_state_lease_fence.sql",
 ]
 NAME="allpha-p07-knowledge-"+uuid.uuid4().hex[:8]
 OWNER="11111111-1111-4111-8111-111111111111"
@@ -141,6 +142,24 @@ declare v_job public.agent_knowledge_jobs%rowtype; v_result jsonb;
 begin
  select * into v_job from public.agent_knowledge_jobs where source_id='{SOURCE}' and stage='awaiting_malware_scan';
  if v_job.status<>'processing' or v_job.lease_token is null then raise exception 'document job lease not acquired'; end if;
+ if not public.update_agent_knowledge_source_processing_state(
+   v_job.id,v_job.lease_token,1,'malware_scan',null
+ ) then raise exception 'valid document lease could not enter malware scan'; end if;
+ if not public.update_agent_knowledge_source_processing_state(
+   v_job.id,v_job.lease_token,1,'document_parsing',
+   jsonb_build_object(
+     'scanner_id','ci-scanner','engine_version','1.0','signature_version','ci-signatures',
+     'sha256',(select sha256 from public.agent_knowledge_sources where id='{SOURCE}'),
+     'contract_version','allpha.document-scan.v1'
+   )
+ ) then raise exception 'valid document lease could not persist scanner receipt'; end if;
+ if not exists(
+   select 1 from public.agent_knowledge_sources
+   where id='{SOURCE}' and provenance->'malware_scan'->>'scanner_id'='ci-scanner'
+ ) then raise exception 'scanner receipt provenance was not persisted'; end if;
+ if not public.update_agent_knowledge_source_processing_state(
+   v_job.id,v_job.lease_token,1,'chunk_persistence',null
+ ) then raise exception 'valid document lease could not enter chunk persistence'; end if;
  perform public.persist_agent_knowledge_chunk_batch(
   v_job.id,v_job.lease_token,1,true,
   jsonb_build_array(
@@ -210,6 +229,9 @@ begin
  if public.heartbeat_agent_knowledge_job(v_job.id,v_old_token,90) then
   raise exception 'expired Knowledge lease was incorrectly revived';
  end if;
+ if public.update_agent_knowledge_source_processing_state(v_job.id,v_old_token,1,'malware_scan',null) then
+  raise exception 'expired Knowledge lease updated source processing state';
+ end if;
  perform public.claim_agent_knowledge_job(90,'awaiting_malware_scan');
  select lease_token into v_new_token from public.agent_knowledge_jobs where id=v_job.id;
  if v_new_token is null or v_new_token=v_old_token then
@@ -218,9 +240,15 @@ begin
  if not public.heartbeat_agent_knowledge_job(v_job.id,v_new_token,90) then
   raise exception 'current recovered Knowledge lease could not be renewed';
  end if;
+ if not public.update_agent_knowledge_source_processing_state(v_job.id,v_new_token,1,'malware_scan',null) then
+  raise exception 'current recovered Knowledge lease could not update source state';
+ end if;
  update public.agent_knowledge_sources set source_version=source_version+1 where id='{SOURCE_STALE}';
  if public.heartbeat_agent_knowledge_job(v_job.id,v_new_token,90) then
   raise exception 'stale source-version Knowledge lease was incorrectly renewed';
+ end if;
+ if public.update_agent_knowledge_source_processing_state(v_job.id,v_new_token,1,'document_parsing',null) then
+  raise exception 'stale source-version Knowledge lease updated source state';
  end if;
 end $do$;
 reset role;
@@ -241,14 +269,16 @@ begin
     or has_function_privilege('authenticated','public.complete_agent_knowledge_document_parse(uuid,uuid,integer,integer)','EXECUTE')
     or has_function_privilege('authenticated','public.enqueue_agent_knowledge_document_job(uuid,uuid,uuid,text)','EXECUTE')
     or has_function_privilege('authenticated','public.fail_agent_knowledge_document_job(uuid,uuid,text,text,boolean,integer)','EXECUTE')
-    or has_function_privilege('authenticated','public.heartbeat_agent_knowledge_job(uuid,uuid,integer)','EXECUTE') then
+    or has_function_privilege('authenticated','public.heartbeat_agent_knowledge_job(uuid,uuid,integer)','EXECUTE')
+    or has_function_privilege('authenticated','public.update_agent_knowledge_source_processing_state(uuid,uuid,integer,text,jsonb)','EXECUTE') then
   raise exception 'authenticated role can execute privileged Knowledge RPCs';
  end if;
  if not has_function_privilege('service_role','public.persist_agent_knowledge_chunk_batch(uuid,uuid,integer,boolean,jsonb)','EXECUTE')
     or not has_function_privilege('service_role','public.complete_agent_knowledge_document_parse(uuid,uuid,integer,integer)','EXECUTE')
     or not has_function_privilege('service_role','public.enqueue_agent_knowledge_document_job(uuid,uuid,uuid,text)','EXECUTE')
     or not has_function_privilege('service_role','public.fail_agent_knowledge_document_job(uuid,uuid,text,text,boolean,integer)','EXECUTE')
-    or not has_function_privilege('service_role','public.heartbeat_agent_knowledge_job(uuid,uuid,integer)','EXECUTE') then
+    or not has_function_privilege('service_role','public.heartbeat_agent_knowledge_job(uuid,uuid,integer)','EXECUTE')
+    or not has_function_privilege('service_role','public.update_agent_knowledge_source_processing_state(uuid,uuid,integer,text,jsonb)','EXECUTE') then
   raise exception 'service_role cannot execute Knowledge worker RPCs';
  end if;
 end $do$;
