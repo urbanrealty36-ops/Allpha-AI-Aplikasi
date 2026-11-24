@@ -20,6 +20,7 @@ begin
   end if;
   if p_job_id is null or p_lease_token is null
      or p_source_version is null or p_source_version < 1
+     or p_stage is null
      or p_stage not in ('malware_scan', 'document_parsing', 'chunk_persistence') then
     raise exception 'KNOWLEDGE_SOURCE_STATE_ARGUMENTS_INVALID' using errcode = '22023';
   end if;
