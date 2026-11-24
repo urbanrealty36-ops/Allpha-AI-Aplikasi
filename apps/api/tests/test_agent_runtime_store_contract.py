@@ -101,6 +101,8 @@ def test_runtime_skill_resolution_uses_exact_immutable_published_snapshot():
         requests.append(request)
         if request.url.path.endswith("/agent_ownerships"):
             return httpx.Response(200, json=[{"agent_id": agent_id}])
+        if request.url.path.endswith("/agent_skill_installations"):
+            return httpx.Response(200, json=[])
         if request.url.path.endswith("/agent_skill_versions"):
             return httpx.Response(200, json=[{"snapshot": snapshot}])
         return httpx.Response(404)
@@ -114,16 +116,19 @@ def test_runtime_skill_resolution_uses_exact_immutable_published_snapshot():
 
     assert resolved == snapshot
     assert [request.url.path for request in requests] == [
-        "/rest/v1/agent_ownerships", "/rest/v1/agent_skill_versions",
+        "/rest/v1/agent_ownerships", "/rest/v1/agent_skill_installations", "/rest/v1/agent_skill_versions",
     ]
-    assert requests[1].url.params["version"] == "eq.7"
-    assert requests[1].url.params["skill_id"] == f"eq.{skill_id}"
+    assert requests[1].url.params["installed_skill_id"] == f"eq.{skill_id}"
+    assert requests[2].url.params["version"] == "eq.7"
+    assert requests[2].url.params["skill_id"] == f"eq.{skill_id}"
 
 
 def test_runtime_skill_resolution_fails_closed_when_pinned_snapshot_is_missing():
     async def handler(request):
         if request.url.path.endswith("/agent_ownerships"):
             return httpx.Response(200, json=[{"agent_id": "agent-1"}])
+        if request.url.path.endswith("/agent_skill_installations"):
+            return httpx.Response(200, json=[])
         if request.url.path.endswith("/agent_skill_versions"):
             return httpx.Response(200, json=[])
         return httpx.Response(404)
@@ -135,3 +140,54 @@ def test_runtime_skill_resolution_fails_closed_when_pinned_snapshot_is_missing()
     )
     resolved = asyncio.run(store.get_skill("owner-1", "agent-1", "skill-1", version=4))
     assert resolved is None
+
+
+def test_runtime_skill_resolution_requires_active_unexpired_installation_license():
+    requests=[]
+    snapshot={"id":"skill-1","agent_id":"agent-1","version":7,"status":"published"}
+    async def handler(request):
+        requests.append(request)
+        if request.url.path.endswith("/agent_ownerships"):
+            return httpx.Response(200,json=[{"agent_id":"agent-1"}])
+        if request.url.path.endswith("/agent_skill_installations"):
+            return httpx.Response(200,json=[{
+                "id":"installation-1","status":"active","license_terms_digest":"a"*64,
+                "accepted_at":"2026-11-24T00:00:00Z","license_expires_at":None,
+            }])
+        if request.url.path.endswith("/agent_skill_versions"):
+            return httpx.Response(200,json=[{"snapshot":snapshot}])
+        return httpx.Response(404)
+    store=AgentRuntimeStore(supabase_url="https://example.supabase.co",service_key="test-service-role-key",transport=httpx.MockTransport(handler))
+    assert asyncio.run(store.get_skill("owner-1","agent-1","skill-1",version=7))==snapshot
+    assert requests[1].url.path.endswith("/agent_skill_installations")
+
+
+def test_runtime_skill_resolution_fails_closed_after_installation_revocation():
+    requests=[]
+    async def handler(request):
+        requests.append(request)
+        if request.url.path.endswith("/agent_ownerships"):
+            return httpx.Response(200,json=[{"agent_id":"agent-1"}])
+        if request.url.path.endswith("/agent_skill_installations"):
+            return httpx.Response(200,json=[{
+                "id":"installation-1","status":"revoked","license_terms_digest":"a"*64,
+                "accepted_at":"2026-11-24T00:00:00Z","license_expires_at":None,
+            }])
+        return httpx.Response(200,json=[{"snapshot":{"id":"skill-1","agent_id":"agent-1","version":7,"status":"published"}}])
+    store=AgentRuntimeStore(supabase_url="https://example.supabase.co",service_key="test-service-role-key",transport=httpx.MockTransport(handler))
+    assert asyncio.run(store.get_skill("owner-1","agent-1","skill-1",version=7)) is None
+    assert not any(request.url.path.endswith("/agent_skill_versions") for request in requests)
+
+
+def test_runtime_skill_resolution_fails_closed_after_license_expiry():
+    async def handler(request):
+        if request.url.path.endswith("/agent_ownerships"):
+            return httpx.Response(200,json=[{"agent_id":"agent-1"}])
+        if request.url.path.endswith("/agent_skill_installations"):
+            return httpx.Response(200,json=[{
+                "id":"installation-1","status":"active","license_terms_digest":"a"*64,
+                "accepted_at":"2026-11-24T00:00:00Z","license_expires_at":"2020-01-01T00:00:00Z",
+            }])
+        return httpx.Response(200,json=[{"snapshot":{"id":"skill-1","agent_id":"agent-1","version":7,"status":"published"}}])
+    store=AgentRuntimeStore(supabase_url="https://example.supabase.co",service_key="test-service-role-key",transport=httpx.MockTransport(handler))
+    assert asyncio.run(store.get_skill("owner-1","agent-1","skill-1",version=7)) is None
