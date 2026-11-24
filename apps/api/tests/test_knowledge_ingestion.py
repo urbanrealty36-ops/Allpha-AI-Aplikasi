@@ -285,6 +285,9 @@ def test_clamd_scanner_accepts_only_clean_local_verdicts(monkeypatch):
     from allpha_api.knowledge import _scan
     monkeypatch.delenv("ALLPHA_DOCUMENT_SCANNER_URL",raising=False)
     monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_MODE","clamd")
+    monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_ID","clamav-local")
+    monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_ENGINE_VERSION","1.4.6")
+    monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_SIGNATURE_VERSION","123/2026-11-24")
     calls=[]
     class Process:
         returncode=0
@@ -313,6 +316,9 @@ def test_clamd_scanner_rejects_infected_document(monkeypatch):
     from allpha_api.knowledge import _scan
     monkeypatch.delenv("ALLPHA_DOCUMENT_SCANNER_URL",raising=False)
     monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_MODE","clamd")
+    monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_ID","clamav-local")
+    monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_ENGINE_VERSION","1.4.6")
+    monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_SIGNATURE_VERSION","123/2026-11-24")
     class Process:
         returncode=1
         async def communicate(self):
@@ -332,6 +338,9 @@ def test_clamd_scanner_fails_closed_when_daemon_unavailable(monkeypatch):
     from allpha_api.knowledge import _scan
     monkeypatch.delenv("ALLPHA_DOCUMENT_SCANNER_URL",raising=False)
     monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_MODE","clamd")
+    monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_ID","clamav-local")
+    monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_ENGINE_VERSION","1.4.6")
+    monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_SIGNATURE_VERSION","123/2026-11-24")
     class Process:
         returncode=2
         async def communicate(self):
