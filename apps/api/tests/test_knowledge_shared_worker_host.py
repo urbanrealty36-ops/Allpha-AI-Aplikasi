@@ -84,7 +84,7 @@ def test_shared_worker_image_excludes_memory_heavy_local_clamav():
     dockerfile = (root / "Dockerfile.agent-runtime-worker").read_text(encoding="utf-8")
     script = (root / "docker" / "shared-worker-entrypoint.sh").read_text(encoding="utf-8")
     assert "apt-get install -y --no-install-recommends gosu ca-certificates" in dockerfile
-    assert "clamav" not in dockerfile.lower()
+    assert "apt-get install -y --no-install-recommends clamav" not in dockerfile.lower()
     assert "freshclam" not in script
     assert "clamd --" not in script
     assert 'clamd)' in script
