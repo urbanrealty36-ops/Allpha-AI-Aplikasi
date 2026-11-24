@@ -306,16 +306,22 @@ end $do$;
 
         # Paid licenses cannot be installed without a Billing entitlement.
         psql(f"""
-set role service_role;
+set role authenticated;
+select set_config('request.jwt.claim.sub','{OWNER}',false);
+select set_config('request.jwt.claim.role','authenticated',false);
+update public.agent_skills set status='draft' where id='{SOURCE_SKILL}';
 update public.agent_skills set publication_terms='{{"license":"owner","requires_purchase":true}}'::jsonb
  where id='{SOURCE_SKILL}';
+reset role;
+set role service_role;
+update public.agent_skills set status='published' where id='{SOURCE_SKILL}';
 reset role;
 """)
         paid = psql(f"""
 set role authenticated;
 select set_config('request.jwt.claim.sub','{OWNER}',false);
 select set_config('request.jwt.claim.role','authenticated',false);
-select public.install_agent_skill('{TARGET_AGENT}','{SOURCE_AGENT}','{SOURCE_SKILL}',6,true,'p06-paid-license-denied');
+select public.install_agent_skill('{TARGET_AGENT}','{SOURCE_AGENT}','{SOURCE_SKILL}',8,true,'p06-paid-license-denied');
 """, check=False)
         if paid.returncode == 0 or "SKILL_LICENSE_ENTITLEMENT_REQUIRED" not in paid.stderr:
             raise RuntimeError("Paid Skill installation bypassed the Billing entitlement gate")
@@ -324,7 +330,7 @@ select public.install_agent_skill('{TARGET_AGENT}','{SOURCE_AGENT}','{SOURCE_SKI
 set role authenticated;
 select set_config('request.jwt.claim.sub','{OWNER}',false);
 select set_config('request.jwt.claim.role','authenticated',false);
-select public.install_agent_skill('{TARGET_AGENT}','{SOURCE_AGENT}','{SOURCE_SKILL}',6,false,'p06-license-not-accepted');
+select public.install_agent_skill('{TARGET_AGENT}','{SOURCE_AGENT}','{SOURCE_SKILL}',8,false,'p06-license-not-accepted');
 """, check=False)
         if denied.returncode == 0 or "SKILL_LICENSE_ACCEPTANCE_REQUIRED" not in denied.stderr:
             raise RuntimeError("Skill installation unexpectedly succeeded without explicit license acceptance")
