@@ -197,6 +197,14 @@ class SupabaseKnowledgeJobStore:
         rows = await self._request("POST", "rpc/claim_agent_knowledge_job", body={"p_lease_seconds": lease_seconds, "p_stage": stage})
         return rows[0] if rows else None
 
+    async def heartbeat(self, job, *, lease_seconds: int) -> bool:
+        result = await self._request("POST", "rpc/heartbeat_agent_knowledge_job", body={
+            "p_job_id": job["id"],
+            "p_lease_token": job["lease_token"],
+            "p_lease_seconds": lease_seconds,
+        })
+        return result is True
+
     async def load_source(self, job):
         rows = await self._request("GET", "agent_knowledge_sources", params={
             "select": "id,agent_id,owner_id,filename,media_type,size_bytes,sha256,storage_path,source_version,status,processing_stage,error_code,provenance,sensitivity",
