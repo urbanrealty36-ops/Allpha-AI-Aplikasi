@@ -53,11 +53,12 @@ CLAMDSCAN_CONFIG
     done
 
     if [ "$READY" -ne 1 ]; then
-        echo "Shared worker disabled: ClamAV daemon did not become ready" >&2
+        echo "Knowledge document consumer disabled: ClamAV daemon did not become ready; other shared consumers will continue" >&2
         cat /var/log/clamav/clamav.log >&2 || true
-        exit 1
+        export ALLPHA_KNOWLEDGE_DOCUMENT_WORKER_ENABLED=false
+    else
+        echo "ClamAV scanner is ready; starting shared Allpha consumers"
     fi
-    echo "ClamAV scanner is ready; starting shared Allpha consumers"
 fi
 
 exec gosu worker "$@"
