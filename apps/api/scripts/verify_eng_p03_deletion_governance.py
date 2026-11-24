@@ -674,7 +674,7 @@ values ('{E}','active');
             if name=="update_account_export_job_progress":
                 return service_json(
                     f"select to_jsonb(public.update_account_export_job_progress('{job_id}'::uuid,'{lease}'::uuid,"
-                    f"{payload['p_progress_percent']}::smallint,{sql_literal(payload['p_progress_stage']}))::text;"
+                    f"{payload['p_progress_percent']}::smallint,{sql_literal(payload['p_progress_stage'])}))::text;"
                 )
             if name=="build_my_account_export_snapshot":
                 return service_json(
