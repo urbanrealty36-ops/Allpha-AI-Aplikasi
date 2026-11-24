@@ -304,7 +304,7 @@ async def list_account_deletion_requests(
         "account_deletion_requests",
         request.state.supabase_access_token,
         params={
-            "select": "id,status,requested_at,policy_version,scheduled_for,completed_at,cancelled_at,updated_at",
+            "select": "id,status,requested_at,policy_version,scheduled_for,completed_at,cancelled_at,updated_at,export_job_id,error_code,request_metadata",
             "user_id": f"eq.{user['id']}",
             "order": "requested_at.desc",
             "limit": "20",
@@ -316,12 +316,21 @@ async def list_account_deletion_requests(
 @router.post("/v1/me/deletion-requests", status_code=202)
 async def request_account_deletion(
     payload: AccountDeletionRequestCreate,
+    request: Request,
     user: dict[str, Any] = Depends(current_session_user),
 ) -> dict[str, Any]:
     await _verify_password_and_revoke_reauth_session(user, payload.password)
+    idempotency_key = request.headers.get("Idempotency-Key", "").strip()
+    if not idempotency_key:
+        idempotency_key = f"server:{uuid.uuid4()}"
+    if not re.fullmatch(r"[A-Za-z0-9._:-]{8,128}", idempotency_key):
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "ACCOUNT_DELETION_IDEMPOTENCY_KEY_INVALID", "message": "Kunci idempotensi tidak valid."},
+        )
     rows = await service_db_request(
         "create_account_deletion_request_for_actor",
-        body={"p_actor_user_id": user["id"]},
+        body={"p_actor_user_id": user["id"], "p_idempotency_key": idempotency_key},
     )
     if not isinstance(rows, list) or len(rows) != 1:
         raise HTTPException(
@@ -333,10 +342,14 @@ async def request_account_deletion(
     return {
         "deletion_request": request_row,
         "execution_state": execution_state,
+        "export": {
+            "job_id": request_row.get("export_job_id"),
+            "status": request_row.get("export_status"),
+        },
         "message": (
-            "Permintaan tercatat. Worker akan mengevaluasi retensi, legal hold, dan "
-            "dependency; belum ada data yang dihapus sampai seluruh prasyarat "
-            "eksekusi terpenuhi."
+            "Permintaan tercatat dan arsip ekspor dibuat lebih dahulu. Penghapusan "
+            "menunggu ekspor selesai, kebijakan retensi artefak ekspor yang valid, "
+            "retensi data, legal hold, dan seluruh dependency; belum ada data yang dihapus."
         ),
     }
 
