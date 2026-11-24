@@ -43,7 +43,7 @@ def _canonical_knowledge_storage_path(
         or not filename
         or filename in {".", ".."}
         or "/" in filename
-        or "\\\\" in filename
+        or "\\" in filename
         or any(ord(char) < 32 or ord(char) == 127 for char in filename)
     ):
         raise ValueError("Knowledge filename is not a safe object-key segment")
