@@ -6,7 +6,8 @@ import Link from "next/link";
 type Session = { access_token: string; refresh_token: string; expires_at: number; user: { id: string; email?: string } };
 type AuthPayload = { access_token?: string; refresh_token?: string; expires_in?: number; user?: { id: string; email?: string }; error_description?: string; msg?: string };
 type Operator = { id: string; email?: string; scopes: string[] };
-type Policy = { id: string; agent_id: string; policy_version: string; policy_digest: string; status: string; created_by?: string; approved_by?: string; approved_at?: string };
+type Policy = { id: string; agent_id: string; policy_version: string; policy_digest: string; status: string; created_by?: string; approved_by?: string; approved_at?: string; revoked_by?: string; revoked_at?: string };
+type AgentOption = { id: string; handle: string; display_name: string; status: string; visibility: string; version: number };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || "").replace(/\/$/, "");
 const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "";
@@ -39,7 +40,6 @@ async function body<T>(response: Response): Promise<T> {
   return data as T;
 }
 
-const defaultAgent = "5c7185b5-ae9e-464d-9e81-792f0945ad7a";
 const fieldStyle = { display: "block", width: "100%", boxSizing: "border-box" as const, padding: 10, marginTop: 5, border: "1px solid #d0d5dd", borderRadius: 8, background: "white", color: "#101828" };
 const cardStyle = { border: "1px solid #eaecf0", borderRadius: 12, padding: 18, marginBottom: 16, background: "#fff" };
 
@@ -48,11 +48,14 @@ export default function RuntimePoliciesPage() {
   const [operator, setOperator] = useState<Operator | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [agentId, setAgentId] = useState(defaultAgent);
-  const [version, setVersion] = useState("pdf-qa-test-v1");
-  const [tools, setTools] = useState("pdf.extract_text");
+  const [agentId, setAgentId] = useState("");
+  const [agents, setAgents] = useState<AgentOption[]>([]);
+  const [policies, setPolicies] = useState<Policy[]>([]);
+  const [policyLoading, setPolicyLoading] = useState(false);
+  const [version, setVersion] = useState("");
+  const [tools, setTools] = useState("");
   const [scopes, setScopes] = useState("");
-  const [constraints, setConstraints] = useState('{"environment":"test-only","max_output_tokens":128,"max_cost_microunits":5000,"max_latency_ms":15000,"no_external_side_effects":true}');
+  const [constraints, setConstraints] = useState("{}");
   const [reason, setReason] = useState("");
   const [policyId, setPolicyId] = useState("");
   const [policy, setPolicy] = useState<Policy | null>(null);
@@ -60,13 +63,39 @@ export default function RuntimePoliciesPage() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
+  async function loadAgents(active: Session): Promise<AgentOption[]> {
+    const result = await body<{ items?: AgentOption[] }>(await apiFetch("/v1/admin/operator/agents?limit=100", active));
+    const items = Array.isArray(result.items) ? result.items : [];
+    setAgents(items);
+    return items;
+  }
+  async function loadPolicies(active: Session, selectedAgentId: string): Promise<Policy[]> {
+    if (!selectedAgentId) { setPolicies([]); return []; }
+    setPolicyLoading(true);
+    try {
+      const statuses = await Promise.all(["draft", "approved", "revoked"].map(async status => {
+        const result = await body<{ items?: Policy[] }>(await apiFetch(
+          "/v1/admin/operator/runtime-policies?agent_id=" + encodeURIComponent(selectedAgentId) + "&status=" + status,
+          active,
+        ));
+        return result.items || [];
+      }));
+      const items = statuses.flat().sort((a,b) => b.policy_version.localeCompare(a.policy_version));
+      setPolicies(items);
+      return items;
+    } finally { setPolicyLoading(false); }
+  }
   async function login(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError(""); setNotice("");
     try {
       const active = await authRequest({ email: email.trim(), password }, "password");
       const result = await body<{ operator: Operator }>(await apiFetch("/v1/admin/operator/access", active));
+      const availableAgents = await loadAgents(active);
       setSession(active); setOperator(result.operator); setPassword("");
-      setNotice("Login berhasil. Scope diperiksa dari API operator.");
+      const firstAgent = availableAgents[0]?.id || "";
+      setAgentId(firstAgent);
+      if (firstAgent) await loadPolicies(active, firstAgent);
+      setNotice(availableAgents.length ? "Login berhasil. Agent dan policy dimuat melalui FastAPI." : "Login berhasil, tetapi belum ada Agent aktif/draft yang tersedia untuk governance.");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Login atau verifikasi operator gagal."); }
     finally { setBusy(false); }
   }
@@ -83,6 +112,7 @@ export default function RuntimePoliciesPage() {
     try {
       const result = await body<{ policy: Policy; runtime_authorized: boolean }>(await apiFetch("/v1/admin/operator/runtime-policies", session, { method: "POST", body: JSON.stringify({ agent_id: agentId.trim(), policy_version: version.trim(), approved_tool_keys: approvedToolKeys, required_permission_scopes: requiredPermissionScopes, risk_constraints: risk }) }));
       setPolicy(result.policy); setPolicyId(result.policy.id);
+      await loadPolicies(session, agentId);
       setNotice("Draft policy tersimpan. Policy belum disetujui dan belum mengotorisasi runtime.");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Pembuatan draft policy gagal."); }
     finally { setBusy(false); }
@@ -91,13 +121,30 @@ export default function RuntimePoliciesPage() {
     event.preventDefault(); if (!session || !operator) return;
     if (!operator.scopes.includes("platform:capabilities.review.high_risk")) { setError("Scope platform:capabilities.review.high_risk diperlukan untuk approval."); return; }
     if (reason.trim().length < 8) { setError("Alasan approval minimal 8 karakter."); return; }
-    if (!window.confirm("Setujui policy runtime ini? Pastikan digest, agent, tools, dan batas test-only sudah ditinjau. Approval tidak otomatis mengaktifkan tarif atau runtime.")) return;
+    if (!window.confirm("Setujui policy runtime ini? Pastikan Agent, digest, tools, permission scopes dan risk constraints sudah ditinjau. Approval tidak otomatis mengaktifkan tarif atau runtime.")) return;
     setBusy(true); setError(""); setNotice("");
     try {
       const result = await body<{ policy: Policy; runtime_authorized?: boolean }>(await apiFetch("/v1/admin/operator/runtime-policies/" + encodeURIComponent(policyId.trim()) + "/approve", session, { method: "POST", body: JSON.stringify({ reason: reason.trim() }) }));
       if (result.policy) setPolicy(result.policy);
-      setNotice("API governance mengonfirmasi approval policy. Periksa status dan digest di bawah; tarif dan runtime tetap harus diverifikasi terpisah.");
+      await loadPolicies(session, agentId);
+      setNotice("API governance mengonfirmasi approval policy. Tarif dan runtime tetap diverifikasi secara terpisah.");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Approval policy gagal."); }
+    finally { setBusy(false); }
+  }
+  async function revokePolicy(selected: Policy) {
+    if (!session || !canApprove) return;
+    if (reason.trim().length < 8) { setError("Alasan pencabutan minimal 8 karakter."); return; }
+    if (!window.confirm("Cabut policy runtime ini? Task baru tidak boleh menggunakan versi yang dicabut.")) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await body<{ policy: Policy }>(await apiFetch(
+        "/v1/admin/operator/runtime-policies/" + encodeURIComponent(selected.id) + "/revoke",
+        session, { method: "POST", body: JSON.stringify({ reason: reason.trim() }) },
+      ));
+      setPolicy(result.policy); setPolicyId(selected.id);
+      await loadPolicies(session, agentId);
+      setNotice("Policy dicabut. Versi yang dicabut tidak dapat diaktifkan kembali.");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Pencabutan policy gagal."); }
     finally { setBusy(false); }
   }
   const canDraft = !!operator?.scopes.includes("platform:capabilities.review");
@@ -106,9 +153,9 @@ export default function RuntimePoliciesPage() {
   return <main style={{ maxWidth: 1080, margin: "0 auto", padding: "28px 18px", color: "#101828", fontFamily: "Arial, sans-serif" }}>
     <header style={{ marginBottom: 22 }}>
       <Link href="/" style={{ color: "#475467", textDecoration: "none" }}>← Super Admin</Link>
-      <p style={{ color: "#667085", fontSize: 12, letterSpacing: 1.1, fontWeight: 700, marginBottom: 6 }}>GOVERNANCE / ENG-P12</p>
+      <p style={{ color: "#667085", fontSize: 12, letterSpacing: 1.1, fontWeight: 700, marginBottom: 6 }}>GOVERNANCE / ENG-P10</p>
       <h1 style={{ fontSize: 30, margin: "0 0 8px" }}>Runtime Policy Approval</h1>
-      <p style={{ color: "#475467", lineHeight: 1.6, maxWidth: 760 }}>Buat draft policy untuk Agent PDF QA dan lakukan persetujuan melalui endpoint governance resmi. Pembuatan dan approval adalah tindakan terpisah; halaman ini tidak memakai service-role key.</p>
+      <p style={{ color: "#475467", lineHeight: 1.6, maxWidth: 760 }}>Kelola policy runtime Agent yang tersedia melalui katalog operator. Draft, approval, dan revocation adalah tindakan terpisah; seluruh perubahan melalui FastAPI dan tidak menggunakan service-role key di browser.</p>
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 12 }}><Link href="/costs">Model Cost & Tarif →</Link><a href="https://api.allpha.web.id/docs#/platform-operations" target="_blank" rel="noreferrer">API governance docs →</a></div>
     </header>
     <section style={{ ...cardStyle, background: "#fffaeb", borderColor: "#fedf89" }}>
@@ -127,21 +174,40 @@ export default function RuntimePoliciesPage() {
       {!canApprove && <p role="alert" style={{ color: "#b42318" }}>Akun tidak memiliki platform:capabilities.review.high_risk. Approval tidak dapat dilakukan oleh sesi ini.</p>}
     </section>}
     {session && operator && <section style={cardStyle}><h2 style={{ marginTop: 0 }}>1. Buat draft policy</h2><form onSubmit={createDraft} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))", gap: 14 }}>
-      <label>Agent ID<input required value={agentId} onChange={e => setAgentId(e.target.value)} style={fieldStyle}/></label>
+      <label>Agent<select required value={agentId} onChange={e => { const next=e.target.value; setAgentId(next); setPolicy(null); setPolicyId(""); if(session) void loadPolicies(session,next); }} style={fieldStyle}><option value="">Pilih Agent</option>{agents.map(agent => <option key={agent.id} value={agent.id}>{agent.display_name} · @{agent.handle} · v{agent.version} · {agent.status}</option>)}</select></label>
       <label>Policy version<input required value={version} onChange={e => setVersion(e.target.value)} style={fieldStyle}/></label>
       <label style={{ gridColumn: "1 / -1" }}>Approved tool keys — isi hanya key dari tool registry<textarea required rows={2} value={tools} onChange={e => setTools(e.target.value)} style={fieldStyle}/></label>
       <label style={{ gridColumn: "1 / -1" }}>Required permission scopes (opsional, pisahkan koma/baris baru)<textarea rows={2} value={scopes} onChange={e => setScopes(e.target.value)} style={fieldStyle}/></label>
       <label style={{ gridColumn: "1 / -1" }}>Risk constraints JSON<textarea required rows={5} value={constraints} onChange={e => setConstraints(e.target.value)} style={{ ...fieldStyle, fontFamily: "monospace" }}/></label>
-      <div style={{ gridColumn: "1 / -1" }}><button type="submit" disabled={busy || !canDraft} style={{ padding: 12 }}>{busy ? "Memproses…" : "Buat draft melalui governance API"}</button></div>
+      <div style={{ gridColumn: "1 / -1" }}><button type="submit" disabled={busy || !canDraft || !agentId || !version.trim() || !tools.trim()} style={{ padding: 12 }}>{busy ? "Memproses…" : "Buat draft melalui governance API"}</button></div>
     </form></section>}
-    {session && operator && <section style={cardStyle}><h2 style={{ marginTop: 0 }}>2. Tinjau & setujui policy draft</h2><p style={{ color: "#475467", lineHeight: 1.6 }}>Pilih ID policy yang baru dibuat atau masukkan ID draft yang telah diverifikasi. API hanya menyetujui status draft dan mencatat aktor serta waktu approval.</p>
+    {session && operator && <section style={cardStyle}>
+      <h2 style={{ marginTop: 0 }}>2. Policy versions · {agents.find(agent => agent.id === agentId)?.display_name || "Pilih Agent"}</h2>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+        <p style={{ color: "#475467", margin: 0 }}>Daftar draft, approved dan revoked dibaca dari FastAPI. Versi revoked bersifat permanen.</p>
+        <button type="button" disabled={busy || policyLoading || !agentId} onClick={() => void loadPolicies(session,agentId)} style={{ padding: 9 }}>{policyLoading?"Memuat…":"Refresh policy"}</button>
+      </div>
+      {policies.length===0 ? <p style={{ color: "#667085" }}>Belum ada policy untuk Agent ini.</p> : <div style={{ overflowX: "auto", marginTop: 12 }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead><tr><th align="left">Versi</th><th align="left">Status</th><th align="left">Digest</th><th align="left">Aksi</th></tr></thead>
+          <tbody>{policies.map(item=><tr key={item.id} style={{ borderTop: "1px solid #eaecf0" }}>
+            <td style={{ padding: 9 }}>{item.policy_version}</td><td style={{ padding: 9 }}>{item.status}</td><td style={{ padding: 9 }}><code>{item.policy_digest.slice(0,16)}…</code></td>
+            <td style={{ padding: 9, whiteSpace: "nowrap" }}>
+              <button type="button" onClick={()=>{setPolicy(item);setPolicyId(item.id);}} style={{ padding: 7, marginRight: 6 }}>Pilih</button>
+              {item.status==="approved"&&<button type="button" disabled={busy||!canApprove} onClick={()=>void revokePolicy(item)} style={{ padding: 7, color: "#b42318" }}>Cabut</button>}
+            </td>
+          </tr>)}</tbody>
+        </table>
+      </div>}
+    </section>}
+    {session && operator && <section style={cardStyle}><h2 style={{ marginTop: 0 }}>3. Tinjau & setujui policy draft</h2><p style={{ color: "#475467", lineHeight: 1.6 }}>Pilih ID policy yang baru dibuat atau masukkan ID draft yang telah diverifikasi. API hanya menyetujui status draft dan mencatat aktor serta waktu approval.</p>
       <label>Policy ID<input value={policyId} onChange={e => setPolicyId(e.target.value)} required style={fieldStyle} placeholder="UUID policy draft"/></label>
       {policy && <div style={{ marginTop: 14, padding: 14, border: "1px solid #d0d5dd", borderRadius: 8, overflowWrap: "anywhere" }}><strong>Status dari respons API: {policy.status}</strong><p>Policy ID: {policy.id}</p><p>Agent: {policy.agent_id}</p><p>Versi: {policy.policy_version}</p><p>Digest SHA-256: <code>{policy.policy_digest}</code></p>{policy.approved_by && <p>Disetujui oleh: {policy.approved_by} · {policy.approved_at || ""}</p>}</div>}
-      <label style={{ display: "block", marginTop: 14 }}>Alasan persetujuan (min. 8 karakter)<textarea required minLength={8} maxLength={500} rows={3} value={reason} onChange={e => setReason(e.target.value)} style={fieldStyle} placeholder="Contoh: disetujui untuk challenge PDF QA terisolasi sesuai batas biaya dan scope yang ditinjau."/></label>
+      <label style={{ display: "block", marginTop: 14 }}>Alasan persetujuan (min. 8 karakter)<textarea required minLength={8} maxLength={500} rows={3} value={reason} onChange={e => setReason(e.target.value)} style={fieldStyle} placeholder="Dasar approval, Agent, tool, scope, dan risk constraints yang sudah ditinjau."/></label>
       <form onSubmit={approve} style={{ marginTop: 12 }}><button type="submit" disabled={busy || !canApprove || !policyId.trim() || reason.trim().length < 8} style={{ padding: 12 }}>{busy ? "Memproses…" : "Setujui policy (high-risk scope)"}</button></form>
     </section>}
     {error && <section role="alert" style={{ ...cardStyle, background: "#fef3f2", color: "#b42318" }}>{error}</section>}
     {notice && <section role="status" style={{ ...cardStyle, background: "#ecfdf3", color: "#067647" }}>{notice}</section>}
-    <footer style={{ color: "#667085", fontSize: 12, padding: "12px 0" }}>Allpha · Governance approval · Source of truth: FastAPI + Supabase · ENG-P12 remains in progress until runtime evidence and QA acceptance are verified.</footer>
+    <footer style={{ color: "#667085", fontSize: 12, padding: "12px 0" }}>Allpha · Governance approval · Source of truth: FastAPI + Supabase · ENG-P10 remains in progress until the runtime schema, worker recovery path and provider-backed execution are verified.</footer>
   </main>;
 }
