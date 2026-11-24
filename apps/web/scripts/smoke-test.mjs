@@ -843,9 +843,11 @@ for (const requiredPath of [
 // not a legacy demo modal or a misleading unavailable-service toast.
 const cinemaPageSource = readFileSync(new URL("../app/ai-cinema/page.tsx", import.meta.url), "utf8");
 const cinemaViewSource = readFileSync(new URL("../components/reference-ui/AiCinemaView.tsx", import.meta.url), "utf8");
-assert.ok(cinemaPageSource.includes('id="ai-cinema-creator-studio"'), "AI Cinema page must expose the production Creator Studio target");
-assert.ok(cinemaPageSource.includes("onOpenCreatorStudio={openCreatorStudio}"), "AI Cinema must wire production CTA navigation to Creator Studio");
-assert.ok(cinemaPageSource.includes('scrollIntoView({ behavior: "smooth", block: "start" })'), "Creator Studio CTA must navigate users to the workspace");
+assert.ok(!cinemaPageSource.includes("AiCinemaCreatorWorkspace"), "viewer catalog must not mount the Creator Studio workspace");
+assert.ok(cinemaPageSource.includes('window.location.assign("/ai-cinema/creator")'), "Creator Studio CTA must navigate to its dedicated route");
+const cinemaCreatorRoute = readFileSync(new URL("../app/ai-cinema/creator/page.tsx", import.meta.url), "utf8");
+assert.ok(cinemaCreatorRoute.includes("AiCinemaCreatorWorkspace"), "dedicated Creator Studio route must mount the production workspace");
+assert.ok(cinemaCreatorRoute.includes('href="/ai-cinema"'), "Creator Studio must provide a return path to the viewer catalog");
 assert.ok(cinemaViewSource.includes("onOpenCreatorStudio?.()"), "production Create Film AI actions must use the Creator Studio callback");
 assert.ok(!cinemaViewSource.includes("Studio AI Cinema belum terhubung ke layanan produksi."), "production Create Film AI CTA must not falsely report the already-mounted Creator Studio as disconnected");
 
