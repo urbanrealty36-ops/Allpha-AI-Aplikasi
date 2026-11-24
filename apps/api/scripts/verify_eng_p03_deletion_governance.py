@@ -2,6 +2,7 @@
 from __future__ import annotations
 import asyncio
 import json
+import hashlib
 import subprocess
 import sys
 import tempfile
@@ -621,15 +622,87 @@ values ('{E}','active');
         if pending_prepare.get("outcome")!="blocked_dependency" or pending_prepare.get("export_gate",{}).get("code")!="ACCOUNT_EXPORT_PENDING":
             raise RuntimeError(f"executor did not stop before Storage/DB cleanup: {pending_prepare}")
 
-        storage_path=f"{E}/{export_job_id}.json.gz"
-        psql(f"""
-update public.account_export_jobs
-   set status='succeeded',storage_bucket='account-exports',
-       storage_path='{storage_path}',
-       file_sha256=repeat('a',64),file_size_bytes=128,manifest='{{}}'::jsonb,
-       completed_at=clock_timestamp(),expires_at=clock_timestamp()+interval '1 day'
- where id='{export_job_id}' and user_id='{E}';
-""")
+        # Run the real Python export worker against the isolated PostgreSQL RPCs
+        # and a local Storage adapter; do not mark the export job succeeded by SQL fixture.
+        storage_tmp=tempfile.TemporaryDirectory()
+        storage_root=Path(storage_tmp.name)
+        export_worker=object.__new__(AccountLifecycleWorker)
+        export_worker.worker_id="ci-e2e-export-worker"
+        export_worker.lease_heartbeat_seconds=5
+
+        def sql_literal(value):
+            return "'" + str(value).replace("'", "''") + "'"
+
+        async def export_rpc(name,payload):
+            job_id=payload.get("p_job_id")
+            lease=payload.get("p_lease_token")
+            if name=="claim_account_export_jobs":
+                return service_json(
+                    "select coalesce(jsonb_agg(to_jsonb(t)),'[]'::jsonb)::text "
+                    "from public.claim_account_export_jobs('ci-e2e-export-worker',2,900) t;"
+                )
+            if name=="renew_account_export_job_lease":
+                return service_json(
+                    f"select to_jsonb(public.renew_account_export_job_lease('{job_id}'::uuid,'{lease}'::uuid,900))::text;"
+                )
+            if name=="update_account_export_job_progress":
+                return service_json(
+                    f"select to_jsonb(public.update_account_export_job_progress('{job_id}'::uuid,'{lease}'::uuid,"
+                    f"{payload['p_progress_percent']}::smallint,{sql_literal(payload['p_progress_stage']}))::text;"
+                )
+            if name=="build_my_account_export_snapshot":
+                return service_json(
+                    f"select public.build_my_account_export_snapshot('{job_id}'::uuid,'{lease}'::uuid)::text;"
+                )
+            if name=="complete_account_export_job":
+                manifest_sql=sql_literal(json.dumps(payload["p_manifest"],separators=(",",":"),ensure_ascii=False))
+                return service_json(
+                    f"select to_jsonb(public.complete_account_export_job('{job_id}'::uuid,'{lease}'::uuid,"
+                    f"{sql_literal(payload['p_storage_path'])},{sql_literal(payload['p_file_sha256'])},"
+                    f"{payload['p_file_size_bytes']}::bigint,{manifest_sql}::jsonb))::text;"
+                )
+            if name=="fail_account_export_job":
+                return service_json(
+                    f"select to_jsonb(public.fail_account_export_job('{job_id}'::uuid,'{lease}'::uuid,"
+                    f"{sql_literal(payload['p_error_code'])},{payload['p_retry_seconds']}::integer))::text;"
+                )
+            raise RuntimeError(f"unexpected export worker RPC: {name}")
+
+        async def export_upload(object_path,payload):
+            target=(storage_root/"account-exports"/object_path).resolve()
+            if storage_root.resolve() not in target.parents:
+                raise RuntimeError("export object path escaped isolated Storage root")
+            target.parent.mkdir(parents=True,exist_ok=True)
+            target.write_bytes(payload)
+
+        async def export_delete_upload(object_path):
+            target=(storage_root/"account-exports"/object_path).resolve()
+            if storage_root.resolve() in target.parents and target.is_file():
+                target.unlink()
+
+        export_worker.rpc=export_rpc
+        export_worker.upload=export_upload
+        export_worker.delete_upload=export_delete_upload
+        exported=asyncio.run(export_worker.batch())
+        if exported!=1:
+            raise RuntimeError(f"actual account export worker did not process exactly one job: {exported}")
+        export_result=service_json(
+            "select jsonb_build_object('status',status,'storage_bucket',storage_bucket,"
+            "'storage_path',storage_path,'file_sha256',file_sha256,'file_size_bytes',file_size_bytes,"
+            "'manifest',manifest)::text from public.account_export_jobs "
+            f"where id='{export_job_id}'::uuid and user_id='{E}'::uuid;"
+        )
+        if export_result.get("status")!="succeeded" or export_result.get("storage_bucket")!="account-exports":
+            raise RuntimeError(f"actual account export worker did not persist success: {export_result}")
+        storage_path=export_result["storage_path"]
+        export_object=storage_root/"account-exports"/storage_path
+        if not export_object.is_file():
+            raise RuntimeError("actual account export worker did not upload the export artifact")
+        export_bytes=export_object.read_bytes()
+        if hashlib.sha256(export_bytes).hexdigest()!=export_result["file_sha256"] or len(export_bytes)!=export_result["file_size_bytes"]:
+            raise RuntimeError("actual account export artifact checksum/size mismatch")
+        if export_result["manifest"].get("source_count")!=len(export_result["manifest"].get("sources",[])):
+            raise RuntimeError("actual account export manifest source count mismatch")
         confirmation=authenticated_json(
             E,f"select public.confirm_account_deletion_export_download('{request_id}'::uuid)::text;"
         )
@@ -674,14 +747,12 @@ update public.account_export_jobs
         if bucket!="account-exports" or claimed_path!=storage_path:
             raise RuntimeError(f"Storage cleanup claim did not match export artifact: {storage_job}")
 
-        with tempfile.TemporaryDirectory() as directory:
-            storage_root=Path(directory)
-            object_file=storage_root/bucket/claimed_path
-            object_file.parent.mkdir(parents=True)
-            object_file.write_bytes(b"isolated account export artifact")
-            delete_requests=delete_with_local_storage(storage_root,bucket,claimed_path)
-            if delete_requests!=1 or object_file.exists():
-                raise RuntimeError("worker Storage DELETE did not remove the real local artifact")
+        object_file=storage_root/bucket/claimed_path
+        if not object_file.is_file():
+            raise RuntimeError("export artifact disappeared before deletion worker claimed it")
+        delete_requests=delete_with_local_storage(storage_root,bucket,claimed_path)
+        if delete_requests!=1 or object_file.exists():
+            raise RuntimeError("worker Storage DELETE did not remove the actual export artifact");
         storage_completed=service_json(
             f"select to_jsonb(public.complete_account_deletion_storage_job('{storage_job['id']}'::uuid,'{storage_job['lease_token']}'::uuid))::text;"
         )
@@ -740,6 +811,8 @@ select jsonb_build_object(
         print("PASS: ENG-P03 legal hold, shared-source deletion, export-before-deletion and owner download confirmation verified on isolated PostgreSQL 17.")
 
     finally:
+        if "storage_tmp" in locals() and storage_tmp is not None:
+            storage_tmp.cleanup()
         run(["docker","rm","--force",CONTAINER],check=False)
 
 if __name__=="__main__":
