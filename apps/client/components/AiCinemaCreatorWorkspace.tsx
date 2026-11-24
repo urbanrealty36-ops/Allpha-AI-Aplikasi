@@ -88,7 +88,7 @@ type PersistedNativeCinemaUpload = {
   mediaId: string;
   filename: string;
   size: number;
-  sha256: string;
+  fingerprint: string;
 };
 
 function base64Ascii(value: string): string {
@@ -362,13 +362,14 @@ export function AiCinemaCreatorWorkspace({ getAccessToken }: Props) {
         throw new Error("Ukuran video harus lebih dari 0 dan maksimal 50 MiB.");
       }
       if (!mediaType.startsWith("video/")) throw new Error("Pilih file video MP4 atau WebM.");
-      const digest = await file.digest("SHA-256");
+      const fileInfo = file.info({ md5: true });
+      const fingerprint = fileInfo.md5 || [fileSize, fileInfo.modificationTime || 0, uploadAsset.name].join(":");
       const sessionKey = "allpha:cinema:upload:current";
       const raw = await SecureStore.getItemAsync(sessionKey);
       let saved: PersistedNativeCinemaUpload | null = null;
       try { saved = raw ? JSON.parse(raw) as PersistedNativeCinemaUpload : null; } catch { saved = null; }
       const sameSavedFile = Boolean(
-        saved && saved.filename === uploadAsset.name && saved.size === fileSize && saved.sha256 === digest,
+        saved && saved.filename === uploadAsset.name && saved.size === fileSize && saved.fingerprint === fingerprint,
       );
       let contentId = sameSavedFile ? saved!.contentId : "";
       let mediaId = sameSavedFile ? saved!.mediaId : "";
@@ -380,7 +381,7 @@ export function AiCinemaCreatorWorkspace({ getAccessToken }: Props) {
         contentId = draft.item.id;
         mediaId = createClientUuid();
         const next: PersistedNativeCinemaUpload = {
-          contentId, mediaId, filename: uploadAsset.name, size: fileSize, sha256: digest,
+          contentId, mediaId, filename: uploadAsset.name, size: fileSize, fingerprint,
         };
         await SecureStore.setItemAsync(sessionKey, JSON.stringify(next));
       }
@@ -396,7 +397,6 @@ export function AiCinemaCreatorWorkspace({ getAccessToken }: Props) {
             filename: uploadAsset.name,
             media_type: mediaType,
             size_bytes: fileSize,
-            sha256: digest,
           }),
         },
       );
