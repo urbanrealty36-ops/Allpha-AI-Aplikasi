@@ -7,8 +7,6 @@ import json
 import logging
 import os
 import signal
-import socket
-import struct
 import uuid
 from io import BytesIO
 from typing import Any
@@ -16,6 +14,8 @@ from urllib.parse import quote
 
 import httpx
 from PIL import Image, ImageOps, UnidentifiedImageError
+
+from allpha_api.media_scanner import local_scanner_identity_pins, scan_media_bytes
 
 log = logging.getLogger("allpha.content_media_worker")
 Image.MAX_IMAGE_PIXELS = 40_000_000
@@ -43,18 +43,8 @@ class MediaWorker:
         response.raise_for_status()
         return response.json() if response.content else None
 
-    def scan(self, data: bytes) -> None:
-        # ClamAV INSTREAM. No scanner means no derivative promotion and no ready state.
-        with socket.create_connection((self.clamav_host, self.clamav_port), timeout=10) as sock:
-            sock.settimeout(30)
-            sock.sendall(b"zINSTREAM\0")
-            for offset in range(0, len(data), 64 * 1024):
-                chunk = data[offset:offset + 64 * 1024]
-                sock.sendall(struct.pack("!I", len(chunk)) + chunk)
-            sock.sendall(struct.pack("!I", 0))
-            result = sock.recv(4096).decode("utf-8", "replace")
-        if not result.strip().endswith("OK") or "FOUND" in result or "ERROR" in result:
-            raise ValueError("MEDIA_SCAN_NOT_CLEAN")
+    def scan(self, data: bytes) -> dict[str, Any]:
+        return scan_media_bytes(data, self.clamav_host, self.clamav_port)
 
     def derivatives(self, data: bytes) -> list[tuple[str, bytes, int, int]]:
         try:
@@ -156,6 +146,10 @@ def enabled() -> bool:
         return False
     if os.getenv("ALLPHA_CLAMAV_ENABLED", "false").strip().lower() != "true":
         raise SystemExit("Content image worker requires ALLPHA_CLAMAV_ENABLED=true")
+    try:
+        local_scanner_identity_pins()
+    except RuntimeError as exc:
+        raise SystemExit("Content image worker requires pinned ClamAV engine/signature identity") from exc
     required = ("SUPABASE_URL", "CLAMAV_HOST")
     missing = [name for name in required if not os.getenv(name)]
     if not (os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SECRET_KEY")):
