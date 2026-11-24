@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from fastapi.testclient import TestClient
 
 from allpha_api.agent_runtime_api import router
+from allpha_api.knowledge_retrieval import KnowledgeRetrievalService, RetrievalHit
 from allpha_api.auth import current_user
 from allpha_api.main import app
 
@@ -719,6 +720,9 @@ def test_tool_planner_replans_twice_after_invalid_structured_responses(monkeypat
         payload = response.json()
         assert payload["tool_plan"][0]["tool_key"] == "text.normalize"
         assert payload["planner_evidence"]["replan_count"] == 2
+        assert payload["knowledge_context_state"] == "not_configured"
+        assert payload["knowledge_context_refs"] == []
+        assert all("OWNER-AUTHORIZED KNOWLEDGE CONTEXT" not in item.prompt for item in router.requests)
         assert len(payload["planner_evidence"]["planning_attempts"]) == 3
         assert all(item.response_format is None for item in router.requests)
         assert all(item.tool_definitions for item in router.requests)
@@ -978,4 +982,79 @@ def test_native_orchestration_retries_persisted_pure_tool_call_without_recalling
         assert len(FakeRuntimeStore.checkpoints[task_id]) == 2
     finally:
         monkeypatch.setattr("allpha_api.agent_runtime_api._runtime.execute_tool", runtime_execute)
+        app.dependency_overrides.pop(current_user, None)
+
+
+
+def test_tool_planner_includes_owner_authorized_knowledge_and_content_free_citations(monkeypatch):
+    class KnowledgePolicy:
+        async def allowed_sensitivities(self, *, owner_id, agent_id):
+            assert (owner_id, agent_id) == (OWNER, AGENT)
+            return ["internal"]
+
+    class KnowledgeRepository:
+        async def authorize_agent(self, *, owner_id, agent_id):
+            return (owner_id, agent_id) == (OWNER, AGENT)
+
+        async def search_hybrid(self, **kwargs):
+            assert kwargs["owner_id"] == OWNER
+            assert kwargs["agent_id"] == AGENT
+            assert kwargs["allowed_sensitivities"] == ["internal"]
+            content = "Owner-authorized Knowledge fact."
+            return [RetrievalHit(
+                owner_id=OWNER, agent_id=AGENT, source_id="source-knowledge-1",
+                source_version=3, chunk_id="chunk-knowledge-1", content=content,
+                content_sha256=hashlib.sha256(content.encode("utf-8")).hexdigest(),
+                source_location={"kind": "page", "index": 2}, sensitivity="internal",
+                retrieval_method="keyword", score=0.5,
+            )]
+
+    class FakeRouter:
+        def __init__(self):
+            self.requests = []
+
+        async def preflight(self, sensitivity):
+            assert sensitivity == "private"
+            return {"ready": True}
+
+        def max_output_tokens_for(self, sensitivity):
+            return 768
+
+        async def generate(self, generation_request):
+            self.requests.append(generation_request)
+            evidence = SimpleNamespace(
+                provider_id="provider-test", model_id="model-test", model_version="model-v1",
+                policy_id="private-policy", policy_version="private-v1",
+                input_tokens=10, output_tokens=12, cost_microunits=100,
+                cost_unit="USD", pricing_version="price-v1", latency_ms=20,
+                evidence_sha256="b" * 64,
+            )
+            return SimpleNamespace(
+                output_text='{"steps":[{"step_id":"normalize","tool_key":"text.normalize","inputs":{"text":"hello"},"bindings":{}}]}'
+            ), evidence
+
+    c = client(monkeypatch)
+    text_router = FakeRouter()
+    knowledge_service = KnowledgeRetrievalService(
+        repository=KnowledgeRepository(), policy=KnowledgePolicy(),
+    )
+    monkeypatch.setattr(app.state, "text_generation_router", text_router, raising=False)
+    monkeypatch.setattr(app.state, "knowledge_retrieval_service", knowledge_service, raising=False)
+    monkeypatch.setenv("ALLPHA_AGENT_TOOL_PLANNER_ENABLED", "true")
+    try:
+        session_id = create_session(c)
+        response = c.post("/v1/agent-runtime/tasks/plan", json={
+            "session_id": session_id, "skill_id": SKILL,
+            "intent": "Use the owner's Knowledge to normalize this text",
+            "idempotency_key": "planner-knowledge-001",
+        })
+        assert response.status_code == 201, response.text
+        payload = response.json()
+        assert payload["knowledge_context_state"] == "available"
+        assert payload["knowledge_context_refs"][0]["source_id"] == "source-knowledge-1"
+        assert "content" not in payload["knowledge_context_refs"][0]
+        assert "Owner-authorized Knowledge fact." in text_router.requests[0].prompt
+        assert "OWNER-AUTHORIZED KNOWLEDGE CONTEXT" in text_router.requests[0].prompt
+        assert payload["planner_evidence"]["knowledge_context_sha256"] == payload["knowledge_context_sha256"]
+    finally:
         app.dependency_overrides.pop(current_user, None)
