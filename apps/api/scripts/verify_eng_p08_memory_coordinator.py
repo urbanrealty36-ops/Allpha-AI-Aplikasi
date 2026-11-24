@@ -286,12 +286,18 @@ begin
   raise exception 'global Memory retention executor did not erase expired content';
  end if;
 end $do$;
+set role service_role;
+select public.agent_memory_transition('set_policy','{OWNER}','{AGENT}',null,
+ jsonb_build_object('memory_type','episodic','enabled',true,'consent_version','allpha.memory.v1',
+  'allowed_purposes',jsonb_build_array('agent_generation_context'),
+  'allowed_sensitivities',jsonb_build_array('public'),'retention_days',30));
+reset role;
 insert into public.agent_memory_items(
  owner_user_id,agent_id,policy_id,memory_type,visibility_scope,purpose,classification,
  content,content_sha256,source_ref,provenance,version,policy_version,status,
  retention_expires_at,approved_at
 )
-select '{OWNER}','{AGENT}',p.id,'long_term','agent_private','agent_generation_context','internal',
+select '{OWNER}','{AGENT}',p.id,'episodic','agent_private','agent_generation_context','public',
  'Batch expiry item '||g::text,
  encode(extensions.digest(('Batch expiry item '||g::text),'sha256'),'hex'),
  jsonb_build_object('kind','batch-expiry-test','index',g),
@@ -299,7 +305,7 @@ select '{OWNER}','{AGENT}',p.id,'long_term','agent_private','agent_generation_co
  clock_timestamp()-interval '1 second',clock_timestamp()
 from public.agent_memory_policies p
 cross join generate_series(1,3) g
-where p.owner_user_id='{OWNER}' and p.agent_id='{AGENT}' and p.memory_type='long_term' and p.enabled;
+where p.owner_user_id='{OWNER}' and p.agent_id='{AGENT}' and p.memory_type='episodic' and p.enabled;
 set role service_role;
 select public.expire_agent_memory_items_batch(2);
 reset role;
@@ -307,14 +313,14 @@ do $do$
 declare v_expired integer; v_active integer; v_system_events integer;
 begin
  select count(*) into v_expired from public.agent_memory_items
-  where owner_user_id='{OWNER}' and agent_id='{AGENT}' and created_at>clock_timestamp()-interval '1 minute'
-   and status='expired' and content='';
+  where owner_user_id='{OWNER}' and agent_id='{AGENT}' and memory_type='episodic' and classification='public'
+   and created_at>clock_timestamp()-interval '1 minute' and status='expired' and content='';
  select count(*) into v_active from public.agent_memory_items
-  where owner_user_id='{OWNER}' and agent_id='{AGENT}' and created_at>clock_timestamp()-interval '1 minute'
-   and status='active' and content like 'Batch expiry item%';
+  where owner_user_id='{OWNER}' and agent_id='{AGENT}' and memory_type='episodic' and classification='public'
+   and created_at>clock_timestamp()-interval '1 minute' and status='active' and content like 'Batch expiry item%';
  select count(*) into v_system_events from public.agent_memory_events
   where owner_user_id='{OWNER}' and agent_id='{AGENT}' and created_at>clock_timestamp()-interval '1 minute'
-   and event_type='item_expired' and actor_user_id is null;
+   and event_type='item_expired' and actor_user_id is null and details->>'retention_expired'='true';
  if v_expired<>2 or v_active<>1 then
   raise exception 'bounded Memory expiry batch expected 2 expired + 1 active; got % + %',v_expired,v_active;
  end if;
@@ -325,7 +331,7 @@ select public.expire_agent_memory_items_batch(10);
 reset role;
 do $do$
 begin
- if exists(select 1 from public.agent_memory_items where owner_user_id='{OWNER}' and agent_id='{AGENT}'
+ if exists(select 1 from public.agent_memory_items where owner_user_id='{OWNER}' and agent_id='{AGENT}' and memory_type='episodic' and classification='public'
    and created_at>clock_timestamp()-interval '1 minute' and content like 'Batch expiry item%' and status in ('pending','active')) then
   raise exception 'bounded Memory expiry follow-up left due records active';
  end if;
