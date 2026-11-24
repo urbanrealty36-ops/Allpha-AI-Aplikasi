@@ -631,6 +631,7 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
   const [runtimeTasks, setRuntimeTasks] = useState<Record<string, RuntimeTask[]>>({});
   const [runtimeExecutionEvents, setRuntimeExecutionEvents] = useState<Record<string, RuntimeExecutionEvent[]>>({});
   const [runtimeExecutionEventErrors, setRuntimeExecutionEventErrors] = useState<Record<string, string>>({});
+  const [runtimeExecutionTraceAvailable, setRuntimeExecutionTraceAvailable] = useState<Record<string, boolean>>({});
   const [runtimeSkillBySession, setRuntimeSkillBySession] = useState<Record<string, string>>({});
   const [runtimeToolBySession, setRuntimeToolBySession] = useState<Record<string, string>>({});
   const [runtimeInputsBySession, setRuntimeInputsBySession] = useState<Record<string, string>>({});
@@ -1232,8 +1233,9 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
   }
   async function loadRuntimeTaskEvents(taskId: string) {
     try {
-      const body = await apiRequest("/v1/agent-runtime/tasks/" + encodeURIComponent(taskId) + "/events") as { items?: RuntimeExecutionEvent[] };
+      const body = await apiRequest("/v1/agent-runtime/tasks/" + encodeURIComponent(taskId) + "/events") as { items?: RuntimeExecutionEvent[]; trace_available?: boolean };
       setRuntimeExecutionEvents(current => ({ ...current, [taskId]: body.items ?? [] }));
+      setRuntimeExecutionTraceAvailable(current => ({ ...current, [taskId]: body.trace_available === true }));
       setRuntimeExecutionEventErrors(current => ({ ...current, [taskId]: "" }));
     } catch (cause) {
       setRuntimeExecutionEventErrors(current => ({
@@ -2372,6 +2374,8 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
                 <View style={{ marginTop: 8 }}>
                   <Text style={s.kicker}>EXECUTION TRACE · {runtimeExecutionEvents[task.id]?.length ?? 0} EVENT</Text>
                   {runtimeExecutionEventErrors[task.id] ? <Text style={s.muted}>{runtimeExecutionEventErrors[task.id]}</Text> :
+                    runtimeExecutionTraceAvailable[task.id] === false ? <Text style={s.muted}>Durable trace belum diaktifkan pada environment runtime.</Text> :
+                    (runtimeExecutionEvents[task.id] ?? []).length === 0 ? <Text style={s.muted}>Belum ada execution event yang tersimpan.</Text> :
                     (runtimeExecutionEvents[task.id] ?? []).map(event => <Text key={event.id} style={s.muted}>
                       #{event.sequence} · {event.state} · {event.step_key} · {new Date(event.created_at).toLocaleTimeString("id-ID")}
                     </Text>)}
