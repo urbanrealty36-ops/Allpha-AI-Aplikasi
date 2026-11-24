@@ -12,6 +12,8 @@ STORAGE_DISPOSITION_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123143130_
 SOURCE_METADATA_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123143201_eng_p03_deletion_source_registry_metadata.sql"
 REQUEUE_AUDIT_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124012454_eng_p03_requeue_audit_trail.sql"
 RETENTION_PRECISION_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123170511_eng_p03_retention_legal_basis_precision.sql"
+OWNERSHIP_TRANSFER_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123173919_eng_p03_account_deletion_ownership_transfers.sql"
+GOVERNANCE_RETRY_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123182248_eng_p03_governance_policy_gate_and_retry.sql"
 FK_ACTION_GATE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124010741_eng_p03_fk_action_integrity_gate.sql"
 EXPORT_DELETION_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124015229_eng_p03_account_export_deletion_lifecycle.sql"
 MIGRATION=ROOT/"apps/api/supabase/migrations/20261123192200_eng_p03_deletion_legal_hold_governance_worker.sql"
@@ -348,6 +350,9 @@ alter table public.account_data_retention_policies
 alter table public.account_data_retention_policies
   alter column approved_by drop not null,
   alter column approved_at drop not null;
+alter table public.account_deletion_source_policies
+  add column if not exists decision_source text not null default 'operator_approval',
+  add column if not exists decision_reference text;
 insert into public.account_data_retention_policies(
  data_class,retention_days,policy_version,legal_basis,approved_by,approved_at,
  active,decision_source,decision_reference
@@ -359,7 +364,10 @@ insert into public.account_data_retention_policies(
  ('session_scoped',0,'owner-directive-2026-11-23-v1','UU No. 27/2022 Pasal 42-44: CI-only synthetic retention fixture',null,null,true,'product_owner_directive','CI_ONLY'),
  ('public_catalog',0,'owner-directive-2026-11-23-v1','UU No. 27/2022 Pasal 42-44: CI-only synthetic retention fixture',null,null,true,'product_owner_directive','CI_ONLY');
 """)
-        for migration in (RETENTION_PRECISION_MIGRATION,FK_ACTION_GATE_MIGRATION,EXPORT_DELETION_MIGRATION):
+        for migration in (
+            OWNERSHIP_TRANSFER_MIGRATION,GOVERNANCE_RETRY_MIGRATION,
+            RETENTION_PRECISION_MIGRATION,FK_ACTION_GATE_MIGRATION,EXPORT_DELETION_MIGRATION,
+        ):
             psql(migration.read_text(encoding="utf-8"))
         psql(f"""
 insert into public.profiles(id,account_status) values ('{D}','active');
