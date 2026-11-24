@@ -37,6 +37,8 @@ def test_agent_skill_installation_list_requires_auth_and_uses_owner_scoped_table
     calls = []
     async def fake_db(method, path, token, **kwargs):
         calls.append((method, path, token, kwargs))
+        if path == "rpc/expire_agent_skill_installations":
+            return 0
         return [{"id": INSTALLATION, "agent_id": AGENT, "status": "active"}]
     monkeypatch.setattr("allpha_api.main.user_db_request", fake_db)
     app.dependency_overrides[current_user] = auth_as("owner-a")
@@ -46,8 +48,11 @@ def test_agent_skill_installation_list_requires_auth_and_uses_owner_scoped_table
         app.dependency_overrides.clear()
     assert response.status_code == 200
     assert response.json()["items"][0]["id"] == INSTALLATION
-    assert calls[0][0:3] == ("GET", "agent_skill_installations", "token-owner-a")
-    assert calls[0][3]["params"]["agent_id"] == "eq." + AGENT
+    assert [call[1] for call in calls] == ["rpc/expire_agent_skill_installations", "agent_skill_installations"]
+    assert calls[0][0:3] == ("POST", "rpc/expire_agent_skill_installations", "token-owner-a")
+    assert calls[0][3]["body"] == {"p_agent_id": AGENT}
+    assert calls[1][0:3] == ("GET", "agent_skill_installations", "token-owner-a")
+    assert calls[1][3]["params"]["agent_id"] == "eq." + AGENT
 
 
 def test_skill_installation_requires_explicit_license_acceptance(monkeypatch):
