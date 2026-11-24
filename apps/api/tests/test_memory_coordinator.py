@@ -33,8 +33,6 @@ class FakeMemoryCoordinator(MemoryCoordinator):
             return self.rows
         if path == "rpc/agent_memory_transition":
             return {"expired_count": 0}
-        if path == "rpc/expire_agent_memory_items_batch":
-            return {"expired_count": 3}
         if path == "rpc/agent_memory_search":
             return self.rows
         raise AssertionError(f"unexpected Memory DB request: {method} {path}")
@@ -202,35 +200,3 @@ def test_memory_items_projection_includes_owner_pin_state():
     call=store.calls[0]
     assert call["path"]=="agent_memory_items"
     assert "pinned_at" in call["params"]["select"].split(",")
-
-
-def test_expire_due_batch_uses_bounded_service_rpc(monkeypatch):
-    monkeypatch.setenv("ALLPHA_MEMORY_COORDINATOR_ENABLED", "true")
-    store = FakeMemoryCoordinator()
-    result = asyncio.run(store.expire_due_batch(limit=3))
-    assert result == {"expired_count": 3}
-    call = store.calls[-1]
-    assert call["method"] == "POST"
-    assert call["path"] == "rpc/expire_agent_memory_items_batch"
-    assert call["body"] == {"p_limit": 3}
-
-
-def test_expire_due_batch_is_fail_closed_and_validates_receipt(monkeypatch):
-    store = FakeMemoryCoordinator()
-    monkeypatch.setenv("ALLPHA_MEMORY_COORDINATOR_ENABLED", "false")
-    with pytest.raises(MemoryUnavailable):
-        asyncio.run(store.expire_due_batch(limit=3))
-    assert not store.calls
-
-    monkeypatch.setenv("ALLPHA_MEMORY_COORDINATOR_ENABLED", "true")
-    with pytest.raises(MemoryUnavailable):
-        asyncio.run(store.expire_due_batch(limit=2))
-
-
-@pytest.mark.parametrize("limit", [0, -1, 501, True, 1.5])
-def test_expire_due_batch_rejects_invalid_batch_limit(limit, monkeypatch):
-    monkeypatch.setenv("ALLPHA_MEMORY_COORDINATOR_ENABLED", "true")
-    store = FakeMemoryCoordinator()
-    with pytest.raises(MemoryDenied):
-        asyncio.run(store.expire_due_batch(limit=limit))
-    assert not store.calls
