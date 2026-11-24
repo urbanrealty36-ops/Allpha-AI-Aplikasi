@@ -747,3 +747,67 @@ def test_runtime_policy_creation_persists_canonical_registry_tool_and_text_versi
         assert calls[0][2]["body"]["approved_tool_keys"]==["text.normalize"]
     finally:
         app.dependency_overrides.clear()
+
+
+def test_model_execution_policy_approval_is_separate_from_tariff_activation_and_audited(monkeypatch):
+    import allpha_api.model_costs_api as model_costs
+    config_id="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    calls=[]
+    audits=[]
+    item={
+        "id":config_id,"provider_id":"nvidia-nim","model_id":"qwen/model",
+        "model_version":"v1","pricing_version":"price-v2","policy_version":"p2",
+        "status":"active","policy_approved":False,"effective_at":"2026-11-24T00:00:00Z",
+    }
+    async def fake_user_db(method,path,token,**kwargs):
+        return [{"id":"grant-1","user_id":"operator","scopes":["platform:capabilities.review.high_risk"],"status":"active","expires_at":None}]
+    async def fake_privileged(method,table,**kwargs):
+        calls.append((method,table,kwargs))
+        if method=="GET":
+            return [dict(item)]
+        if method=="PATCH":
+            item.update(kwargs["body"])
+            return [dict(item)]
+        raise AssertionError(method)
+    async def fake_audit(request,**kwargs):
+        audits.append(kwargs)
+    monkeypatch.setattr(security,"user_db_request",fake_user_db)
+    monkeypatch.setattr(security,"write_operator_audit",fake_audit)
+    monkeypatch.setattr(model_costs,"privileged_rest_request",fake_privileged)
+    monkeypatch.setattr(model_costs,"write_operator_audit",fake_audit)
+    install_auth("operator")
+    try:
+        response=client.post(f"/v1/admin/model-costs/{config_id}/approve-policy",json={
+            "reason":"Provider and pricing contract reviewed for this route.",
+            "approval_reference":"MODEL-ROUTE-APPROVAL-2026-01",
+        })
+        assert response.status_code==200
+        body=response.json()
+        assert body["policy_approved"] is True
+        assert body["runtime_enabled"] is False
+        assert body["item"]["policy_approved_by"]=="operator"
+        assert body["item"]["policy_approval_reference"]=="MODEL-ROUTE-APPROVAL-2026-01"
+        assert calls[0][0:2]==("GET","ai_model_cost_configs")
+        assert calls[1][0:2]==("PATCH","ai_model_cost_configs")
+        assert calls[1][2]["params"]["policy_approved"]=="eq.false"
+        assert audits[-1]["action"]=="model_cost.policy_approve"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_model_execution_policy_approval_requires_high_risk_scope(monkeypatch):
+    async def fake_user_db(method,path,token,**kwargs):
+        return [{"id":"grant-1","user_id":"operator","scopes":["platform:operations.read"],"status":"active","expires_at":None}]
+    async def fake_audit(request,**kwargs):
+        return None
+    monkeypatch.setattr(security,"user_db_request",fake_user_db)
+    monkeypatch.setattr(security,"write_operator_audit",fake_audit)
+    install_auth("operator")
+    try:
+        response=client.post("/v1/admin/model-costs/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/approve-policy",json={
+            "reason":"Reviewed","approval_reference":"MODEL-ROUTE-APPROVAL-2026-01"
+        })
+        assert response.status_code==403
+        assert response.json()["error"]["code"]=="OPERATOR_SCOPE_REQUIRED"
+    finally:
+        app.dependency_overrides.clear()
