@@ -189,7 +189,7 @@ insert into public.account_deletion_requests(user_id,subject_ref,status,request_
 values ('{D}','{D}','blocked_dependency','{{}}');
 insert into public.account_deletion_dependency_rules(
  child_schema,child_table,constraint_name,delete_rule,resolution_action,reason,active
-) values ('public','ci_requeue_test','ci_requeue_test_fkey','RESTRICT','block',
+) values ('public','ci_requeue_test','ci_requeue_test_fkey','restrict','block',
  'isolated trigger audit verification',true);
 do $
 begin
