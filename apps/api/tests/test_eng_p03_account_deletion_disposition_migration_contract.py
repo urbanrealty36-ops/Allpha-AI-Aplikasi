@@ -105,7 +105,7 @@ def test_subscription_cancellation_uses_the_persisted_stripe_environment_not_che
     assert "add column if not exists stripe_environment text" in migration
     assert "p_stripe_environment text" in migration
     assert "billing_orders_stripe_environment_check" in migration
-    assert "stripe_environment=v_order.stripe_environment" in migration
+    assert "p_subscription_id,v_order.stripe_environment,p_customer_id" in migration
     assert "rename column stripe_mode to stripe_environment" in migration
     assert "bs.stripe_environment" in migration
     assert "billing_stripe_environment_required" in migration
