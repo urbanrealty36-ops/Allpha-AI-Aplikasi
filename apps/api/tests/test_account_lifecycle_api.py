@@ -6,16 +6,23 @@ from allpha_api.account_lifecycle_api import (
 )
 
 
-def test_deletion_request_reports_database_state_without_claiming_policy_is_unapproved(monkeypatch):
+def test_deletion_request_creates_export_first_and_returns_export_state(monkeypatch):
+    from starlette.requests import Request
+
+    calls = []
+
     async def verify(*args, **kwargs):
         return None
 
-    async def create(*args, **kwargs):
+    async def create(endpoint, **kwargs):
+        calls.append((endpoint, kwargs))
         return [{
             "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
             "status": "awaiting_policy",
             "requested_at": "2026-11-24T00:00:00Z",
             "subject_ref": "a" * 64,
+            "export_job_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            "export_status": "queued",
         }]
 
     monkeypatch.setattr(
@@ -30,14 +37,32 @@ def test_deletion_request_reports_database_state_without_claiming_policy_is_unap
         password="test-only-password",
         confirmation_phrase="HAPUS AKUN ALLPHA SAYA",
     )
+    request = Request({
+        "type": "http", "method": "POST", "path": "/", "headers": [(b"idempotency-key", b"test-deletion-key-123")],
+        "query_string": b"", "server": ("test", 80), "client": ("test", 1),
+        "scheme": "https", "http_version": "1.1",
+    })
     result = asyncio.run(request_account_deletion(
         payload,
+        request,
         {"id": "11111111-1111-4111-8111-111111111111"},
     ))
 
     assert result["execution_state"] == "awaiting_policy"
     assert result["deletion_request"]["status"] == "awaiting_policy"
+    assert result["export"] == {
+        "job_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        "status": "queued",
+    }
+    assert calls == [(
+        "create_account_deletion_request_for_actor",
+        {"body": {
+            "p_actor_user_id": "11111111-1111-4111-8111-111111111111",
+            "p_idempotency_key": "test-deletion-key-123",
+        }},
+    )]
     assert "belum disetujui" not in result["message"]
+    assert "arsip ekspor dibuat lebih dahulu" in result["message"]
     assert "belum ada data yang dihapus" in result["message"]
 
 
