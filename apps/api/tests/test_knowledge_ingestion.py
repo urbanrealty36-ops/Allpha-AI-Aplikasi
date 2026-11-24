@@ -169,31 +169,83 @@ def test_knowledge_storage_requires_server_side_key(monkeypatch):
 
 def test_delete_source_fences_jobs_before_idempotent_storage_and_database_cleanup(monkeypatch):
     from allpha_api.knowledge import delete_source
+    owner = "00000000-0000-4000-8000-000000000100"
+    expected_path = f"{owner}/{AGENT}/{SOURCE}/notes.txt"
     calls=[]
+
     async def fake_owned(agent_id,request,user):
         return "owner-token"
+
+    async def fake_source(agent_id, source_id, token, user):
+        return {
+            "id": SOURCE, "agent_id": AGENT, "owner_id": owner,
+            "filename": "notes.txt", "storage_path": expected_path,
+        }
+
     async def fake_admin(method,path,access_token=None,**kwargs):
         calls.append(("db",method,path,kwargs))
         if path=="rpc/begin_agent_knowledge_source_delete":
-            return {"already_deleted":False,"storage_path":f"owner-a/{AGENT}/{SOURCE}/notes.txt","cancelled_jobs":2}
+            return {"already_deleted":False,"storage_path":expected_path,"cancelled_jobs":2}
         return None
+
     async def fake_storage(method,path,*args,**kwargs):
         calls.append(("storage",method,path))
         return None
+
     monkeypatch.setattr("allpha_api.knowledge._owned",fake_owned)
+    monkeypatch.setattr("allpha_api.knowledge._source",fake_source)
     monkeypatch.setattr("allpha_api.knowledge._admin_db_request",fake_admin)
     monkeypatch.setattr("allpha_api.knowledge._storage",fake_storage)
-    app.dependency_overrides[current_user]=auth_as("owner-a")
+    app.dependency_overrides[current_user]=auth_as(owner)
     try:
         response=client.delete(f"/v1/agents/{AGENT}/knowledge/sources/{SOURCE}",headers={"Authorization":"Bearer test"})
     finally:
         app.dependency_overrides.clear()
     assert response.status_code==204
     assert calls[0][0:3]==("db","POST","rpc/begin_agent_knowledge_source_delete")
-    assert calls[0][3]["body"]=={"p_source_id":SOURCE,"p_agent_id":AGENT,"p_owner_id":"owner-a"}
-    assert calls[1]==("storage","DELETE",f"agent-knowledge/owner-a/{AGENT}/{SOURCE}/notes.txt")
+    assert calls[0][3]["body"]=={"p_source_id":SOURCE,"p_agent_id":AGENT,"p_owner_id":owner}
+    assert calls[1]==("storage","DELETE",f"agent-knowledge/{expected_path}")
     assert calls[2][0:3]==("db","DELETE","agent_knowledge_sources")
     assert calls[2][3]["params"]["status"]=="eq.deleting"
+
+
+def test_delete_source_rejects_cross_owner_storage_path_before_delete(monkeypatch):
+    from allpha_api.knowledge import delete_source
+    owner = "00000000-0000-4000-8000-000000000100"
+    other_owner = "00000000-0000-4000-8000-000000000999"
+    expected_path = f"{owner}/{AGENT}/{SOURCE}/notes.txt"
+    calls=[]
+
+    async def fake_owned(agent_id,request,user):
+        return "owner-token"
+
+    async def fake_source(agent_id, source_id, token, user):
+        return {
+            "id": SOURCE, "agent_id": AGENT, "owner_id": owner,
+            "filename": "notes.txt", "storage_path": expected_path,
+        }
+
+    async def fake_admin(method,path,access_token=None,**kwargs):
+        calls.append((method,path))
+        if path=="rpc/begin_agent_knowledge_source_delete":
+            return {"already_deleted":False,"storage_path":f"{other_owner}/{AGENT}/{SOURCE}/notes.txt"}
+        return None
+
+    async def forbidden_storage(*args,**kwargs):
+        raise AssertionError("cross-owner Storage deletion must never be attempted")
+
+    monkeypatch.setattr("allpha_api.knowledge._owned",fake_owned)
+    monkeypatch.setattr("allpha_api.knowledge._source",fake_source)
+    monkeypatch.setattr("allpha_api.knowledge._admin_db_request",fake_admin)
+    monkeypatch.setattr("allpha_api.knowledge._storage",forbidden_storage)
+    app.dependency_overrides[current_user]=auth_as(owner)
+    try:
+        response=client.delete(f"/v1/agents/{AGENT}/knowledge/sources/{SOURCE}",headers={"Authorization":"Bearer test"})
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code==503
+    assert response.json()["error"]["code"]=="KNOWLEDGE_DELETE_PATH_INVALID"
+    assert calls==[("POST","rpc/begin_agent_knowledge_source_delete")]
 
 
 def test_delete_source_returns_success_when_source_is_already_deleted(monkeypatch):
