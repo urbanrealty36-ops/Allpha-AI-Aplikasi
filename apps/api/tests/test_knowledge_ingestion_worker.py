@@ -35,8 +35,9 @@ class FakeStore:
                 "sha256":hashlib.sha256(self.data).hexdigest(),"storage_path":f"{OWNER}/{AGENT}/{SOURCE}/notes.txt",
                 "source_version":1,"status":"quarantined","sensitivity":"internal",
                 "provenance":{"sensitivity":"internal"}}
-    async def update_source_state(self, job, *, status, stage, error_code=None):
-        self.states.append((status,stage,error_code))
+    async def update_source_state(self, job, *, status, stage, error_code=None, scanner_receipt=None):
+        self.states.append((status,stage,error_code,scanner_receipt))
+        return True
     async def persist_document_chunk_batch(self, job, *, chunks, reset):
         self.batches.append((chunks,reset))
         return len(chunks)
@@ -58,14 +59,24 @@ class FakeStorage:
 
 def test_document_worker_scans_parses_persists_and_atomically_hands_off_embedding(monkeypatch):
     store=FakeStore()
+    receipt = {
+        "scanner_id": "scanner-prod-1", "engine_version": "1.4.6",
+        "signature_version": "2026-11-24", "sha256": hashlib.sha256(DATA).hexdigest(),
+        "contract_version": "allpha.document-scan.v1",
+    }
     async def clean_scan(data,filename,media_type):
         assert data==DATA and filename=="notes.txt" and media_type=="text/plain"
+        return receipt
     monkeypatch.setattr("allpha_api.knowledge_ingestion_worker._scan",clean_scan)
     monkeypatch.setattr("allpha_api.knowledge_ingestion_worker._extract",
         lambda filename,data:[{"text":"knowledge text","location":{"kind":"page","index":1}}])
     worker=KnowledgeDocumentWorker(store=store,storage=FakeStorage(),batch_size=1)
     assert asyncio.run(worker.process_once()) is True
-    assert store.states==[("processing","malware_scan",None),("processing","document_parsing",None),("processing","chunk_persistence",None)]
+    assert store.states == [
+        ("processing", "malware_scan", None, None),
+        ("processing", "document_parsing", None, receipt),
+        ("processing", "chunk_persistence", None, None),
+    ]
     assert len(store.batches)==1 and store.batches[0][1] is True
     assert store.batches[0][0][0]["content"]=="knowledge text"
     assert store.completed==[1]
@@ -91,3 +102,23 @@ def test_document_worker_retries_transient_scanner_unavailability(monkeypatch):
     assert asyncio.run(worker.process_once()) is True
     assert store.failures==[("SCANNER_UNAVAILABLE","malware_scan_retry",True,60)]
     assert store.batches==[] and store.completed==[]
+
+
+
+def test_document_worker_abandons_source_transition_when_job_lease_is_lost(monkeypatch):
+    store = FakeStore()
+
+    async def rejected_state_update(job, *, status, stage, error_code=None, scanner_receipt=None):
+        return False
+
+    store.update_source_state = rejected_state_update
+
+    async def clean_scan(*args):
+        raise AssertionError("scanner must not run after the lease-fenced stage update fails")
+
+    monkeypatch.setattr("allpha_api.knowledge_ingestion_worker._scan", clean_scan)
+    worker = KnowledgeDocumentWorker(store=store, storage=FakeStorage())
+    assert asyncio.run(worker.process_once()) is True
+    assert store.failures == []
+    assert store.batches == []
+    assert store.completed == []
