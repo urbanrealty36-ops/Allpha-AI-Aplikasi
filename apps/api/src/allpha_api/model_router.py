@@ -22,7 +22,18 @@ class ModelRouterRejected(RuntimeError):
         super().__init__(failure.code)
 
 class ModelRouterTransient(RuntimeError):
-    """An adapter failure that policy permits retrying."""
+    """Adapter failure with an explicit statement about whether execution is known not to have started."""
+
+    def __init__(
+        self, message: str, *, safe_to_retry: bool = False,
+        retry_after_ms: int | None = None,
+    ) -> None:
+        self.safe_to_retry = safe_to_retry
+        self.retry_after_ms = (
+            max(0, min(int(retry_after_ms), 30_000))
+            if retry_after_ms is not None else None
+        )
+        super().__init__(message)
 
 class EmbeddingAdapter(Protocol):
     async def embed(self, request: EmbeddingRequest, *, model_id: str) -> EmbeddingResponse:
@@ -144,13 +155,37 @@ class CanonicalModelRouter:
             except ModelRouterRejected:
                 raise
             except asyncio.TimeoutError as exc:
-                last_error = exc
+                # The provider may have accepted and billed the request before the
+                # response timed out. Never replay an outcome-unknown embedding call.
+                raise ModelRouterRejected(EmbeddingFailure(
+                    task_id=request.task_id,
+                    code="MODEL_ROUTER_OUTCOME_UNKNOWN",
+                    retryable=False,
+                    trace_id=request.trace_id,
+                )) from exc
             except ModelRouterTransient as exc:
+                if not exc.safe_to_retry:
+                    raise ModelRouterRejected(EmbeddingFailure(
+                        task_id=request.task_id,
+                        code="MODEL_ROUTER_OUTCOME_UNKNOWN",
+                        retryable=False,
+                        trace_id=request.trace_id,
+                    )) from exc
                 last_error = exc
             if attempt + 1 < min(route.max_attempts, 8):
                 await asyncio.sleep(self._retry_delay_seconds * (attempt + 1))
-        code = "MODEL_ROUTER_TIMEOUT" if isinstance(last_error, asyncio.TimeoutError) else "MODEL_ROUTER_TRANSIENT_FAILURE"
-        raise ModelRouterRejected(EmbeddingFailure(task_id=request.task_id, code=code, retryable=True, retry_after_ms=int(self._retry_delay_seconds * 1000), trace_id=request.trace_id)) from last_error
+        retry_after_ms = (
+            last_error.retry_after_ms
+            if isinstance(last_error, ModelRouterTransient) and last_error.retry_after_ms is not None
+            else int(self._retry_delay_seconds * 1000)
+        )
+        raise ModelRouterRejected(EmbeddingFailure(
+            task_id=request.task_id,
+            code="MODEL_ROUTER_TRANSIENT_FAILURE",
+            retryable=True,
+            retry_after_ms=retry_after_ms,
+            trace_id=request.trace_id,
+        )) from last_error
 
 async def route_embedding(router: EmbeddingRouter | None, request: EmbeddingRequest) -> EmbeddingResponse:
     """Shared entry point; fail closed and validate provenance at the boundary."""
