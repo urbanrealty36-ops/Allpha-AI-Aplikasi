@@ -199,11 +199,36 @@ class SupabaseKnowledgeJobStore:
 
     async def load_source(self, job):
         rows = await self._request("GET", "agent_knowledge_sources", params={
-            "select": "id,agent_id,owner_id,source_version,status,provenance",
+            "select": "id,agent_id,owner_id,filename,media_type,sha256,storage_path,source_version,status,processing_stage,error_code,provenance,sensitivity",
             "id": f"eq.{job['source_id']}", "owner_id": f"eq.{job['owner_id']}",
             "agent_id": f"eq.{job['agent_id']}", "limit": "1",
         })
         return rows[0] if rows else None
+
+    async def update_source_state(self, job, *, status, stage, error_code=None):
+        return await self._request("PATCH", "agent_knowledge_sources", params={
+            "id": f"eq.{job['source_id']}", "owner_id": f"eq.{job['owner_id']}",
+            "agent_id": f"eq.{job['agent_id']}", "source_version": f"eq.{job['source_version']}",
+        }, body={"status": status, "processing_stage": stage, "error_code": error_code})
+
+    async def persist_document_chunk_batch(self, job, *, chunks, reset):
+        return await self._request("POST", "rpc/persist_agent_knowledge_chunk_batch", body={
+            "p_job_id": job["id"], "p_lease_token": job["lease_token"],
+            "p_source_version": job["source_version"], "p_reset": reset, "p_chunks": chunks,
+        })
+
+    async def complete_document_parse(self, job, *, expected_chunk_count):
+        return await self._request("POST", "rpc/complete_agent_knowledge_document_parse", body={
+            "p_job_id": job["id"], "p_lease_token": job["lease_token"],
+            "p_source_version": job["source_version"], "p_expected_chunk_count": expected_chunk_count,
+        })
+
+    async def fail_document_job(self, job, *, error_code, stage, retryable, retry_delay_seconds=30):
+        return await self._request("POST", "rpc/fail_agent_knowledge_document_job", body={
+            "p_job_id": job["id"], "p_lease_token": job["lease_token"],
+            "p_error_code": error_code, "p_stage": stage,
+            "p_retryable": retryable, "p_retry_delay_seconds": retry_delay_seconds,
+        })
 
     async def load_chunks(self, job):
         return await self._request("GET", "agent_knowledge_chunks", params={
