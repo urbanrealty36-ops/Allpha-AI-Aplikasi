@@ -129,7 +129,7 @@ create schema auth;
 create schema extensions;
 create extension if not exists pgcrypto with schema extensions;
 create schema private;
-create table auth.users(id uuid primary key);
+create table auth.users(id uuid primary key,email text,phone text,created_at timestamptz default now(),updated_at timestamptz default now(),last_sign_in_at timestamptz,email_confirmed_at timestamptz,phone_confirmed_at timestamptz);
 create table public.profiles(
  id uuid primary key references auth.users(id) on delete cascade,
  account_status text not null default 'active'
