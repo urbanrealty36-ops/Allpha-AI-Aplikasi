@@ -237,7 +237,11 @@ async def upload_source(agent_id: uuid.UUID,request: Request,file: UploadFile=Fi
             with zipfile.ZipFile(io.BytesIO(data)) as z:
                 if "word/document.xml" not in z.namelist(): raise ValueError()
         except (zipfile.BadZipFile,ValueError): raise HTTPException(422,detail={"code":"INVALID_FILE_SIGNATURE","message":"Struktur DOCX tidak valid."})
-    sid=uuid.uuid4(); digest=hashlib.sha256(data).hexdigest(); path=f"{user['id']}/{agent_id}/{sid}/{filename}"
+    sid=uuid.uuid4(); digest=hashlib.sha256(data).hexdigest()
+    try:
+        path = _canonical_knowledge_storage_path(str(user["id"]), str(agent_id), str(sid), filename)
+    except ValueError as exc:
+        raise HTTPException(422,detail={"code":"INVALID_DOCUMENT_FILENAME","message":"Nama file tidak valid."}) from exc
     body={"id":str(sid),"agent_id":str(agent_id),"owner_id":user["id"],"filename":filename,"media_type":media,"size_bytes":len(data),"sha256":digest,"storage_path":path,"source_version":1,"status":"quarantined","processing_stage":"awaiting_malware_scan","provenance":{"kind":"user_upload","filename":filename,"sha256":digest,"source_version":1,"sensitivity":sensitivity},"sensitivity":sensitivity}
     rows=await _admin_db_request("POST","agent_knowledge_sources",token,params={"select":SOURCE_FIELDS},body=body,prefer="return=representation")
     if not rows: raise HTTPException(500,detail={"code":"SOURCE_CREATE_FAILED","message":"Metadata dokumen gagal disimpan."})
