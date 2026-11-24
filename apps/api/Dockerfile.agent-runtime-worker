@@ -6,13 +6,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     ALLPHA_AGENT_RUNTIME_WORKER_ENABLED=false
 
 WORKDIR /app
+# The shared worker is resource-constrained. Malware scanning is delegated to
+# the authenticated remote scanner contract; local ClamAV belongs only on a
+# separately provisioned memory-eligible worker image.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends clamav clamav-daemon gosu ca-certificates \
+    && apt-get install -y --no-install-recommends gosu ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
-    && useradd --system --uid 10001 --create-home --groups clamav worker \
-    && mkdir -p /run/clamav \
-    && chown clamav:clamav /run/clamav /var/lib/clamav \
-    && chmod 0770 /run/clamav
+    && useradd --system --uid 10001 --create-home worker
 COPY pyproject.toml ./
 COPY src ./src
 COPY docker/shared-worker-entrypoint.sh /usr/local/bin/shared-worker-entrypoint
