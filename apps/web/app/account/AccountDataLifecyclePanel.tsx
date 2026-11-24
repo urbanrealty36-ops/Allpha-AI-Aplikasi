@@ -22,6 +22,8 @@ type DeletionRequest = {
   policy_version?: string | null;
   scheduled_for?: string | null;
   cancelled_at?: string | null;
+  export_job_id?: string | null;
+  error_code?: string | null;
 };
 
 type Props = { apiBase: string; accessToken: string };
@@ -142,8 +144,10 @@ export default function AccountDataLifecyclePanel({ apiBase, accessToken }: Prop
     event.preventDefault();
     setBusy(true); setError(""); setMessage("");
     try {
+      const idempotencyKey = globalThis.crypto?.randomUUID?.() ?? ("account-deletion-" + Date.now());
       const payload = await request("/v1/me/deletion-requests", {
         method: "POST",
+        headers: { "Idempotency-Key": idempotencyKey },
         body: JSON.stringify({ password, confirmation_phrase: confirmation }),
       });
       setPassword(""); setConfirmation("");
@@ -240,7 +244,7 @@ export default function AccountDataLifecyclePanel({ apiBase, accessToken }: Prop
 
       <section className="social-interests" aria-labelledby="account-deletion-title">
         <h3 id="account-deletion-title">Permintaan penghapusan akun</h3>
-        <p className="muted">Penghapusan permanen belum dijalankan otomatis. Permintaan akan menunggu kebijakan retensi per kelas data dan pemeriksaan legal-hold yang disetujui.</p>
+        <p className="muted">Arsip ekspor dibuat lebih dahulu. Penghapusan menunggu ekspor selesai, masa retensi artefak ekspor berakhir, kebijakan retensi data, legal hold, dan seluruh dependency.</p>
         {deletions.length > 0 && (
           <div className="consent-history-list">
             {deletions.map((item) => (
@@ -249,6 +253,8 @@ export default function AccountDataLifecyclePanel({ apiBase, accessToken }: Prop
                   <strong>{statusLabel(item.status)}</strong>
                   <p className="muted">Diminta: {new Date(item.requested_at).toLocaleString("id-ID")}</p>
                   {item.policy_version && <small className="muted">Kebijakan: {item.policy_version}</small>}
+                  {item.export_job_id && <small className="muted">Export job: {statusLabel(exports.find((job) => job.id === item.export_job_id)?.status ?? "queued")} · {item.export_job_id}</small>}
+                  {item.error_code && <small className="notice error">{item.error_code}</small>}
                 </div>
                 {item.status === "awaiting_policy" && <button type="button" className="button-quiet" disabled={busy} onClick={() => void cancelDeletion(item.id)}>Batalkan</button>}
               </article>
