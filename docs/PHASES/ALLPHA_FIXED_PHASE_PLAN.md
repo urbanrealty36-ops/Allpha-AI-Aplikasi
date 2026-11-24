@@ -986,3 +986,35 @@ This is an evidence refresh inside the existing fixed plan. It does not create a
 3. Keep production deletion execution disabled until those checks pass; do not delete real accounts as a substitute for isolated verification.
 
 **Phase state:** ENG-P03 `in_progress`; ENG-P04 remains `in_progress` pending its integration/release gate; ENG-P05 remains blocked by the canonical P03/P04 dependencies. Do not advance the operational phase status until the outstanding evidence above exists.
+
+
+
+## 40.18 ENG-P03 export RPC ambiguity fix and isolated PostgreSQL regression — 2026-11-24
+
+**Status: export gate slice verified; ENG-P03 remains in_progress.** This section supersedes the pending-CI note in 40.17 for the export-gate slice only. It does not claim Storage-to-database deletion completion.
+
+### Defect fixed
+
+- The first isolated execution of `create_account_deletion_request_for_actor(uuid,text)` exposed a real PL/pgSQL ambiguity: the function's `RETURNS TABLE(id, ...)` output parameter collided with unqualified `WHERE id=v_request_id` and `RETURNING id` references.
+- Applied forward-only migration `20261124020721 / eng_p03_account_deletion_rpc_ambiguity_fix`. All request-table references in those statements are now qualified to `public.account_deletion_requests.id`.
+- Live `pg_get_functiondef` confirms both the existing-request update and insert-returning references are qualified. Non-mutating PostgreSQL `EXPLAIN` statements also parsed both forms successfully.
+
+### Isolated PostgreSQL 17 verification
+
+- The verifier now replays the executor, source handler, owner-directive function, ownership-transfer, governance, FK integrity, export lifecycle and RPC ambiguity migrations in an isolated PostgreSQL 17 container.
+- It verifies legal-hold block/release and audit events, user-scoped shared-source deletion handlers, idempotent deletion request plus linked export job creation, pending-export deletion gate, authenticated owner download confirmation, export-gate release, and the resulting lifecycle audit event.
+- GitHub Actions run `45310125210` — **ENG-P03/P04 Focused Lifecycle and Social Graph Regression: success** on commit `0243614bf99c00fcefffcf75da50d149d0e3958e`.
+- GitHub Actions run `45310125112` — **Allpha Smoke: success** on the same commit.
+
+### Current live dependency disposition
+
+- 140 active FK rules: 61 `database_cascade`, 46 `database_set_null`, 16 `set_null`, 8 `delete_rows`, 7 `preserve_tombstone`, 2 `transfer_owner`; 0 `block`.
+- 106 active source policies: 67 `delete_rows`, 37 `preserve`, 2 `anonymize`; 0 `block`.
+- P03 migration source parity after the RPC fix: 44/44 ledger version/name matches, 0 missing, 0 extra.
+- Production remained untouched by synthetic account data: deletion requests 0, export jobs 0, execution jobs 0, Storage jobs 0, ownership transfers 0, active legal holds 0.
+
+### Still not complete
+
+- The isolated scenario proves export request → export job gate → owner confirmation → policy reevaluation and audit. It does **not** yet prove the complete worker path through actual Storage object deletion, database executor completion, Auth identity tombstone, and final audit result.
+- The worker is running in Railway and logs show export/cleanup/governance RPCs succeeding. The production worker variable inventory still does not contain `ACCOUNT_DELETION_EXECUTION_ENABLED`; destructive execution remains default-off until the full isolated Storage/database/tombstone scenario passes.
+- ENG-P03 remains `in_progress`. ENG-P04 remains `in_progress` pending integration/release gate. ENG-P05 remains blocked by canonical P03/P04 dependencies.
