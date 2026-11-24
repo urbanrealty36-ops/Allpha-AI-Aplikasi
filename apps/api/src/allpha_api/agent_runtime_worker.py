@@ -69,6 +69,33 @@ async def _social_schema_ready(store: AgentRuntimeStore) -> bool:
     return True
 
 
+def _consumer_enabled(name: str, gate) -> bool:
+    """An invalid optional consumer gate must not disable unrelated worker domains."""
+    try:
+        return bool(gate())
+    except SystemExit as exc:
+        logger.error("%s consumer disabled by invalid configuration: %s", name, exc)
+        return False
+    except Exception:
+        logger.exception("%s consumer gate failed; consumer remains disabled", name)
+        return False
+
+
+async def _serve_consumer_isolated(name: str, consumer) -> None:
+    """Keep one optional consumer's startup/config failure from cancelling siblings."""
+    try:
+        await consumer
+    except asyncio.CancelledError:
+        raise
+    except BaseException as exc:
+        # SystemExit may be raised by a consumer's strict environment validation.
+        logger.error(
+            "%s consumer stopped during startup/runtime; sibling consumers remain active: %s",
+            name, type(exc).__name__,
+            exc_info=(type(exc), exc, exc.__traceback__),
+        )
+
+
 def _concurrency() -> int:
     """Bound parallel task execution; each task still obtains its own DB lease."""
     try:
@@ -224,10 +251,10 @@ async def serve() -> None:
     """Host independently gated runtime, workflow and Knowledge consumers in one process."""
     from allpha_api import workflow_worker_host, knowledge_ingestion_worker, knowledge_worker
 
-    runtime_enabled = _enabled()
-    workflow_enabled = workflow_worker_host.enabled()
-    knowledge_documents_enabled = knowledge_ingestion_worker.enabled()
-    knowledge_embeddings_enabled = knowledge_worker.enabled()
+    runtime_enabled = _consumer_enabled("Agent Runtime", _enabled)
+    workflow_enabled = _consumer_enabled("Workflow", workflow_worker_host.enabled)
+    knowledge_documents_enabled = _consumer_enabled("Knowledge document", knowledge_ingestion_worker.enabled)
+    knowledge_embeddings_enabled = _consumer_enabled("Knowledge embedding", knowledge_worker.enabled)
     stop_event = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
@@ -239,20 +266,26 @@ async def serve() -> None:
     consumers: list[asyncio.Task[Any]] = []
     if runtime_enabled:
         consumers.append(asyncio.create_task(
-            _serve_runtime_enabled(stop_event), name="agent-runtime-worker",
+            _serve_consumer_isolated("Agent Runtime", _serve_runtime_enabled(stop_event)),
+            name="agent-runtime-worker",
         ))
     if workflow_enabled:
         consumers.append(asyncio.create_task(
-            workflow_worker_host.serve_enabled(stop_event=stop_event), name="workflow-worker",
+            _serve_consumer_isolated("Workflow", workflow_worker_host.serve_enabled(stop_event=stop_event)),
+            name="workflow-worker",
         ))
     if knowledge_documents_enabled:
         consumers.append(asyncio.create_task(
-            knowledge_ingestion_worker.serve_enabled(stop_event=stop_event),
+            _serve_consumer_isolated(
+                "Knowledge document", knowledge_ingestion_worker.serve_enabled(stop_event=stop_event),
+            ),
             name="knowledge-document-ingestion-worker",
         ))
     if knowledge_embeddings_enabled:
         consumers.append(asyncio.create_task(
-            knowledge_worker.serve_enabled(stop_event=stop_event),
+            _serve_consumer_isolated(
+                "Knowledge embedding", knowledge_worker.serve_enabled(stop_event=stop_event),
+            ),
             name="knowledge-embedding-worker",
         ))
 
