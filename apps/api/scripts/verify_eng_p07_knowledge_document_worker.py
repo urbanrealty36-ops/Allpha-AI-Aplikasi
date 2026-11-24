@@ -10,8 +10,8 @@ import uuid
 ROOT=Path(__file__).resolve().parents[3]
 MIGRATIONS=ROOT/"apps/api/supabase/migrations"
 FILES=[
- MIGRATIONS/"20261014180000_eng_p09_knowledge_job_leases.sql",
  MIGRATIONS/"20261014173000_eng_p07_knowledge_fulltext_index.sql",
+ MIGRATIONS/"20261014180000_eng_p09_knowledge_job_leases.sql",
  MIGRATIONS/"20261124110000_eng_p07_knowledge_document_worker_pipeline.sql",
  MIGRATIONS/"20261124120000_eng_p07_knowledge_api_only_writes.sql",
  MIGRATIONS/"20261124130000_eng_p07_knowledge_document_enqueue.sql",
