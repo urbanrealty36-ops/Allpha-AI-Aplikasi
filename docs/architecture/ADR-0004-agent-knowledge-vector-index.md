@@ -61,3 +61,8 @@ The provider/model/model-version, exact dimension, distance metric, index type/p
 ## Rollback
 
 Disable the vector adapter and retain explicit keyword-only mode only if ADR-0003 policy is implemented, approved and configured. If neither safe path is available, retrieval returns the stable unavailable error; never fall back to unrestricted retrieval.
+
+
+## Production capability observation — 2026-11-24
+
+The canonical Supabase project was queried directly. PostgreSQL has the `vector` extension installed at version `0.8.2`. No Knowledge vector table, vector-typed column, vector RPC, or active embedding tariff row is currently present. This confirms the extension prerequisite only; it does not select a provider/model/version, dimension, distance metric, index parameters, active generation, or relevance-evaluation contract. Therefore the physical vector schema and embedding worker remain disabled, and keyword-only retrieval remains distinct from hybrid retrieval.
