@@ -45,7 +45,7 @@ def test_model_usage_summary_is_service_only_and_does_not_mix_cost_units():
     assert "generation_output_moderation_one_approved" in sql
 
 
-CAPABILITY = ROOT / "supabase" / "migrations" / "20261124074500_eng_p09_model_capability_contract.sql"
+CAPABILITY = ROOT / "supabase" / "migrations" / "20261124080255_eng_p09_model_capability_contract.sql"
 
 
 def test_model_cost_registry_persists_explicit_capability_and_fails_closed_on_unknown_backfill():
