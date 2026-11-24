@@ -171,7 +171,7 @@ begin
   end if;
 end $$;
 update public.account_legal_holds set active=false,released_by='{A}',released_at=now() where subject_ref='{HOLD_A}';
-do $
+do $$
 declare v record;
 begin
   if (select status from public.account_deletion_requests where subject_ref='{HOLD_A}')<>'awaiting_policy' then
@@ -184,14 +184,14 @@ begin
   end if;
   select * into v from public.evaluate_account_deletion_governance(100);
   if v.unblocked_count<>0 then raise exception 'governance double-counted a trigger-requeued request'; end if;
-end $;
+end $$;
 insert into public.account_deletion_requests(user_id,subject_ref,status,request_metadata)
 values ('{D}','{D}','blocked_dependency','{{}}');
 insert into public.account_deletion_dependency_rules(
  child_schema,child_table,constraint_name,delete_rule,resolution_action,reason,active
 ) values ('public','ci_requeue_test','ci_requeue_test_fkey','restrict','block',
  'isolated trigger audit verification',true);
-do $
+do $$
 begin
   if (select status from public.account_deletion_requests where subject_ref='{D}')<>'awaiting_policy' then
     raise exception 'dependency policy change did not requeue blocked request';
@@ -201,7 +201,7 @@ begin
       and metadata->>'reason_code'='DEPENDENCY_POLICY_CHANGED_REEVALUATION_REQUIRED') then
     raise exception 'dependency requeue audit event missing';
   end if;
-end $;
+end $$;
 do $$
 begin
   if has_function_privilege('authenticated','public.evaluate_account_deletion_governance(integer)','EXECUTE')
