@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import uuid
+from datetime import datetime
 from urllib.parse import urlsplit
 
 import httpx
@@ -24,6 +25,20 @@ _REQUIRED_FIELDS = frozenset({
     "knowledge_consent_granted", "consent_version", "consent_revoked",
     "allowed_purposes", "grants_active", "resolved_at_version", "tenant_id", "session_id",
 })
+
+
+def _expiry_value(value: object, label: str) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise KnowledgePolicyUnavailable(f"canonical Knowledge policy {label} expiry is invalid")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise KnowledgePolicyUnavailable(f"canonical Knowledge policy {label} expiry is invalid") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise KnowledgePolicyUnavailable(f"canonical Knowledge policy {label} expiry must include a timezone")
+    return parsed.isoformat()
 
 
 def _reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -121,6 +136,8 @@ class SupabaseKnowledgePolicySnapshotProvider:
             value = result.get(field)
             if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
                 raise KnowledgePolicyUnavailable(f"canonical Knowledge policy RPC returned invalid {field}")
+        consent_expires_at = _expiry_value(result.get("consent_expires_at"), "consent")
+        grant_expires_at = _expiry_value(result.get("grant_expires_at"), "source-grant")
         for field in ("knowledge_consent_granted", "consent_revoked", "grants_active"):
             if type(result.get(field)) is not bool:
                 raise KnowledgePolicyUnavailable(f"canonical Knowledge policy RPC returned invalid {field}")
@@ -130,7 +147,8 @@ class SupabaseKnowledgePolicySnapshotProvider:
             allowed_source_ids=tuple(result["allowed_source_ids"]), audience=result["audience"],
             grant_version=result["grant_version"], decision_reference=result["decision_reference"],
             knowledge_consent_granted=result["knowledge_consent_granted"],
-            consent_version=result["consent_version"], consent_revoked=result["consent_revoked"],
+            consent_version=result["consent_version"], consent_expires_at=consent_expires_at,
+            consent_revoked=result["consent_revoked"], grant_expires_at=grant_expires_at,
             allowed_purposes=tuple(result["allowed_purposes"]), grants_active=result["grants_active"],
             resolved_at_version=result["resolved_at_version"], tenant_id=result["tenant_id"],
             session_id=result["session_id"],
