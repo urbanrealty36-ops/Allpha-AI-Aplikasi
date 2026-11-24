@@ -197,3 +197,31 @@ def test_agent_runtime_rejects_knowledge_context_without_valid_policy():
             )
 
     asyncio.run(scenario())
+
+
+
+def test_agent_runtime_bounds_long_intent_before_knowledge_retrieval():
+    class Policy:
+        async def allowed_sensitivities(self, *, owner_id, agent_id):
+            return ["internal"]
+
+    class Repository:
+        async def authorize_agent(self, *, owner_id, agent_id):
+            return True
+
+        async def search_hybrid(self, **kwargs):
+            assert len(kwargs["query"]) == 4000
+            return []
+
+    async def scenario():
+        service = KnowledgeRetrievalService(repository=Repository(), policy=Policy())
+        request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(knowledge_retrieval_service=service)))
+        context, refs, digest, state = await _retrieve_agent_knowledge_context(
+            request, owner_id="owner-a", agent_id="agent-a",
+            query="x" * 9000, trace_id="trace-long-intent",
+        )
+        assert context == [] and refs == []
+        assert state == "empty"
+        assert digest == hashlib.sha256(b"[]").hexdigest()
+
+    asyncio.run(scenario())
