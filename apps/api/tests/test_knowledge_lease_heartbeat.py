@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 from allpha_api.knowledge_worker import SupabaseKnowledgeJobStore
 from allpha_api.lease_heartbeat import run_with_lease_heartbeat
@@ -94,3 +95,18 @@ def test_supabase_knowledge_job_store_uses_lease_fenced_heartbeat_rpc():
             "p_lease_seconds": 90,
         },
     }
+
+
+
+def test_knowledge_heartbeat_migration_is_service_only_and_lease_fenced():
+    migration = (
+        Path(__file__).resolve().parents[1]
+        / "supabase" / "migrations"
+        / "20261124075000_eng_p07_knowledge_job_lease_heartbeat.sql"
+    )
+    sql = " ".join(migration.read_text(encoding="utf-8").lower().split())
+    assert "p_lease_seconds is null" in sql
+    assert "job.lease_expires_at > clock_timestamp()" in sql
+    assert "source.source_version = job.source_version" in sql
+    assert "revoke all on function public.heartbeat_agent_knowledge_job" in sql
+    assert "to service_role" in sql
