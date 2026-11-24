@@ -4,6 +4,13 @@ The endpoint contract is Allpha-owned and versioned. A clean verdict is trusted
 only when the scanner echoes the exact uploaded SHA-256 and immutable scanner
 engine/signature identity. Redirects, ambient proxy configuration and unlisted
 hosts are rejected. Missing configuration always fails closed.
+
+DNS pinning: the allowlisted hostname is resolved exactly once per scan, every
+address must be public, and the TCP connection is then made to one of those
+validated IP literals. The original hostname is kept for TLS SNI and
+certificate verification (httpx/httpcore public ``sni_hostname`` request
+extension) and for the HTTP ``Host`` header, so httpx never performs a second
+DNS lookup and a DNS-rebinding answer cannot change the connect target.
 """
 from __future__ import annotations
 
@@ -14,8 +21,9 @@ import json
 import os
 import re
 import socket
+import ssl
 from dataclasses import dataclass
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
@@ -31,6 +39,7 @@ _BLOCKED_SUFFIXES = (
     ".localhost", ".local", ".internal", ".localdomain", ".lan", ".home",
     ".corp", ".intranet", ".private", ".home.arpa", ".railway.internal",
 )
+_MAX_PINNED_ADDRESSES = 4
 _BLOCKED_HOSTS = {"localhost", "metadata", "metadata.google.internal", "instance-data"}
 
 
@@ -90,8 +99,8 @@ def _hostname_is_publicly_routable_name(host: str) -> bool:
     return not re.fullmatch(r"(0x[0-9a-f]+|\d+)", labels[-1])
 
 
-async def _resolve_public_addresses(host: str) -> None:
-    """Fail closed when an allowlisted name resolves to a non-public address."""
+async def _resolve_public_addresses(host: str) -> list[str]:
+    """Resolve once; return the validated public IPs or fail closed on any non-public one."""
     loop = asyncio.get_running_loop()
     try:
         infos = await asyncio.wait_for(
@@ -99,9 +108,17 @@ async def _resolve_public_addresses(host: str) -> None:
         )
     except (OSError, asyncio.TimeoutError) as exc:
         raise DocumentScannerUnavailable("remote scanner hostname could not be resolved") from exc
-    addresses = {info[4][0] for info in infos}
+    addresses = list(dict.fromkeys(str(info[4][0]).split("%", 1)[0] for info in infos))
     if not addresses or not all(_is_public_address(item) for item in addresses):
         raise DocumentScannerUnavailable("remote scanner hostname resolves to a non-public address")
+    return addresses[:_MAX_PINNED_ADDRESSES]
+
+
+def _pinned_url(endpoint: str, address: str, port: int) -> str:
+    """Endpoint URL with the hostname replaced by a validated IP literal."""
+    parts = urlsplit(endpoint)
+    netloc = f"[{address}]" if ":" in address else address
+    return urlunsplit((parts.scheme, f"{netloc}:{port}", parts.path or "/", "", ""))
 
 
 class RemoteDocumentScanner:
@@ -145,6 +162,9 @@ class RemoteDocumentScanner:
         self._host = host
         self._api_key = api_key.strip()
         self._transport = transport
+        # Test seams only; production always uses 443 and the default trust store.
+        self._connect_port = 443
+        self._ssl_context: ssl.SSLContext | None = None
 
     @classmethod
     def from_environment(
@@ -174,11 +194,10 @@ class RemoteDocumentScanner:
         if len(data) > MAX_REQUEST_BYTES:
             raise DocumentScannerUnavailable("document exceeds the scanner request size limit")
         digest = hashlib.sha256(data).hexdigest()
-        if self._transport is None:
-            await _resolve_public_addresses(self._host)
+        addresses = await _resolve_public_addresses(self._host)
         try:
             status_code, body = await asyncio.wait_for(
-                self._post(data, filename=filename, media_type=media_type, digest=digest),
+                self._post_pinned(addresses, data, filename=filename, media_type=media_type, digest=digest),
                 timeout=OVERALL_TIMEOUT_SECONDS,
             )
         except (httpx.HTTPError, asyncio.TimeoutError) as exc:
@@ -199,20 +218,37 @@ class RemoteDocumentScanner:
             raise DocumentScannerUnavailable("remote scanner did not return a definitive verdict")
         return receipt
 
+    async def _post_pinned(
+        self, addresses: list[str], data: bytes, *, filename: str, media_type: str, digest: str,
+    ) -> tuple[int, bytes]:
+        """Try each pre-validated IP in order; only a failed TCP connect moves to the next one."""
+        last: httpx.HTTPError | None = None
+        for address in addresses:
+            try:
+                return await self._post(
+                    address, data, filename=filename, media_type=media_type, digest=digest,
+                )
+            except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+                last = exc
+        assert last is not None
+        raise last
+
     async def _post(
-        self, data: bytes, *, filename: str, media_type: str, digest: str,
+        self, address: str, data: bytes, *, filename: str, media_type: str, digest: str,
     ) -> tuple[int, bytes]:
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(15.0, connect=3.0, pool=3.0),
             follow_redirects=False,
             trust_env=False,
-            verify=True,
+            verify=self._ssl_context or True,
             transport=self._transport,
         ) as client:
             async with client.stream(
                 "POST",
-                self._endpoint,
+                _pinned_url(self._endpoint, address, self._connect_port),
+                extensions={"sni_hostname": self._host},
                 headers={
+                    "Host": self._host,
                     "Authorization": "Bearer " + self._api_key,
                     "Accept": "application/json",
                     "X-Allpha-Scan-Contract": CONTRACT_VERSION,

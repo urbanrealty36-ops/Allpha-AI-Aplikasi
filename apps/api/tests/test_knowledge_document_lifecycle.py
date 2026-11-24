@@ -5,7 +5,7 @@ import hashlib
 from fastapi import HTTPException
 
 from allpha_api.knowledge_ingestion_worker import KnowledgeDocumentWorker
-from tests.test_knowledge_ingestion_worker import DATA, FakeStorage, FakeStore
+from knowledge_worker_fakes import DATA, FakeStorage, FakeStore
 
 MOD = "allpha_api.knowledge_ingestion_worker"
 RECEIPT = {

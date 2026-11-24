@@ -40,7 +40,7 @@ class FakeAsyncClient:
     async def __aexit__(self, *args):
         return False
 
-    def stream(self, method, endpoint, *, files, headers):
+    def stream(self, method, endpoint, *, files, headers, extensions=None):
         type(self).calls.append((endpoint, files, headers))
         if type(self).error:
             raise type(self).error
@@ -65,7 +65,7 @@ def scanner_client_mock(monkeypatch):
     monkeypatch.setattr(knowledge.httpx, "AsyncClient", FakeAsyncClient)
 
     async def public_resolver(host):
-        return None
+        return ["93.184.216.34"]
 
     monkeypatch.setattr(document_scanner, "_resolve_public_addresses", public_resolver)
     monkeypatch.delenv("ALLPHA_DOCUMENT_SCANNER_URL", raising=False)
@@ -111,7 +111,8 @@ def test_scanner_accepts_only_authenticated_allowlisted_sha_bound_clean_receipt(
     asyncio.run(knowledge._scan(data, "sample.txt", "text/plain"))
     assert len(FakeAsyncClient.calls) == 1
     endpoint, files, headers = FakeAsyncClient.calls[0]
-    assert endpoint == "https://scanner.example.com/v1/scan"
+    assert endpoint == "https://93.184.216.34:443/v1/scan"
+    assert headers["Host"] == "scanner.example.com"
     assert files["file"] == ("sample.txt", data, "text/plain")
     assert headers["Authorization"] == "Bearer test-only-secret"
     assert headers["X-Allpha-Scan-Contract"] == CONTRACT_VERSION

@@ -2,6 +2,9 @@
 import asyncio
 import hashlib
 import json
+import socket
+import ssl
+import datetime
 
 import httpx
 import pytest
@@ -14,6 +17,27 @@ from allpha_api.document_scanner import (
 
 DATA = b"sample document"
 DIGEST = hashlib.sha256(DATA).hexdigest()
+
+
+PUBLIC_IP = "93.184.216.34"
+DNS_CALLS: list = []
+
+
+@pytest.fixture(autouse=True)
+def fake_dns(monkeypatch):
+    """Deterministic DNS; every lookup (ours or any library's) is recorded."""
+    DNS_CALLS.clear()
+    answers = {"scanner.example.com": [PUBLIC_IP]}
+
+    def getaddrinfo(host, port, *args, **kwargs):
+        DNS_CALLS.append(host)
+        if host not in answers:
+            raise socket.gaierror("no such host")
+        return [(socket.AF_INET6 if ":" in a else socket.AF_INET, socket.SOCK_STREAM, 6, "", (a, port))
+                for a in answers[host]]
+
+    monkeypatch.setattr(socket, "getaddrinfo", getaddrinfo)
+    return answers
 
 
 def receipt(**override):
@@ -105,7 +129,7 @@ def test_redirects_are_not_followed(status):
 
     with pytest.raises(DocumentScannerUnavailable):
         scan(scanner(handler))
-    assert calls == ["https://scanner.example.com/v1/scan"]
+    assert calls == [f"https://{PUBLIC_IP}/v1/scan"]  # pinned IP, single request, redirect not followed
 
 
 @pytest.mark.parametrize("status", [400, 401, 403, 404, 408, 429, 500, 503])
@@ -215,3 +239,138 @@ def test_allowlisted_name_resolving_to_non_public_address_is_refused(monkeypatch
 def test_public_address_passes_resolution_guard():
     assert document_scanner._is_public_address("93.184.216.34")
     assert not document_scanner._is_public_address("not-an-ip")
+
+
+def test_connect_target_is_validated_ip_with_original_host_and_sni_and_single_lookup(fake_dns):
+    fake_dns["scanner.example.com"] = [PUBLIC_IP, "2606:2800:220:1:248:1893:25c8:1946"]
+    seen = []
+
+    def handler(request):
+        seen.append((request.url.host, request.url.scheme, request.headers["host"], request.extensions))
+        return httpx.Response(200, json=receipt())
+
+    scan(scanner(handler))
+    host, scheme, host_header, ext = seen[0]
+    assert scheme == "https"
+    assert host in {PUBLIC_IP, "2606:2800:220:1:248:1893:25c8:1946"}
+    assert host_header == "scanner.example.com"
+    assert ext["sni_hostname"] == "scanner.example.com"
+    assert DNS_CALLS == ["scanner.example.com"]  # one lookup, no second resolution by httpx
+
+
+def test_any_non_public_answer_refuses_before_any_request(fake_dns):
+    fake_dns["scanner.example.com"] = [PUBLIC_IP, "10.0.0.8"]
+    called = []
+    with pytest.raises(DocumentScannerUnavailable, match="non-public"):
+        scan(scanner(lambda r: called.append(r) or httpx.Response(200, json=receipt())))
+    assert called == []
+
+
+def test_resolution_failure_is_fail_closed(fake_dns):
+    del fake_dns["scanner.example.com"]
+    with pytest.raises(DocumentScannerUnavailable, match="could not be resolved"):
+        scan(scanner(lambda r: httpx.Response(200, json=receipt())))
+
+
+def test_connect_failure_falls_over_only_to_other_validated_ips(fake_dns):
+    fake_dns["scanner.example.com"] = [PUBLIC_IP, "93.184.216.35"]
+    targets = []
+
+    def handler(request):
+        targets.append(request.url.host)
+        if len(targets) == 1:
+            raise httpx.ConnectError("refused")
+        return httpx.Response(200, json=receipt())
+
+    scan(scanner(handler))
+    assert targets == [PUBLIC_IP, "93.184.216.35"]
+    assert DNS_CALLS == ["scanner.example.com"]
+
+
+def test_all_connects_failing_is_unavailable_never_clean():
+    def handler(request):
+        raise httpx.ConnectError("refused")
+
+    with pytest.raises(DocumentScannerUnavailable):
+        scan(scanner(handler))
+
+
+def test_pinned_url_brackets_ipv6_and_drops_hostname():
+    assert document_scanner._pinned_url("https://scanner.example.com/v1/scan", "2001:db8::1", 443) == "https://[2001:db8::1]:443/v1/scan"
+    assert "scanner.example.com" not in document_scanner._pinned_url("https://scanner.example.com/v1/scan", PUBLIC_IP, 443)
+
+
+def _tls_material(common_name):
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.x509.oid import NameOID
+
+    key = ec.generate_private_key(ec.SECP256R1())
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, common_name)])
+    now = datetime.datetime.now(datetime.timezone.utc)
+    cert = (
+        x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - datetime.timedelta(days=1)).not_valid_after(now + datetime.timedelta(days=1))
+        .add_extension(x509.SubjectAlternativeName([x509.DNSName(common_name)]), critical=False)
+        .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+        .sign(key, hashes.SHA256())
+    )
+    return (
+        cert.public_bytes(serialization.Encoding.PEM),
+        key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()),
+    )
+
+
+def _real_tls_scan(tmp_path, monkeypatch, cert_name):
+    """Real TLS handshake against a loopback server reached only through the pinned IP."""
+    cert_pem, key_pem = _tls_material(cert_name)
+    (tmp_path / "c.pem").write_bytes(cert_pem)
+    (tmp_path / "k.pem").write_bytes(key_pem)
+    server_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    server_ctx.load_cert_chain(tmp_path / "c.pem", tmp_path / "k.pem")
+    client_ctx = ssl.create_default_context(cadata=cert_pem.decode())
+    hosts = []
+
+    async def serve(reader, writer):
+        head = await reader.readuntil(b"\r\n\r\n")
+        hosts.append([l for l in head.split(b"\r\n") if l.lower().startswith(b"host:")][0])
+        # drain body headers' content-length bytes
+        length = int([l.split(b":")[1] for l in head.split(b"\r\n") if l.lower().startswith(b"content-length")][0])
+        await reader.readexactly(length)
+        body = json.dumps(receipt()).encode()
+        writer.write(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: %d\r\nConnection: close\r\n\r\n" % len(body) + body)
+        await writer.drain()
+        writer.close()
+
+    monkeypatch.setattr(document_scanner, "_is_public_address", lambda v: v == "127.0.0.1")
+
+    async def scenario():
+        server = await asyncio.start_server(serve, "127.0.0.1", 0, ssl=server_ctx)
+        port = server.sockets[0].getsockname()[1]
+        s = RemoteDocumentScanner(endpoint="https://scanner.example.com/v1/scan", api_key="k", allowed_hosts={"scanner.example.com"})
+        s._connect_port = port
+        s._ssl_context = client_ctx
+        try:
+            return await s.scan(DATA, filename="a.txt", media_type="text/plain")
+        finally:
+            server.close()
+
+    return scenario, hosts
+
+
+def test_real_tls_connects_to_pinned_ip_and_verifies_certificate_against_hostname(tmp_path, monkeypatch, fake_dns):
+    fake_dns["scanner.example.com"] = ["127.0.0.1"]
+    scenario, hosts = _real_tls_scan(tmp_path, monkeypatch, "scanner.example.com")
+    result = run(scenario())
+    assert result.sha256 == DIGEST
+    assert hosts == [b"Host: scanner.example.com"] or hosts == [b"host: scanner.example.com"]
+    assert DNS_CALLS == ["scanner.example.com"]
+
+
+def test_real_tls_certificate_for_other_name_is_rejected(tmp_path, monkeypatch, fake_dns):
+    fake_dns["scanner.example.com"] = ["127.0.0.1"]
+    scenario, _ = _real_tls_scan(tmp_path, monkeypatch, "evil.example.net")
+    with pytest.raises(DocumentScannerUnavailable):
+        run(scenario())
