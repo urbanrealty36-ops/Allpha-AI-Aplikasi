@@ -33,6 +33,9 @@ class DecisionInput(BaseModel):
 class CorrectionInput(BaseModel):
  model_config=ConfigDict(extra="forbid")
  content:str=Field(min_length=1,max_length=8000)
+class PinInput(BaseModel):
+ model_config=ConfigDict(extra="forbid")
+ pinned:bool
 class ContextInput(BaseModel):
  model_config=ConfigDict(extra="forbid")
  agent_id:uuid.UUID
@@ -119,6 +122,22 @@ async def delete(item_id:uuid.UUID,user:dict[str,Any]=Depends(current_user)):
   row=await _store().delete(str(user["id"]),str(item_id))
   if not row:raise HTTPException(404,detail={"code":"MEMORY_ITEM_NOT_FOUND","message":"Memori tidak ditemukan."})
   return {"item_id":str(item_id),"status":"deleted","retrieval_access":"revoked"}
+ except (MemoryUnavailable,MemoryDenied) as exc:raise _error(exc) from exc
+
+@router.post("/items/{item_id}/pin")
+async def pin(item_id:uuid.UUID,payload:PinInput,user:dict[str,Any]=Depends(current_user)):
+ try:
+  row=await _store().pin(str(user["id"]),str(item_id),payload.pinned)
+  if not row:raise HTTPException(404,detail={"code":"MEMORY_ITEM_NOT_FOUND","message":"Memory aktif tidak ditemukan."})
+  return {"item_id":str(item_id),"status":row.get("status"),"pinned_at":row.get("pinned_at")}
+ except (MemoryUnavailable,MemoryDenied) as exc:raise _error(exc) from exc
+
+@router.post("/items/{item_id}/expire")
+async def expire_item(item_id:uuid.UUID,user:dict[str,Any]=Depends(current_user)):
+ try:
+  row=await _store().expire_item(str(user["id"]),str(item_id))
+  if not row:raise HTTPException(404,detail={"code":"MEMORY_ITEM_NOT_FOUND","message":"Memory tidak ditemukan."})
+  return {"item_id":str(item_id),"status":"expired","content_cleared":True}
  except (MemoryUnavailable,MemoryDenied) as exc:raise _error(exc) from exc
 
 @router.post("/context")
