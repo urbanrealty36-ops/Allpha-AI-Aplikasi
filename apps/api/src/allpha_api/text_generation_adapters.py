@@ -222,7 +222,9 @@ class SupabaseActiveModelCostVerifier:
         self, *, supabase_url: str, service_role_key: str, provider_id: str,
         model_id: str, model_version: str, pricing_version: str, cost_unit: str,
         input_cost_microunits_per_token: int, output_cost_microunits_per_token: int,
-        max_cost_microunits: int, transport: httpx.AsyncBaseTransport | None = None,
+        max_cost_microunits: int, policy_id: str, policy_version: str,
+        max_prompt_bytes: int, max_output_tokens: int, max_latency_ms: int,
+        transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         required = (supabase_url, service_role_key, provider_id, model_id, model_version, pricing_version, cost_unit)
         if not all(value.strip() for value in required):
@@ -230,6 +232,8 @@ class SupabaseActiveModelCostVerifier:
         self._url = supabase_url.rstrip("/") + "/rest/v1/ai_model_cost_configs"
         self._key = service_role_key
         self._expected = {
+            "id": policy_id,
+            "policy_version": policy_version,
             "provider_id": provider_id,
             "model_id": model_id,
             "model_version": model_version,
@@ -238,6 +242,9 @@ class SupabaseActiveModelCostVerifier:
             "input_micro_cost_per_token": input_cost_microunits_per_token,
             "output_micro_cost_per_token": output_cost_microunits_per_token,
             "max_cost_microunits": max_cost_microunits,
+            "max_prompt_bytes": max_prompt_bytes,
+            "max_output_tokens": max_output_tokens,
+            "max_latency_ms": max_latency_ms,
             "policy_approved": True,
         }
         self._transport = transport
@@ -245,7 +252,7 @@ class SupabaseActiveModelCostVerifier:
     async def verify(self) -> None:
         now = datetime.now(timezone.utc).isoformat()
         params = {
-            "select": ",".join((*self._expected.keys(), "status", "effective_at")),
+            "select": ",".join((*self._expected.keys(), "status", "effective_at", "policy_approval_reference", "policy_approved_by", "policy_approved_at")),
             "provider_id": "eq." + str(self._expected["provider_id"]),
             "model_id": "eq." + str(self._expected["model_id"]),
             "model_version": "eq." + str(self._expected["model_version"]),
@@ -274,6 +281,13 @@ class SupabaseActiveModelCostVerifier:
         row = rows[0]
         if not isinstance(row, dict) or row.get("status") != "active":
             raise RuntimeError("active tariff state is invalid")
+        if (not isinstance(row.get("policy_approval_reference"), str)
+                or not row["policy_approval_reference"].strip()
+                or not isinstance(row.get("policy_approved_by"), str)
+                or not row["policy_approved_by"].strip()
+                or not isinstance(row.get("policy_approved_at"), str)
+                or not row["policy_approved_at"].strip()):
+            raise RuntimeError("model execution policy approval evidence is incomplete")
         for field, expected in self._expected.items():
             actual = row.get(field)
             if isinstance(expected, bool):
@@ -286,57 +300,6 @@ class SupabaseActiveModelCostVerifier:
                 raise RuntimeError("active tariff does not match the approved deployment configuration")
 
 
-
-class SupabaseApprovedRuntimePolicyVerifier:
-    """Verify the exact approved runtime-policy version in the canonical registry.
-
-    Deployment environment flags are not sufficient approval evidence. This verifier
-    requires the policy record to remain approved in Supabase immediately before a
-    private generation request is sent.
-    """
-
-    def __init__(self, *, supabase_url: str, service_role_key: str,
-                 policy_id: str, policy_version: str,
-                 transport: httpx.AsyncBaseTransport | None = None) -> None:
-        if not all(value.strip() for value in (supabase_url, service_role_key, policy_id, policy_version)):
-            raise ValueError("approved runtime-policy verifier configuration is incomplete")
-        self._url = supabase_url.rstrip("/") + "/rest/v1/agent_runtime_policies"
-        self._key = service_role_key
-        self._policy_id = policy_id
-        self._policy_version = policy_version
-        self._transport = transport
-
-    async def verify(self) -> None:
-        try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(5.0, connect=2.0), transport=self._transport) as client:
-                response = await client.get(
-                    self._url,
-                    params={
-                        "select": "id,policy_version,status,policy_digest,approved_at",
-                        "id": "eq." + self._policy_id,
-                        "policy_version": "eq." + self._policy_version,
-                        "status": "eq.approved",
-                        "limit": "2",
-                    },
-                    headers={
-                        "apikey": self._key,
-                        "Authorization": "Bearer " + self._key,
-                        "Accept": "application/json",
-                    },
-                )
-                response.raise_for_status()
-                rows = response.json()
-        except (httpx.HTTPError, ValueError) as exc:
-            raise RuntimeError("approved runtime-policy registry is unavailable") from exc
-        if not isinstance(rows, list) or len(rows) != 1:
-            raise RuntimeError("exactly one matching approved runtime policy is required")
-        row = rows[0]
-        digest = row.get("policy_digest") if isinstance(row, dict) else None
-        if (row.get("status") != "approved"
-                or not isinstance(row.get("approved_at"), str) or not row["approved_at"]
-                or not isinstance(digest, str) or len(digest) != 64
-                or any(char not in "0123456789abcdef" for char in digest)):
-            raise RuntimeError("approved runtime-policy record is incomplete or invalid")
 
 def build_text_generation_router_from_environment() -> CanonicalTextGenerationRouter | None:
     """Return a live router only when explicit provider, policy, pricing and DB config exist."""
@@ -353,13 +316,10 @@ def build_text_generation_router_from_environment() -> CanonicalTextGenerationRo
         "ALLPHA_TEXTGEN_INPUT_MICRO_COST_PER_TOKEN",
         "ALLPHA_TEXTGEN_OUTPUT_MICRO_COST_PER_TOKEN",
         "ALLPHA_TEXTGEN_MAX_COST_MICROUNITS",
-        "ALLPHA_TEXTGEN_POLICY_APPROVED",
         "SUPABASE_URL",
         "SUPABASE_SERVICE_ROLE_KEY",
     )
     if any(not os.getenv(name, "").strip() for name in required):
-        return None
-    if os.getenv("ALLPHA_TEXTGEN_POLICY_APPROVED", "").strip().lower() != "true":
         return None
     try:
         provider_id = os.environ["ALLPHA_TEXTGEN_PROVIDER_ID"].strip()
@@ -407,12 +367,11 @@ def build_text_generation_router_from_environment() -> CanonicalTextGenerationRo
             input_cost_microunits_per_token=input_rate,
             output_cost_microunits_per_token=output_rate,
             max_cost_microunits=max_cost,
-        )
-        runtime_policy_verifier = SupabaseApprovedRuntimePolicyVerifier(
-            supabase_url=os.environ["SUPABASE_URL"],
-            service_role_key=os.environ["SUPABASE_SERVICE_ROLE_KEY"],
             policy_id=os.environ["ALLPHA_TEXTGEN_POLICY_ID"].strip(),
             policy_version=os.environ["ALLPHA_TEXTGEN_POLICY_VERSION"].strip(),
+            max_prompt_bytes=max_prompt_bytes,
+            max_output_tokens=max_output_tokens,
+            max_latency_ms=max_latency_ms,
         )
 
         async def verify_active_tariff(sensitivity, selected_route, selected_policy):
@@ -422,13 +381,6 @@ def build_text_generation_router_from_environment() -> CanonicalTextGenerationRo
                 raise RuntimeError("selected model route differs from the verified tariff")
             if (selected_policy.cost_unit, selected_policy.pricing_version, selected_policy.max_cost_microunits) != (cost_unit, pricing_version, max_cost):
                 raise RuntimeError("selected model policy differs from the verified tariff")
-            try:
-                await runtime_policy_verifier.verify()
-            except Exception as exc:
-                raise TextGenerationRouterUnavailable(
-                    "approved runtime policy verification failed",
-                    category="runtime_policy",
-                ) from exc
             try:
                 await tariff_verifier.verify()
             except Exception as exc:
