@@ -652,13 +652,16 @@ async def revoke_operator_grant(
 @router.get("/operator/runtime-policies", name="list_operator_runtime_policies")
 async def list_operator_runtime_policies(
     agent_id: UUID,
+    status: str = "approved",
     operator: dict[str, Any] = Depends(require_operator_scope("platform:capabilities.review")),
 ) -> dict[str, Any]:
+    if status not in {"draft", "approved", "revoked"}:
+        raise HTTPException(status_code=422, detail={"code": "RUNTIME_POLICY_STATUS_INVALID", "message": "Status policy tidak valid."})
     rows = await privileged_rest_request(
         "GET", "agent_runtime_policies",
         params={
-            "select": "id,agent_id,policy_version,policy_digest,approved_tool_keys,required_permission_scopes,status,approved_at",
-            "agent_id": f"eq.{agent_id}", "status": "eq.approved",
+            "select": "id,agent_id,policy_version,policy_digest,approved_tool_keys,required_permission_scopes,risk_constraints,status,created_by,created_at,approved_by,approved_at,revoked_by,revoked_at",
+            "agent_id": f"eq.{agent_id}", "status": f"eq.{status}",
             "order": "policy_version.desc", "limit": "100",
         },
     )
