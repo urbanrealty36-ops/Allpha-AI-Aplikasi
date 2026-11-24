@@ -77,7 +77,7 @@ def test_document_worker_rejects_storage_hash_mismatch_before_parser(monkeypatch
     async def clean_scan(*args):raise AssertionError("malware scan must not run after hash mismatch")
     monkeypatch.setattr("allpha_api.knowledge_ingestion_worker._scan",clean_scan)
     worker=KnowledgeDocumentWorker(store=store,storage=FakeStorage(b"tampered"))
-    assert await worker.process_once() is True
+    assert asyncio.run(worker.process_once()) is True
     assert store.failures==[("KNOWLEDGE_SOURCE_SIZE_MISMATCH","document_parse_failed",False,0)] or store.failures==[("KNOWLEDGE_SOURCE_SHA256_MISMATCH","document_parse_failed",False,0)]
     assert store.batches==[] and store.completed==[]
 
@@ -88,6 +88,6 @@ def test_document_worker_retries_transient_scanner_unavailability(monkeypatch):
         raise HTTPException(status_code=503,detail={"code":"SCANNER_UNAVAILABLE","message":"scanner down"})
     monkeypatch.setattr("allpha_api.knowledge_ingestion_worker._scan",unavailable)
     worker=KnowledgeDocumentWorker(store=store,storage=FakeStorage())
-    assert await worker.process_once() is True
+    assert asyncio.run(worker.process_once()) is True
     assert store.failures==[("SCANNER_UNAVAILABLE","malware_scan_retry",True,60)]
     assert store.batches==[] and store.completed==[]
