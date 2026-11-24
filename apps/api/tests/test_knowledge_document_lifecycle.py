@@ -5,7 +5,7 @@ import hashlib
 from fastapi import HTTPException
 
 from allpha_api.knowledge_ingestion_worker import KnowledgeDocumentWorker
-from knowledge_worker_fakes import DATA, FakeStorage, FakeStore
+from knowledge_worker_fakes import DATA, FakePolicyResolver, FakeStorage, FakeStore
 
 MOD = "allpha_api.knowledge_ingestion_worker"
 RECEIPT = {
@@ -46,7 +46,7 @@ class SingleClaimStore(FakeStore):
 def test_concurrent_workers_process_a_claimed_job_exactly_once(monkeypatch):
     patch_clean(monkeypatch)
     store = SingleClaimStore()
-    workers = [KnowledgeDocumentWorker(store=store, storage=FakeStorage()) for _ in range(5)]
+    workers = [KnowledgeDocumentWorker(store=store, storage=FakeStorage(), policy_resolver=FakePolicyResolver()) for _ in range(5)]
 
     async def scenario():
         return await asyncio.gather(*(w.process_once() for w in workers))
@@ -60,7 +60,7 @@ def test_concurrent_workers_process_a_claimed_job_exactly_once(monkeypatch):
 def test_redelivery_after_completion_finds_nothing_to_do(monkeypatch):
     patch_clean(monkeypatch)
     store = SingleClaimStore()
-    worker = KnowledgeDocumentWorker(store=store, storage=FakeStorage())
+    worker = KnowledgeDocumentWorker(store=store, storage=FakeStorage(), policy_resolver=FakePolicyResolver())
     assert asyncio.run(worker.process_once()) is True
     assert asyncio.run(worker.process_once()) is False
     assert store.completed == [1]
@@ -79,7 +79,7 @@ def test_stale_source_version_is_terminal_and_never_scanned(monkeypatch):
         raise AssertionError("stale version must not be scanned")
 
     monkeypatch.setattr(f"{MOD}._scan", never)
-    worker = KnowledgeDocumentWorker(store=store, storage=FakeStorage())
+    worker = KnowledgeDocumentWorker(store=store, storage=FakeStorage(), policy_resolver=FakePolicyResolver())
     asyncio.run(worker.process_once())
     assert store.failures == [("STALE_SOURCE_VERSION", "document_parse_failed", False, 0)]
     assert store.states == [] and store.batches == []
@@ -92,7 +92,7 @@ def test_missing_source_is_terminal(monkeypatch):
         return None
 
     store.load_source = gone
-    asyncio.run(KnowledgeDocumentWorker(store=store, storage=FakeStorage()).process_once())
+    asyncio.run(KnowledgeDocumentWorker(store=store, storage=FakeStorage(), policy_resolver=FakePolicyResolver()).process_once())
     assert store.failures == [("KNOWLEDGE_SOURCE_NOT_FOUND", "document_parse_failed", False, 0)]
 
 
@@ -104,7 +104,7 @@ def test_missing_sensitivity_blocks_processing_before_any_scan(monkeypatch):
         return {**await original(job), "sensitivity": None, "provenance": {}}
 
     store.load_source = unclassified
-    asyncio.run(KnowledgeDocumentWorker(store=store, storage=FakeStorage()).process_once())
+    asyncio.run(KnowledgeDocumentWorker(store=store, storage=FakeStorage(), policy_resolver=FakePolicyResolver()).process_once())
     assert store.failures == [("SENSITIVITY_CLASSIFICATION_REQUIRED", "document_parse_failed", False, 0)]
     assert store.states == []
 
@@ -115,7 +115,7 @@ def test_malware_verdict_is_terminal_and_not_retried(monkeypatch):
 
     monkeypatch.setattr(f"{MOD}._scan", malicious)
     store = FakeStore()
-    asyncio.run(KnowledgeDocumentWorker(store=store, storage=FakeStorage()).process_once())
+    asyncio.run(KnowledgeDocumentWorker(store=store, storage=FakeStorage(), policy_resolver=FakePolicyResolver()).process_once())
     assert store.failures == [("MALWARE_SCAN_REJECTED", "malware_scan_failed", False, 0)]
     assert store.batches == [] and store.completed == []
 
@@ -127,7 +127,7 @@ def test_unconfigured_scanner_never_reaches_parser_or_chunks(monkeypatch):
     monkeypatch.setattr(f"{MOD}._scan", missing)
     monkeypatch.setattr(f"{MOD}._extract", lambda *a: (_ for _ in ()).throw(AssertionError("parsed")))
     store = FakeStore()
-    asyncio.run(KnowledgeDocumentWorker(store=store, storage=FakeStorage()).process_once())
+    asyncio.run(KnowledgeDocumentWorker(store=store, storage=FakeStorage(), policy_resolver=FakePolicyResolver()).process_once())
     assert len(store.failures) == 1 and store.failures[0][0] == "SCANNER_NOT_CONFIGURED"
     assert all(state[1] != "document_parsing" for state in store.states)
     assert store.batches == [] and store.completed == []
@@ -141,12 +141,12 @@ def test_parse_error_and_empty_text_are_terminal_parse_failures(monkeypatch):
 
     monkeypatch.setattr(f"{MOD}._extract", bad)
     store = FakeStore()
-    asyncio.run(KnowledgeDocumentWorker(store=store, storage=FakeStorage()).process_once())
+    asyncio.run(KnowledgeDocumentWorker(store=store, storage=FakeStorage(), policy_resolver=FakePolicyResolver()).process_once())
     assert store.failures == [("DOCUMENT_PARSER_TIMEOUT", "document_parse_failed", False, 0)]
 
     patch_clean(monkeypatch, pages=[])
     store = FakeStore()
-    asyncio.run(KnowledgeDocumentWorker(store=store, storage=FakeStorage()).process_once())
+    asyncio.run(KnowledgeDocumentWorker(store=store, storage=FakeStorage(), policy_resolver=FakePolicyResolver()).process_once())
     assert store.failures == [("NO_TEXT_EXTRACTED", "document_parse_failed", False, 0)]
     assert store.completed == []
 
@@ -161,7 +161,7 @@ def test_lease_lost_between_stages_stops_before_chunk_persistence(monkeypatch):
         return stage != "chunk_persistence"  # lease expires right before chunk write
 
     store.update_source_state = fenced
-    asyncio.run(KnowledgeDocumentWorker(store=store, storage=FakeStorage()).process_once())
+    asyncio.run(KnowledgeDocumentWorker(store=store, storage=FakeStorage(), policy_resolver=FakePolicyResolver()).process_once())
     assert seen == ["malware_scan", "document_parsing", "chunk_persistence"]
     assert store.batches == [] and store.completed == [] and store.failures == []
 
@@ -174,7 +174,7 @@ def test_handoff_count_mismatch_is_not_reported_as_success(monkeypatch):
         return {"chunks_created": expected_chunk_count - 1}
 
     store.complete_document_parse = short
-    asyncio.run(KnowledgeDocumentWorker(store=store, storage=FakeStorage()).process_once())
+    asyncio.run(KnowledgeDocumentWorker(store=store, storage=FakeStorage(), policy_resolver=FakePolicyResolver()).process_once())
     assert store.failures and store.failures[0][0] == "KNOWLEDGE_WORKER_CONFIGURATION_INVALID"
 
 
@@ -190,7 +190,7 @@ def test_storage_object_missing_and_unavailable_map_to_terminal_and_retry(monkey
                 raise exc
 
         store = FakeStore()
-        asyncio.run(KnowledgeDocumentWorker(store=store, storage=Storage()).process_once())
+        asyncio.run(KnowledgeDocumentWorker(store=store, storage=Storage(), policy_resolver=FakePolicyResolver()).process_once())
         assert store.failures == [expected]
 
 
@@ -206,4 +206,4 @@ def test_failure_finalization_lease_loss_is_logged_not_raised():
         return None
 
     store.load_source = missing
-    assert asyncio.run(KnowledgeDocumentWorker(store=store, storage=FakeStorage()).process_once()) is True
+    assert asyncio.run(KnowledgeDocumentWorker(store=store, storage=FakeStorage(), policy_resolver=FakePolicyResolver()).process_once()) is True

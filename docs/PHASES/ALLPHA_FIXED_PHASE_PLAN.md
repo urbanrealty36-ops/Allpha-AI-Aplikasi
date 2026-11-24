@@ -1261,3 +1261,9 @@ This is an evidence refresh inside the existing fixed plan. It does not create a
 - **Tests:** source/sensitivity/purpose authorization and API no-provider/no-enqueue regression added. CI evidence will be recorded against this commit.
 - **Database/Railway:** no production DDL, ledger change, data write, provider credential or worker activation.
 - **Status:** ENG-P07 remains `in_progress`; no production provider, vector retrieval or end-to-end readiness is claimed.
+
+## 40.40 — ENG-P07 consent-gate regression repairs (2026-11-24)
+
+- **Correction:** first CI run exposed that the policy fixture did not explicitly permit the new ingestion purpose and legacy document-worker tests lacked the new injected policy resolver. Test fixtures now provide explicit, test-only policy decisions; production code remains fail-closed. Dedicated worker startup tests explicitly verify that a missing provider prevents activation.
+- **Coverage:** API policy and ingestion lifecycle tests; dedicated worker composition/startup tests. No production schema or secrets changed.
+- **Status:** source committed; rerun CI on this commit before claiming the regressions fixed.

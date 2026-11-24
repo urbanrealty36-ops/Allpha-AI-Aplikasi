@@ -45,6 +45,11 @@ class FakeStore:
         return "queued" if retryable else "failed"
 
 
+class FakePolicyResolver:
+    async def authorize_source(self, **kwargs):
+        return None
+
+
 class FakeStorage:
     def __init__(self,data=DATA):self.data=data
     async def download(self,path):

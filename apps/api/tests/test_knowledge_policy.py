@@ -330,7 +330,7 @@ def test_policy_rejects_invalid_purpose_before_provider_lookup(purpose):
 
 def test_source_authorization_requires_exact_source_sensitivity_and_purpose():
     async def scenario():
-        resolver = VersionedKnowledgePolicyResolver(Provider(snapshot()))
+        resolver = VersionedKnowledgePolicyResolver(Provider(snapshot(allowed_purposes=("agent_context_retrieval", "knowledge_ingestion"))))
         allowed = await resolver.authorize_source(owner_id="owner-a", agent_id="agent-a", source_id="00000000-0000-0000-0000-0000000000c9", sensitivity="internal", purpose="knowledge_ingestion")
         assert allowed.purpose == "knowledge_ingestion"
         with pytest.raises(KnowledgePolicyDenied):

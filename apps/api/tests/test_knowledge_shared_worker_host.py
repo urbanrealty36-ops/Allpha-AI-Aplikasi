@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from allpha_api import agent_runtime_worker, knowledge_ingestion_worker, knowledge_worker
+from knowledge_worker_fakes import FakePolicyResolver
 
 
 def test_knowledge_document_consumer_is_disabled_by_default(monkeypatch):
@@ -129,6 +130,7 @@ def test_shared_worker_keeps_other_consumers_alive_when_remote_scanner_is_missin
 
 
 def _base_env(monkeypatch):
+    monkeypatch.setattr("allpha_api.knowledge_ingestion_worker.load_policy_resolver_from_environment", lambda: FakePolicyResolver())
     monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
     monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "service")
     for name in ("URL", "API_KEY", "ALLOWED_HOSTS", "ID", "ENGINE_VERSION", "SIGNATURE_VERSION", "MODE"):
@@ -166,6 +168,20 @@ def test_document_consumer_starts_with_valid_remote_scanner_config(monkeypatch):
     monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_ENGINE_VERSION", "engine-1.4.6")
     monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_SIGNATURE_VERSION", "2026-11-24T00:00:00Z")
     assert knowledge_ingestion_worker.build_worker_from_environment().batch_size == 50
+
+
+
+def test_document_consumer_refuses_to_start_without_canonical_policy_provider(monkeypatch):
+    _base_env(monkeypatch)
+    monkeypatch.setattr("allpha_api.knowledge_ingestion_worker.load_policy_resolver_from_environment", lambda: None)
+    monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_URL", "https://scanner.example.com/scan")
+    monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_API_KEY", "k")
+    monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_ALLOWED_HOSTS", "scanner.example.com")
+    monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_ID", "scanner-prod-1")
+    monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_ENGINE_VERSION", "engine-1.4.6")
+    monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_SIGNATURE_VERSION", "2026-11-24T00:00:00Z")
+    with pytest.raises(SystemExit, match="canonical Knowledge consent/source-grant provider"):
+        knowledge_ingestion_worker.build_worker_from_environment()
 
 
 def test_invalid_scanner_config_failure_does_not_starve_runtime_consumers(monkeypatch):
