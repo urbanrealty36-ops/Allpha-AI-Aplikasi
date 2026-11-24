@@ -111,3 +111,16 @@ def test_clamav_worker_limits_concurrency_without_disabling_signature_scanning()
         assert setting in script
     assert "Bytecode no" not in script
     assert "ScanArchive no" not in script
+
+
+
+def test_clamav_scanner_uses_permissioned_unix_socket_for_readiness():
+    script = (
+        Path(__file__).resolve().parents[1]
+        / "docker" / "shared-worker-entrypoint.sh"
+    ).read_text(encoding="utf-8")
+    assert "LocalSocket /run/clamav/clamd.ctl" in script
+    assert "LocalSocketGroup clamav" in script
+    assert "LocalSocketMode 660" in script
+    assert "--config-file=/run/clamav/clamdscan.conf --ping=1" in script
+    assert "TCPSocket 3310" not in script
