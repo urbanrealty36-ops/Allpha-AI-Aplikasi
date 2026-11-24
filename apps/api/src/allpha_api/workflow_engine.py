@@ -22,7 +22,7 @@ class WorkflowValidationError(ValueError):
 class WorkflowNode(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     key: str = Field(min_length=1, max_length=80, pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_.:-]*$")
-    kind: Literal["input", "constant", "pass_through", "concat", "merge", "agent_task"]
+    kind: Literal["input", "constant", "pass_through", "concat", "merge", "agent_task", "approval"]
     config: dict[str, Any] = Field(default_factory=dict)
     timeout_seconds: int = Field(default=5, ge=1, le=30)
 
