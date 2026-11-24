@@ -21,6 +21,7 @@ SOURCE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123153243_eng_p03_accou
 OWNER_SCOPE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123153456_eng_p03_agent_skill_deletion_owner_scope.sql"
 CANONICAL_REGISTRY_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123154208_eng_p03_canonical_source_handler_registry.sql"
 FK_GUARD_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123154656_eng_p03_dependency_fk_parent_guard.sql"
+USER_SCOPED_DEPENDENCY_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123165628_eng_p03_user_scoped_deletion_dependencies.sql"
 CONTAINER="allpha-p03-deletion-"+uuid.uuid4().hex[:8]
 A="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 B="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
@@ -261,6 +262,7 @@ create table public.workspace_annotations(id uuid primary key,author_id uuid,wor
         psql(OWNER_SCOPE_MIGRATION.read_text(encoding="utf-8"))
         psql(CANONICAL_REGISTRY_MIGRATION.read_text(encoding="utf-8"))
         psql(FK_GUARD_MIGRATION.read_text(encoding="utf-8"))
+        psql(USER_SCOPED_DEPENDENCY_MIGRATION.read_text(encoding="utf-8"))
         psql(f"""
 do {dollar_quote}
 begin
