@@ -668,6 +668,7 @@ export default function OperationsPage() {
       <Link className="brand" href="/"><span className="mark">A</span><span><b>ALLPHA</b><small>CONTROL PLANE</small></span></Link>
       <p className="navLabel">OPERATIONS</p>
       <a className="nav active" href="#overview">◈ &nbsp; Overview</a>
+      <Link className="nav" href="/runtime-policies">◇ &nbsp; Agent Runtime Policy Governance</Link>
       <Link className="nav" href="/costs">▤ &nbsp; Model cost CRUD</Link>
       <Link className="nav" href="/content-moderation">◈ &nbsp; Moderasi konten</Link>
       <Link className="nav" href="/cinema-governance">◈ &nbsp; AI Cinema · Rights & Lifecycle</Link>
