@@ -16,6 +16,7 @@ FILES=[
  MIGRATIONS/"20261124120000_eng_p07_knowledge_api_only_writes.sql",
  MIGRATIONS/"20261124130000_eng_p07_knowledge_document_enqueue.sql",
  MIGRATIONS/"20261124140000_eng_p07_knowledge_document_failure_atomic.sql",
+ MIGRATIONS/"20261124150000_eng_p07_knowledge_source_delete_fence.sql",
 ]
 NAME="allpha-p07-knowledge-"+uuid.uuid4().hex[:8]
 OWNER="11111111-1111-4111-8111-111111111111"
@@ -197,7 +198,31 @@ begin
  end if;
 end $do$;
 """)
-  print("PASS: ENG-P07 PostgreSQL 17 private quarantine enqueue, idempotency, lease-fenced chunk persistence, atomic embedding handoff, retry recovery and client DML lockdown.")
+  psql(f"""
+set role service_role;
+select public.begin_agent_knowledge_source_delete('{SOURCE}','{AGENT}','{OWNER}');
+reset role;
+do $do$
+declare v_source public.agent_knowledge_sources%rowtype; v_job public.agent_knowledge_jobs%rowtype;
+begin
+ select * into v_source from public.agent_knowledge_sources where id='{SOURCE}';
+ if v_source.status<>'deleting' or v_source.processing_stage<>'source_deleting' then
+  raise exception 'source delete fence did not persist deleting state';
+ end if;
+ select * into v_job from public.agent_knowledge_jobs where source_id='{SOURCE}' and stage='source_deleted';
+ if not found or v_job.status<>'cancelled' or v_job.lease_token is not null or v_job.lease_expires_at is not null then
+  raise exception 'in-flight knowledge job was not cancelled and lease-fenced';
+ end if;
+end $do$;
+select public.begin_agent_knowledge_source_delete('{SOURCE}','{AGENT}','{OWNER}');
+do $do$
+begin
+ if not has_function_privilege('authenticated','public.begin_agent_knowledge_source_delete(uuid,uuid,uuid)','EXECUTE') then
+  raise exception 'authenticated must not execute privileged source deletion fence';
+ end if;
+end $do$;
+""")
+  print("PASS: ENG-P07 PostgreSQL 17 private quarantine enqueue, idempotency, lease-fenced chunk persistence, atomic embedding handoff, retry recovery, deletion fencing and client DML lockdown.")
  finally:
   run(["docker","rm","--force",NAME],check=False)
 
