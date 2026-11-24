@@ -8,7 +8,8 @@ import time
 import uuid
 
 ROOT=Path(__file__).resolve().parents[3]
-MIGRATION=ROOT/"apps/api/supabase/migrations/20261124060000_eng_p08_memory_coordinator_lifecycle.sql"
+MIGRATION=ROOT/"apps/api/supabase/migrations/20261124055512_eng_p08_memory_coordinator_lifecycle.sql"
+PIN_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124055900_eng_p08_memory_owner_pin_expire.sql"
 NAME="allpha-p08-memory-"+uuid.uuid4().hex[:8]
 OWNER="11111111-1111-4111-8111-111111111111"
 OTHER="99999999-9999-4999-8999-999999999999"
@@ -73,6 +74,7 @@ create table public.account_deletion_source_policies(
 grant usage on schema public,private,extensions to anon,authenticated,service_role;
 """)
   psql(MIGRATION.read_text(encoding="utf-8"))
+  psql(PIN_MIGRATION.read_text(encoding="utf-8"))
   psql(f"""
 insert into auth.users(id) values('{OWNER}'),('{OTHER}');
 insert into public.ai_agents(id) values('{AGENT}');
@@ -140,6 +142,36 @@ begin
  end if;
 end $do$;
 """)
+  psql(f"""
+set role service_role;
+select public.agent_memory_transition('pin','{OWNER}','{AGENT}',
+ (select id from public.agent_memory_items where owner_user_id='{OWNER}' and agent_id='{AGENT}' limit 1),
+ jsonb_build_object('pinned',true));
+reset role;
+do $do$
+begin
+ if not exists(select 1 from public.agent_memory_items where owner_user_id='{OWNER}' and pinned_at is not null) then
+  raise exception 'owner pin state was not persisted';
+ end if;
+ if not exists(select 1 from public.agent_memory_events where owner_user_id='{OWNER}' and event_type='item_pinned') then
+  raise exception 'owner pin audit event missing';
+ end if;
+end $do$;
+set role service_role;
+select public.agent_memory_transition('pin','{OWNER}','{AGENT}',
+ (select id from public.agent_memory_items where owner_user_id='{OWNER}' and agent_id='{AGENT}' limit 1),
+ jsonb_build_object('pinned',false));
+reset role;
+do $do$
+begin
+ if exists(select 1 from public.agent_memory_items where owner_user_id='{OWNER}' and pinned_at is not null) then
+  raise exception 'owner unpin did not clear pinned_at';
+ end if;
+ if not exists(select 1 from public.agent_memory_events where owner_user_id='{OWNER}' and event_type='item_unpinned') then
+  raise exception 'owner unpin audit event missing';
+ end if;
+end $do$;
+""")
   denied=psql(f"""
 set role service_role;
 select public.agent_memory_search(
@@ -176,8 +208,25 @@ reset role;
 """)
   psql(f"""
 set role service_role;
+select public.agent_memory_transition('create_proposal','{OWNER}','{AGENT}',null,
+ jsonb_build_object('memory_type','long_term','purpose','agent_generation_context','classification','internal',
+  'content','Owner requested immediate expiry','content_sha256',encode(extensions.digest('Owner requested immediate expiry','sha256'),'hex'),
+  'source_ref',jsonb_build_object('kind','manual-expiry-test'),'provenance',jsonb_build_object('capture_mode','test'),
+  'confidence',0.8,'retention_expires_at',(clock_timestamp()+interval '30 days')::text));
+select public.agent_memory_transition('expire_item','{OWNER}','{AGENT}',
+ (select id from public.agent_memory_items where owner_user_id='{OWNER}' and source_ref->>'kind'='manual-expiry-test'),
+ '{{}}'::jsonb);
+do $do$
+begin
+ if not exists(select 1 from public.agent_memory_items where owner_user_id='{OWNER}' and source_ref='{{}}'::jsonb and status='expired' and content='') then
+  raise exception 'owner immediate expiry did not clear private Memory content';
+ end if;
+ if not exists(select 1 from public.agent_memory_events where owner_user_id='{OWNER}' and event_type='item_expired' and details->>'owner_requested'='true') then
+  raise exception 'owner immediate expiry audit event missing';
+ end if;
+end $do$;
 select public.agent_memory_transition('delete','{OWNER}','{AGENT}',
- (select id from public.agent_memory_items where owner_user_id='{OWNER}' and agent_id='{AGENT}' limit 1),'{{}}'::jsonb);
+ (select id from public.agent_memory_items where owner_user_id='{OWNER}' and agent_id='{AGENT}' and status='active' limit 1),'{{}}'::jsonb);
 select public.agent_memory_transition('create_proposal','{OWNER}','{AGENT}',null,
  jsonb_build_object('memory_type','long_term','purpose','agent_generation_context','classification','internal',
   'content','Temporary retained context','content_sha256',encode(extensions.digest('Temporary retained context','sha256'),'hex'),
@@ -245,7 +294,7 @@ begin
  end if;
 end $do$;
 """)
-  print("PASS: ENG-P08 PostgreSQL 17 Memory consent, proposal approval, owner-scoped retrieval, correction, deletion, retention expiry, least-privilege RPCs and P03 pseudonymous audit integration.")
+  print("PASS: ENG-P08 PostgreSQL 17 Memory consent, proposal approval, owner-scoped retrieval, correction, pin/unpin, immediate owner expiry, deletion, retention expiry, least-privilege RPCs and P03 pseudonymous audit integration.")
  finally:
   run(["docker","rm","--force",NAME],check=False)
 
