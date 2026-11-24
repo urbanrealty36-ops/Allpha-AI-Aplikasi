@@ -561,3 +561,49 @@ def test_agent_social_governance_snapshot_is_read_only_and_schema_aware(monkeypa
         assert all("body" not in call[2] for call in calls)
     finally:
         app.dependency_overrides.clear()
+
+
+def test_agent_ownership_audit_requires_operator_scope(monkeypatch):
+    calls=[]
+    async def fake_db(method,path,token,**kwargs):
+        calls.append((method,path,token,kwargs))
+        return [{"id":"grant-1","user_id":"operator","scopes":["platform:security.audit.read"],"status":"active","expires_at":None}]
+    async def fake_audit(request,**kwargs):
+        calls.append(("AUDIT",kwargs["outcome"]))
+    async def fake_privileged(method,table,**kwargs):
+        calls.append((method,table,kwargs))
+        if table=="agent_ownership_transfer_events":
+            return [{"id":"event-1","event_type":"accepted","from_owner_subject_ref":"a"*64,"to_owner_subject_ref":"b"*64}]
+        return [{"id":"consent-1","event_type":"granted","owner_subject_ref":"a"*64}]
+    monkeypatch.setattr(security,"user_db_request",fake_db)
+    monkeypatch.setattr(security,"write_operator_audit",fake_audit)
+    monkeypatch.setattr(security,"privileged_rest_request",fake_privileged)
+    install_auth("operator")
+    try:
+        response=client.get("/v1/admin/operator/agent-ownership/audit?limit=200")
+        assert response.status_code==200
+        assert len(response.json()["ownership_transfers"])==1
+        assert len(response.json()["passport_consents"])==1
+        queries=[call for call in calls if len(call)>1 and call[1] in {"agent_ownership_transfer_events","agent_owner_attribution_consent_events"}]
+        assert len(queries)==2
+        assert all(call[2]["params"]["limit"]=="100" for call in queries)
+        assert "from_owner_user_id" not in queries[0][2]["params"]["select"]
+        assert "owner_user_id" not in queries[1][2]["params"]["select"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_agent_ownership_audit_denies_operator_without_security_audit_scope(monkeypatch):
+    async def fake_db(method,path,token,**kwargs):
+        return [{"id":"grant-1","user_id":"operator","scopes":["platform:operations.read"],"status":"active","expires_at":None}]
+    async def fake_audit(request,**kwargs):
+        return None
+    monkeypatch.setattr(security,"user_db_request",fake_db)
+    monkeypatch.setattr(security,"write_operator_audit",fake_audit)
+    install_auth("operator")
+    try:
+        response=client.get("/v1/admin/operator/agent-ownership/audit")
+        assert response.status_code==403
+        assert response.json()["error"]["code"]=="OPERATOR_SCOPE_REQUIRED"
+    finally:
+        app.dependency_overrides.clear()
