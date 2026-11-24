@@ -12,11 +12,11 @@ MIGRATIONS=ROOT/"apps/api/supabase/migrations"
 FILES=[
  MIGRATIONS/"20261014173000_eng_p07_knowledge_fulltext_index.sql",
  MIGRATIONS/"20261014180000_eng_p09_knowledge_job_leases.sql",
- MIGRATIONS/"20261124110000_eng_p07_knowledge_document_worker_pipeline.sql",
- MIGRATIONS/"20261124120000_eng_p07_knowledge_api_only_writes.sql",
- MIGRATIONS/"20261124130000_eng_p07_knowledge_document_enqueue.sql",
- MIGRATIONS/"20261124140000_eng_p07_knowledge_document_failure_atomic.sql",
- MIGRATIONS/"20261124150000_eng_p07_knowledge_source_delete_fence.sql",
+ MIGRATIONS/"20261124044949_eng_p07_knowledge_document_worker_pipeline.sql",
+ MIGRATIONS/"20261124045041_eng_p07_knowledge_api_only_writes.sql",
+ MIGRATIONS/"20261124045115_eng_p07_knowledge_document_enqueue.sql",
+ MIGRATIONS/"20261124045158_eng_p07_knowledge_document_failure_atomic.sql",
+ MIGRATIONS/"20261124050240_eng_p07_knowledge_source_delete_fence.sql",
 ]
 NAME="allpha-p07-knowledge-"+uuid.uuid4().hex[:8]
 OWNER="11111111-1111-4111-8111-111111111111"
