@@ -41,6 +41,7 @@ export default function AgentRuntimeTracePage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [selectedTask, setSelectedTask] = useState("");
   const [events, setEvents] = useState<TraceEvent[]>([]);
+  const [traceAvailable, setTraceAvailable] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [traceLoading, setTraceLoading] = useState(false);
   const [error, setError] = useState("");
@@ -131,15 +132,18 @@ export default function AgentRuntimeTracePage() {
   }, [supabase, loadTasks, loadCatalog, loadPlannerStatus]);
 
   useEffect(() => {
-    if (!session || !selectedTask) { setEvents([]); return; }
+    if (!session || !selectedTask) { setEvents([]); setTraceAvailable(null); return; }
     let active = true;
-    setTraceLoading(true); setTraceError("");
+    setTraceLoading(true); setTraceError(""); setTraceAvailable(null);
     void fetch(`${apiBase}/v1/agent-runtime/tasks/${encodeURIComponent(selectedTask)}/events`, {
       headers: { Authorization: "Bearer " + session.access_token }, cache: "no-store",
     }).then(async response => {
       if (!response.ok) throw new Error(await responseError(response));
       const body = await response.json();
-      if (active) setEvents(Array.isArray(body.items) ? body.items : []);
+      if (active) {
+        setEvents(Array.isArray(body.items) ? body.items : []);
+        setTraceAvailable(body.trace_available === true);
+      }
     }).catch(cause => { if (active) setTraceError(cause instanceof Error ? cause.message : "Trace tidak dapat dimuat."); })
       .finally(() => { if (active) setTraceLoading(false); });
     return () => { active = false; };
@@ -310,7 +314,7 @@ export default function AgentRuntimeTracePage() {
       <section className="space-y-4 rounded-2xl border p-4 sm:p-5">
         <div><h2 className="text-lg font-semibold">Trace timeline</h2><p className="mt-1 text-xs text-neutral-500">{selected ? `Trace ID: ${selected.trace_id}` : "Pilih task untuk melihat timeline."}</p></div>
         {traceError && <p role="alert" className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-900">{traceError}</p>}
-        {traceLoading ? <p className="text-sm text-neutral-500">Memuat execution events…</p> : !selected ? <p className="text-sm text-neutral-500">Belum ada task yang dipilih.</p> : events.length === 0 ? <p className="rounded-xl border border-dashed p-4 text-sm text-neutral-500">Belum ada event trace durable untuk task ini. Task lama mungkin hanya memiliki event_log legacy.</p> : <ol className="space-y-3">{events.map(event => <li key={event.id} className="relative flex gap-3">
+        {traceLoading ? <p className="text-sm text-neutral-500">Memuat execution events…</p> : !selected ? <p className="text-sm text-neutral-500">Belum ada task yang dipilih.</p> : traceAvailable === false ? <p className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">Durable execution trace belum diaktifkan pada deployment ini. Riwayat task tetap tersedia; event timeline akan muncul setelah schema dan trace runtime diaktifkan secara kanonis.</p> : traceAvailable === null ? <p className="text-sm text-neutral-500">Status trace belum dapat dipastikan.</p> : events.length === 0 ? <p className="rounded-xl border border-dashed p-4 text-sm text-neutral-500">Belum ada event trace durable untuk task ini. Task lama mungkin hanya memiliki event_log legacy.</p> : <ol className="space-y-3">{events.map(event => <li key={event.id} className="relative flex gap-3">
           <div className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs font-semibold">{event.sequence}</div>
           <div className="min-w-0 flex-1 rounded-xl border p-3"><div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-sm">{event.state}</strong><span className="text-[11px] text-neutral-500">{new Date(event.created_at).toLocaleString("id-ID")}</span></div><p className="mt-1 break-all font-mono text-xs text-neutral-600">{event.step_key}</p>{typeof event.details?.reason_code === "string" && <p className="mt-1 text-xs text-neutral-500">Reason: {event.details.reason_code}</p>}</div>
         </li>)}</ol>}
