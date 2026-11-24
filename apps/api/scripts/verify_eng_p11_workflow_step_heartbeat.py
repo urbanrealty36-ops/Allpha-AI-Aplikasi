@@ -35,7 +35,7 @@ def psql(sql: str, check: bool = True) -> subprocess.CompletedProcess[str]:
         logs = run(["docker", "logs", CONTAINER], check=False)
         raise RuntimeError(
             result.stdout + "\n" + result.stderr
-            + "\\nPostgreSQL container logs:\\n" + logs.stdout + logs.stderr
+            + "\nPostgreSQL container logs:\n" + logs.stdout + logs.stderr
         )
     return result
 
@@ -71,7 +71,7 @@ def wait_for_postgres() -> None:
         time.sleep(1)
     logs = run(["docker", "logs", CONTAINER], check=False)
     raise RuntimeError(
-        "PostgreSQL 17 final post-init server did not remain ready.\\n"
+        "PostgreSQL 17 final post-init server did not remain ready.\n"
         + logs.stdout + logs.stderr
     )
 
