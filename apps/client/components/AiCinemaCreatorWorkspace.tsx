@@ -363,7 +363,7 @@ export function AiCinemaCreatorWorkspace({ getAccessToken }: Props) {
       }
       if (!mediaType.startsWith("video/")) throw new Error("Pilih file video MP4 atau WebM.");
       const digest = await file.digest("SHA-256");
-      const sessionKey = "allpha:cinema:upload:" + (selectedTitleId || "unassigned");
+      const sessionKey = "allpha:cinema:upload:current";
       const raw = await SecureStore.getItemAsync(sessionKey);
       let saved: PersistedNativeCinemaUpload | null = null;
       try { saved = raw ? JSON.parse(raw) as PersistedNativeCinemaUpload : null; } catch { saved = null; }
@@ -594,6 +594,7 @@ export function AiCinemaCreatorWorkspace({ getAccessToken }: Props) {
         <Text style={{ color: "#94A3B8", fontSize: 11 }}>MP4/WebM maksimal 50 MiB. File dikirim ke FastAPI dan Supabase Storage; worker dan scan menentukan kapan media siap.</Text>
         <Action title={uploadAsset ? "Ganti video" : "Pilih video MP4/WebM"} secondary onPress={() => void pickCinemaVideo()} disabled={saving}/>
         {uploadAsset && <Text style={{ color: "#CBD5E1", fontSize: 11 }}>{uploadAsset.name}{uploadAsset.size ? " · " + (uploadAsset.size / 1024 / 1024).toFixed(1) + " MiB" : ""}</Text>}
+        {saving && <Text style={{ color: "#CBD5E1", fontSize: 11 }}>Upload resumable {uploadProgress}% · sesi tersimpan untuk dilanjutkan</Text>}
         <Action title={saving ? "Mengunggah…" : "Unggah video ke Media Pipeline"} disabled={saving || !uploadAsset} onPress={() => void uploadCinemaMedia()}/>
         <Text style={{ color: "#CBD5E1", fontSize: 12, fontWeight: "700" }}>Status media saya</Text>
         {creatorMedia.length ? creatorMedia.map(media => <Text key={media.id} style={{ color: "#94A3B8", fontSize: 11 }}>{media.filename} · {media.status} · scan {media.scan_status}{media.processed_at ? " · " + new Date(media.processed_at).toLocaleString("id-ID") : ""}</Text>) : <Text style={{ color: "#94A3B8", fontSize: 11 }}>Belum ada media milik akun ini.</Text>}
