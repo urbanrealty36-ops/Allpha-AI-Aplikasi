@@ -20,6 +20,36 @@ ALLOWED = {".pdf": {"application/pdf"}, ".md": {"text/markdown","text/plain","ap
 SOURCE_FIELDS = "id,agent_id,owner_id,filename,media_type,size_bytes,sha256,storage_path,source_version,status,processing_stage,error_code,provenance,sensitivity,created_at,updated_at"
 JOB_FIELDS = "id,source_id,agent_id,owner_id,status,stage,attempt,progress,error_code,created_at,updated_at"
 
+def _canonical_knowledge_storage_path(
+    owner_id: str, agent_id: str, source_id: str, filename: str,
+) -> str:
+    """Return the only valid object key for a private Knowledge source."""
+    def canonical_uuid(value: object, label: str) -> str:
+        if not isinstance(value, str):
+            raise ValueError(f"{label} identity is missing")
+        try:
+            canonical = str(uuid.UUID(value))
+        except (ValueError, TypeError, AttributeError) as exc:
+            raise ValueError(f"{label} identity is invalid") from exc
+        if value.lower() != canonical:
+            raise ValueError(f"{label} identity is not canonical")
+        return canonical
+
+    owner = canonical_uuid(owner_id, "owner")
+    agent = canonical_uuid(agent_id, "Agent")
+    source = canonical_uuid(source_id, "source")
+    if (
+        not isinstance(filename, str)
+        or not filename
+        or filename in {".", ".."}
+        or "/" in filename
+        or "\\\\" in filename
+        or any(ord(char) < 32 or ord(char) == 127 for char in filename)
+    ):
+        raise ValueError("Knowledge filename is not a safe object-key segment")
+    return f"{owner}/{agent}/{source}/{filename}"
+
+
 class SensitivityRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     sensitivity: str = Field(min_length=1, max_length=32)
@@ -45,7 +75,12 @@ async def _storage(method: str,path: str,data: bytes|None=None,media_type: str|N
     url,key=_storage_config(); headers={"apikey":key,"Authorization":f"Bearer {key}"}
     if media_type: headers["Content-Type"]=media_type
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(20,connect=4)) as c: r=await c.request(method,f"{url}/storage/v1/object/{quote(path, safe='/')}",headers=headers,content=data)
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(20, connect=4),
+            follow_redirects=False,
+            trust_env=False,
+        ) as c:
+            r=await c.request(method,f"{url}/storage/v1/object/{quote(path, safe='/')}",headers=headers,content=data)
     except httpx.HTTPError as exc: raise HTTPException(503,detail={"code":"STORAGE_UNAVAILABLE","message":"Penyimpanan dokumen tidak tersedia."}) from exc
     if r.status_code == 404 and method.upper() == "DELETE":
         return
@@ -67,7 +102,11 @@ async def _admin_db_request(method: str, path: str, access_token: str | None = N
     if prefer:
         headers["Prefer"] = prefer
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(12, connect=3)) as client:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(12, connect=3),
+            follow_redirects=False,
+            trust_env=False,
+        ) as client:
             response = await client.request(method, f"{base}/rest/v1/{path}", headers=headers, params=params, json=body)
     except httpx.HTTPError as exc:
         raise HTTPException(503, detail={"code": "KNOWLEDGE_DATABASE_UNAVAILABLE", "message": "Database sumber pengetahuan tidak tersedia."}) from exc
