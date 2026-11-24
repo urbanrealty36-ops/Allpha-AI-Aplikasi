@@ -184,6 +184,7 @@ begin
  end if;
 end $do$;
 """)
+  psql(f"update public.agent_knowledge_jobs set available_at=clock_timestamp()+interval '1 hour' where source_id='{SOURCE_RETRY}' and status='queued';")
   psql(f"""
 insert into public.agent_knowledge_sources(id,agent_id,owner_id,filename,media_type,size_bytes,sha256,storage_path,status,processing_stage,provenance)
 values('{SOURCE_STALE}','{AGENT}','{OWNER}','stale.txt','text/plain',5,encode(extensions.digest('alpha','sha256'),'hex'),
