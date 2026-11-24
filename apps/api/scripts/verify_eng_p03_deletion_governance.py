@@ -521,59 +521,203 @@ insert into public.account_data_retention_policies(
         ):
             psql(migration.read_text(encoding="utf-8"))
         psql("alter table public.account_deletion_execution_jobs alter column user_id drop not null;")
+        # Activate the isolated policy set only after all lifecycle migrations are installed.
         psql(f"""
-insert into public.profiles(id,account_status) values ('{D}','active');
+update public.account_deletion_source_policies
+   set data_class='owner_private',
+       deletion_action='preserve',
+       policy_version='ci-p03-e2e-v1',
+       reason='CI-only isolated lifecycle policy',
+       approved_by='{E}',approved_at=clock_timestamp(),
+       decision_source='product_owner_directive',
+       decision_reference='CI_ONLY',
+       active=true,updated_at=clock_timestamp();
+update public.account_deletion_dependency_rules
+   set active=false,updated_at=clock_timestamp()
+ where constraint_name='ci_requeue_test_fkey';
+insert into public.account_deletion_dependency_rules(
+ child_schema,child_table,constraint_name,fk_column,delete_rule,resolution_action,reason,active
+) values
+ ('public','agent_ownerships','agent_ownerships_owner_user_id_fkey','owner_user_id','RESTRICT','transfer_owner','CI owner transfer handler',true),
+ ('public','organizations','organizations_owner_id_fkey','owner_id','RESTRICT','transfer_owner','CI organization transfer handler',true),
+ ('public','organization_memberships','organization_memberships_user_id_fkey','user_id','CASCADE','database_cascade',null,true)
+on conflict(child_schema,child_table,constraint_name) do update
+ set fk_column=excluded.fk_column,delete_rule=excluded.delete_rule,
+     resolution_action=excluded.resolution_action,reason=excluded.reason,
+     active=true,updated_at=clock_timestamp();
+
+insert into public.profiles(id,account_status) values ('{E}','active'),('{F}','active');
+insert into public.agent_ownerships(agent_id,owner_user_id,ownership_role,status)
+values ('{E}','{E}','owner','active');
+insert into public.organizations(id,slug,name,owner_id)
+values ('{E}','ci-e2e-org','CI E2E Organization','{E}');
+insert into public.organization_memberships(organization_id,user_id,role)
+values ('{E}','{F}','owner');
+
 set request.jwt.claim.role='service_role';
-do {dollar_quote}
-declare
-  v_request record;
-  v_gate jsonb;
-  v_prepare jsonb;
-  v_confirmation jsonb;
-begin
-  select * into v_request
-    from public.create_account_deletion_request_for_actor('{D}'::uuid,'ci-deletion-export-0001');
-  if v_request.export_status<>'queued' or v_request.export_job_id is null then
-    raise exception 'deletion request did not create its linked export job';
-  end if;
-  v_gate:=private.account_deletion_export_gate('{D}'::uuid,v_request.export_job_id);
-  if coalesce((v_gate->>'ready')::boolean,true) or v_gate->>'code'<>'ACCOUNT_EXPORT_PENDING' then
-    raise exception 'queued export was not a hard deletion gate: %',v_gate;
-  end if;
-  v_prepare:=public.prepare_account_deletion_execution(v_request.id);
-  if v_prepare->>'outcome'<>'blocked_dependency'
-     or v_prepare->'export_gate'->>'code'<>'ACCOUNT_EXPORT_PENDING' then
-    raise exception 'deletion executor did not stop before Storage/DB cleanup for pending export: %',v_prepare;
-  end if;
-  update public.account_export_jobs
-     set status='succeeded',storage_bucket='account-exports',
-         storage_path='{D}/ci-deletion-export-0001.json.gz',
-         file_sha256=repeat('a',64),file_size_bytes=128,manifest='{{}}'::jsonb,
-         completed_at=clock_timestamp()
-   where id=v_request.export_job_id and user_id='{D}';
-  if not found then raise exception 'isolated export artifact receipt was not persisted'; end if;
-  perform set_config('request.jwt.claim.sub','{D}',true);
-  perform set_config('request.jwt.claim.role','authenticated',true);
-  v_confirmation:=public.confirm_account_deletion_export_download(v_request.id);
-  if v_confirmation->>'status'<>'confirmed' then
-    raise exception 'authenticated owner could not confirm export download: %',v_confirmation;
-  end if;
-  perform set_config('request.jwt.claim.role','service_role',true);
-  v_gate:=private.account_deletion_export_gate('{D}'::uuid,v_request.export_job_id);
-  if coalesce((v_gate->>'ready')::boolean,false)=false
-     or v_gate->>'code'<>'ACCOUNT_EXPORT_DOWNLOAD_CONFIRMED' then
-    raise exception 'confirmed export did not release only the export gate: %',v_gate;
-  end if;
-  if not exists(select 1 from public.account_lifecycle_events
-    where request_id=v_request.id and event_type='deletion_unblocked'
-      and metadata->>'reason_code'='EXPORT_DOWNLOAD_CONFIRMED_REEVALUATION_REQUIRED') then
-    raise exception 'export confirmation audit event missing';
-  end if;
-  if (select status from public.account_deletion_requests where id=v_request.id)<>'awaiting_policy' then
-    raise exception 'export confirmation did not return request to policy reevaluation';
-  end if;
-end {dollar_quote};
+set request.jwt.claims='{{"role":"service_role"}}';
+insert into public.credit_ledger_accounts(owner_user_id,balance) values ('{E}',1250.75);
+insert into public.agent_consumer_grant_events(owner_user_id,details)
+values ('{E}','{{"email":"private@example.test","note":"must be redacted"}}'::jsonb);
+insert into public.billing_orders(owner_user_id,stripe_checkout_url)
+values ('{E}','https://checkout.example.test/session');
+insert into public.billing_receipts(owner_user_id,hosted_invoice_url)
+values ('{E}','https://invoice.example.test/receipt');
+insert into public.billing_subscriptions(
+ owner_user_id,stripe_subscription_id,stripe_environment,status,cancel_at_period_end
+) values ('{E}',null,'test','canceled',false);
+insert into public.content_retention_holds(created_by,reason)
+values ('{E}','statutory content retention evidence');
+insert into public.playback_entitlements(owner_user_id,status)
+values ('{E}','active');
 """)
+
+        service_claims="set request.jwt.claim.role='service_role'; set request.jwt.claims='{{"role":"service_role"}}'; "
+        def service_json(sql):
+            return psql_json(service_claims+sql)
+        def authenticated_json(subject,sql):
+            claims=f"set request.jwt.claim.sub='{subject}'; set request.jwt.claim.role='authenticated'; set request.jwt.claims='{{\"role\":\"authenticated\",\"sub\":\"{subject}\"}}'; "
+            return psql_json(claims+sql)
+
+        request_rows=service_json(
+            f"select coalesce(jsonb_agg(to_jsonb(t)),'[]'::jsonb)::text "
+            f"from public.create_account_deletion_request_for_actor('{E}'::uuid,'ci-deletion-export-e2e') t;"
+        )
+        if len(request_rows)!=1:
+            raise RuntimeError(f"isolated deletion request was not created exactly once: {request_rows}")
+        request=request_rows[0]
+        request_id=request["id"]
+        export_job_id=request["export_job_id"]
+        if request["export_status"]!="queued" or not export_job_id:
+            raise RuntimeError(f"deletion request did not create its linked export job: {request}")
+
+        pending_gate=service_json(
+            f"select private.account_deletion_export_gate('{E}'::uuid,'{export_job_id}'::uuid)::text;"
+        )
+        if pending_gate.get("ready") is not False or pending_gate.get("code")!="ACCOUNT_EXPORT_PENDING":
+            raise RuntimeError(f"pending export did not block deletion: {pending_gate}")
+        pending_prepare=service_json(
+            f"select public.prepare_account_deletion_execution('{request_id}'::uuid)::text;"
+        )
+        if pending_prepare.get("outcome")!="blocked_dependency" or pending_prepare.get("export_gate",{}).get("code")!="ACCOUNT_EXPORT_PENDING":
+            raise RuntimeError(f"executor did not stop before Storage/DB cleanup: {pending_prepare}")
+
+        storage_path=f"{E}/{export_job_id}.json.gz"
+        psql(f"""
+update public.account_export_jobs
+   set status='succeeded',storage_bucket='account-exports',
+       storage_path='{storage_path}',
+       file_sha256=repeat('a',64),file_size_bytes=128,manifest='{{}}'::jsonb,
+       completed_at=clock_timestamp(),expires_at=clock_timestamp()+interval '1 day'
+ where id='{export_job_id}' and user_id='{E}';
+""")
+        confirmation=authenticated_json(
+            E,f"select public.confirm_account_deletion_export_download('{request_id}'::uuid)::text;"
+        )
+        if confirmation.get("status")!="confirmed":
+            raise RuntimeError(f"authenticated export download confirmation failed: {confirmation}")
+
+        transfers=authenticated_json(
+            E,
+            "select jsonb_build_array("
+            f"public.set_my_account_deletion_ownership_transfer('{request_id}'::uuid,'agent','{E}'::uuid,'{F}'::uuid),"
+            f"public.set_my_account_deletion_ownership_transfer('{request_id}'::uuid,'organization','{E}'::uuid,'{F}'::uuid)"
+            ")::text;"
+        )
+        if len(transfers)!=2 or any(item.get("status")!="requested" for item in transfers):
+            raise RuntimeError(f"Agent/Organization ownership transfer requests failed: {transfers}")
+
+        prepared=service_json(
+            f"select public.prepare_account_deletion_execution('{request_id}'::uuid)::text;"
+        )
+        if prepared.get("outcome")!="queued" or not prepared.get("job_id"):
+            raise RuntimeError(f"dependency-aware deletion preparation did not queue: {prepared}")
+        execution_job_id=prepared["job_id"]
+
+        execution_claims=service_json(
+            "select coalesce(jsonb_agg(to_jsonb(t)),'[]'::jsonb)::text "
+            "from public.claim_account_deletion_execution_jobs('ci-e2e-worker',10,3600) t;"
+        )
+        execution_job=next((item for item in execution_claims if item.get("id")==execution_job_id),None)
+        if not execution_job or not execution_job.get("lease_token"):
+            raise RuntimeError(f"execution job was not lease-claimed: {execution_claims}")
+        execution_lease=execution_job["lease_token"]
+
+        storage_claims=service_json(
+            "select coalesce(jsonb_agg(to_jsonb(t)),'[]'::jsonb)::text "
+            f"from public.claim_account_deletion_storage_jobs('{execution_job_id}'::uuid,'{execution_lease}'::uuid,20,3600) t;"
+        )
+        if len(storage_claims)!=1:
+            raise RuntimeError(f"expected one export Storage cleanup job, got: {storage_claims}")
+        storage_job=storage_claims[0]
+        bucket=storage_job["storage_bucket"]
+        claimed_path=storage_job["storage_path"]
+        if bucket!="account-exports" or claimed_path!=storage_path:
+            raise RuntimeError(f"Storage cleanup claim did not match export artifact: {storage_job}")
+
+        with tempfile.TemporaryDirectory() as directory:
+            storage_root=Path(directory)
+            object_file=storage_root/bucket/claimed_path
+            object_file.parent.mkdir(parents=True)
+            object_file.write_bytes(b"isolated account export artifact")
+            delete_requests=delete_with_local_storage(storage_root,bucket,claimed_path)
+            if delete_requests!=1 or object_file.exists():
+                raise RuntimeError("worker Storage DELETE did not remove the real local artifact")
+        storage_completed=service_json(
+            f"select to_jsonb(public.complete_account_deletion_storage_job('{storage_job['id']}'::uuid,'{storage_job['lease_token']}'::uuid))::text;"
+        )
+        if storage_completed is not True:
+            raise RuntimeError(f"Storage cleanup completion was not persisted: {storage_completed}")
+
+        execution_completed=service_json(
+            f"select to_jsonb(public.execute_account_deletion_execution_job('{execution_job_id}'::uuid,'{execution_lease}'::uuid))::text;"
+        )
+        if execution_completed is not True:
+            raise RuntimeError(f"database/Auth deletion executor did not complete: {execution_completed}")
+
+        result=service_json(f"""
+select jsonb_build_object(
+ 'auth_user_remaining',exists(select 1 from auth.users where id='{E}'),
+ 'profile_remaining',exists(select 1 from public.profiles where id='{E}'),
+ 'request_status',(select status from public.account_deletion_requests where id='{request_id}'),
+ 'request_user_id',(select user_id::text from public.account_deletion_requests where id='{request_id}'),
+ 'execution_status',(select status from public.account_deletion_execution_jobs where id='{execution_job_id}'),
+ 'execution_user_id',(select user_id::text from public.account_deletion_execution_jobs where id='{execution_job_id}'),
+ 'storage_status',(select status from public.account_deletion_storage_jobs where execution_job_id='{execution_job_id}' order by created_at desc limit 1),
+ 'export_job_remaining',exists(select 1 from public.account_export_jobs where id='{export_job_id}'),
+ 'audit_completed',exists(select 1 from public.account_lifecycle_events where request_id='{request_id}' and event_type='deletion_completed' and user_id is null),
+ 'identity_status',(select status from private.account_identity_subjects where subject_id='{E}'),
+ 'agent_owner',(select owner_user_id::text from public.agent_ownerships where agent_id='{E}' and ownership_role='owner' and status='active'),
+ 'organization_owner',(select owner_id::text from public.organizations where id='{E}'),
+ 'transfer_applied',(select count(*) from public.account_deletion_ownership_transfers where request_id='{request_id}' and status='applied'),
+ 'credit_balance',(select balance from public.credit_ledger_accounts where owner_user_id='{E}'),
+ 'content_hold_count',(select count(*) from public.content_retention_holds where created_by='{E}'),
+ 'billing_order_checkout_url',(select stripe_checkout_url from public.billing_orders where owner_user_id='{E}'),
+ 'billing_receipt_invoice_url',(select hosted_invoice_url from public.billing_receipts where owner_user_id='{E}'),
+ 'subscription_status',(select status from public.billing_subscriptions where owner_user_id='{E}'),
+ 'grant_details',(select details from public.agent_consumer_grant_events where owner_user_id='{E}'),
+ 'playback_status',(select status from public.playback_entitlements where owner_user_id='{E}'),
+ 'execution_steps_pending',(select count(*) from public.account_deletion_execution_steps where job_id='{execution_job_id}' and status<>'completed')
+)::text;
+""")
+        expected={
+            "auth_user_remaining":False,"profile_remaining":False,
+            "request_status":"completed","request_user_id":None,
+            "execution_status":"completed","execution_user_id":None,
+            "storage_status":"completed","export_job_remaining":False,
+            "audit_completed":True,"identity_status":"deleted",
+            "agent_owner":F,"organization_owner":F,"transfer_applied":2,
+            "credit_balance":1250.75,"content_hold_count":1,
+            "billing_order_checkout_url":None,"billing_receipt_invoice_url":None,
+            "subscription_status":"canceled",
+            "grant_details":{"redacted":True,"reason":"account_deletion"},
+            "playback_status":"revoked","execution_steps_pending":0
+        }
+        mismatches={key:{"expected":value,"actual":result.get(key)} for key,value in expected.items() if result.get(key)!=value}
+        if mismatches:
+            raise RuntimeError(f"isolated Storage→DB→Auth→audit lifecycle result mismatch: {mismatches}; full={result}")
+        print("PASS: ENG-P03 full isolated lifecycle — export gate, owner confirmation, Agent/Organization transfer, real Storage HTTP deletion, database cleanup, Auth tombstone, financial/legal retention and final audit.")
+
         print("PASS: ENG-P03 legal hold, shared-source deletion, export-before-deletion and owner download confirmation verified on isolated PostgreSQL 17.")
 
     finally:
