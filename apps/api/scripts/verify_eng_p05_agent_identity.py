@@ -139,9 +139,14 @@ create table public.account_deletion_dependency_rules(
 insert into public.account_deletion_source_policies(
  source_key,data_class,deletion_action,dependency_order,policy_version,reason,active,
  table_name,filter_kind,owner_columns,decision_source,decision_reference
-) values(
+) values
+(
  'agents_created','agent_operational','preserve',52,1,'CI-only source policy fixture',true,
  'ai_agents','owned_agents',array['id'],'product_owner_directive','CI fixture only'
+),
+(
+ 'agent_ownerships','agent_operational','preserve',51,1,'CI-only ownership source policy fixture',true,
+ 'agent_ownerships','owner_columns',array['owner_user_id'],'product_owner_directive','CI fixture only'
 );
 
 create table public.agent_consumer_grants(
