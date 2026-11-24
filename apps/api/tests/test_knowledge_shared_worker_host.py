@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from allpha_api import knowledge_ingestion_worker
+from allpha_api import knowledge_ingestion_worker, knowledge_worker
 
 
 def test_knowledge_document_consumer_is_disabled_by_default(monkeypatch):
@@ -38,3 +38,15 @@ def test_knowledge_document_consumer_stops_cleanly_between_batches():
         assert worker.calls == 1
 
     asyncio.run(scenario())
+
+
+
+def test_knowledge_embedding_consumer_is_disabled_by_default(monkeypatch):
+    monkeypatch.delenv("ALLPHA_KNOWLEDGE_EMBEDDING_WORKER_ENABLED", raising=False)
+    assert knowledge_worker.enabled() is False
+
+
+def test_knowledge_embedding_consumer_rejects_ambiguous_gate(monkeypatch):
+    monkeypatch.setenv("ALLPHA_KNOWLEDGE_EMBEDDING_WORKER_ENABLED", "yes")
+    with pytest.raises(SystemExit, match="must be true or false"):
+        knowledge_worker.enabled()
