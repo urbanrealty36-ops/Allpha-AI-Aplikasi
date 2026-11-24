@@ -1274,7 +1274,10 @@ async def list_public_agent_skill_publications(
     }
     if agent_id:
         params["agent_id"] = f"eq.{agent_id}"
-    rows = await user_db_request("GET", "agent_skill_publications", None, params=params)
+    # Public Passport reads go through FastAPI's allow-listed projection. The
+    # underlying view is service-role-only so anonymous clients cannot query it
+    # directly or bypass this response contract.
+    rows = await privileged_rest_request("GET", "agent_skill_publications", params=params)
     return {"items": rows or [], "limit": min(max(1, limit), 100), "offset": max(0, offset)}
 
 
