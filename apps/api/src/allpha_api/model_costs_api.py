@@ -22,8 +22,8 @@ router = APIRouter(prefix="/v1/admin/model-costs", tags=["model-cost-operations"
 _FIELDS = (
     "id,provider_id,model_id,model_version,pricing_version,cost_unit,"
     "input_micro_cost_per_token,output_micro_cost_per_token,max_cost_microunits,"
-    "max_prompt_bytes,max_output_tokens,max_latency_ms,status,policy_approved,"
-    "effective_at,created_by,updated_by,created_at,updated_at"
+    "max_prompt_bytes,max_output_tokens,max_latency_ms,status,policy_version,policy_approved,"
+    "policy_approval_reference,policy_approved_by,policy_approved_at,effective_at,created_by,updated_by,created_at,updated_at"
 )
 
 
@@ -33,6 +33,7 @@ class ModelCostCreate(BaseModel):
     model_id: str = Field(min_length=2, max_length=180)
     model_version: str = Field(min_length=1, max_length=180)
     pricing_version: str = Field(min_length=1, max_length=80, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
+    policy_version: str = Field(default="1", min_length=1, max_length=80, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
     cost_unit: str = Field(min_length=2, max_length=40)
     input_micro_cost_per_token: int = Field(ge=0, le=9_000_000_000_000)
     output_micro_cost_per_token: int = Field(ge=0, le=9_000_000_000_000)
@@ -46,6 +47,7 @@ class ModelCostUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     model_version: str | None = Field(default=None, min_length=1, max_length=180)
     pricing_version: str | None = Field(default=None, min_length=1, max_length=80, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
+    policy_version: str | None = Field(default=None, min_length=1, max_length=80, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
     cost_unit: str | None = Field(default=None, min_length=2, max_length=40)
     input_micro_cost_per_token: int | None = Field(default=None, ge=0, le=9_000_000_000_000)
     output_micro_cost_per_token: int | None = Field(default=None, ge=0, le=9_000_000_000_000)
@@ -58,6 +60,11 @@ class ModelCostUpdate(BaseModel):
 class ModelCostReason(BaseModel):
     model_config = ConfigDict(extra="forbid")
     reason: str = Field(min_length=8, max_length=500)
+
+class ModelCostApproval(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reason: str = Field(min_length=8, max_length=500)
+    approval_reference: str = Field(min_length=8, max_length=200)
 
 
 @router.get("", name="list_model_cost_configs")
@@ -181,6 +188,89 @@ async def activate_model_cost_config(
     return {"item": active, "runtime_enabled": False, "message": "Tarif aktif di registry; ini tidak menyetujui policy atau mengaktifkan eksekusi model."}
 
 
+@router.post("/{config_id}/approve-policy", name="approve_model_execution_policy")
+async def approve_model_execution_policy(
+    config_id: UUID,
+    payload: ModelCostApproval,
+    request: Request,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:capabilities.review.high_risk")),
+) -> dict[str, Any]:
+    current = await privileged_rest_request(
+        "GET", "ai_model_cost_configs",
+        params={"select": _FIELDS, "id": f"eq.{config_id}", "limit": "1"},
+    )
+    if not current:
+        raise HTTPException(status_code=404, detail={"code": "MODEL_COST_NOT_FOUND", "message": "Konfigurasi biaya tidak ditemukan."})
+    item = current[0]
+    if item["status"] != "active" or not item.get("effective_at"):
+        raise HTTPException(status_code=409, detail={"code": "MODEL_COST_NOT_ACTIVE", "message": "Tarif harus aktif sebelum policy model dapat disetujui."})
+    if item.get("policy_approved"):
+        raise HTTPException(status_code=409, detail={"code": "MODEL_POLICY_ALREADY_APPROVED", "message": "Policy model versi ini sudah disetujui."})
+    now = datetime.now(timezone.utc).isoformat()
+    rows = await privileged_rest_request(
+        "PATCH", "ai_model_cost_configs",
+        params={"id": f"eq.{config_id}", "status": "eq.active", "policy_approved": "eq.false", "select": _FIELDS},
+        body={
+            "policy_approved": True,
+            "policy_approval_reference": payload.approval_reference,
+            "policy_approved_by": operator["id"],
+            "policy_approved_at": now,
+            "updated_by": operator["id"],
+            "updated_at": now,
+        },
+        prefer="return=representation",
+    )
+    if not rows:
+        raise HTTPException(status_code=409, detail={"code": "MODEL_POLICY_APPROVAL_CONFLICT", "message": "Status policy berubah; muat ulang sebelum mencoba lagi."})
+    approved = rows[0]
+    await write_operator_audit(
+        request, actor_user_id=operator["id"], action="model_cost.policy_approve", outcome="allowed",
+        resource_type="ai_model_cost_config", resource_id=str(config_id),
+        metadata={
+            "provider_id": approved["provider_id"], "model_id": approved["model_id"],
+            "model_version": approved["model_version"], "pricing_version": approved["pricing_version"],
+            "policy_version": approved["policy_version"], "approval_reference": payload.approval_reference,
+            "reason": payload.reason,
+        },
+    )
+    return {"item": approved, "policy_approved": True, "runtime_enabled": False,
+            "message": "Model execution policy disetujui. Runtime tetap membutuhkan provider secret dan route config server-side."}
+
+
+@router.post("/{config_id}/revoke-policy", name="revoke_model_execution_policy")
+async def revoke_model_execution_policy(
+    config_id: UUID,
+    payload: ModelCostReason,
+    request: Request,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:capabilities.review.high_risk")),
+) -> dict[str, Any]:
+    now = datetime.now(timezone.utc).isoformat()
+    rows = await privileged_rest_request(
+        "PATCH", "ai_model_cost_configs",
+        params={"id": f"eq.{config_id}", "status": "eq.active", "policy_approved": "eq.true", "select": _FIELDS},
+        body={
+            "policy_approved": False,
+            "policy_approval_reference": None,
+            "policy_approved_by": None,
+            "policy_approved_at": None,
+            "updated_by": operator["id"],
+            "updated_at": now,
+        },
+        prefer="return=representation",
+    )
+    if not rows:
+        raise HTTPException(status_code=409, detail={"code": "MODEL_POLICY_NOT_APPROVED", "message": "Policy aktif tidak ditemukan atau sudah dicabut."})
+    item = rows[0]
+    await write_operator_audit(
+        request, actor_user_id=operator["id"], action="model_cost.policy_revoke", outcome="allowed",
+        resource_type="ai_model_cost_config", resource_id=str(config_id),
+        metadata={"provider_id": item["provider_id"], "model_id": item["model_id"],
+                  "pricing_version": item["pricing_version"], "policy_version": item["policy_version"],
+                  "reason": payload.reason},
+    )
+    return {"item": item, "policy_approved": False, "runtime_enabled": False}
+
+
 @router.post("/{config_id}/archive", name="archive_model_cost_config")
 async def archive_model_cost_config(
     config_id: UUID,
@@ -192,7 +282,9 @@ async def archive_model_cost_config(
     rows = await privileged_rest_request(
         "PATCH", "ai_model_cost_configs",
         params={"id": f"eq.{config_id}", "status": "in.(draft,active)", "select": _FIELDS},
-        body={"status": "archived", "updated_by": operator["id"], "updated_at": now},
+        body={"status": "archived", "policy_approved": False, "policy_approval_reference": None,
+              "policy_approved_by": None, "policy_approved_at": None,
+              "updated_by": operator["id"], "updated_at": now},
         prefer="return=representation",
     )
     if not rows:
