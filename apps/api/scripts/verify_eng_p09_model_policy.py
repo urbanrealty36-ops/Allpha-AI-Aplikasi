@@ -9,7 +9,9 @@ import uuid
 
 ROOT=Path(__file__).resolve().parents[3]
 MIGRATION=ROOT/"apps/api/supabase/migrations/20261124064458_eng_p09_model_policy_approval_metadata.sql"
+CAPABILITY_SCOPE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124073000_eng_p09_model_cost_capability_scope.sql"
 CAPABILITY_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124080255_eng_p09_model_capability_contract.sql"
+METERING_CAPABILITY_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124081000_eng_p09_usage_metering_capability.sql"
 NAME="allpha-p09-policy-"+uuid.uuid4().hex[:8]
 OWNER="11111111-1111-4111-8111-111111111111"
 
@@ -32,8 +34,12 @@ def psql(sql:str,check:bool=True)->subprocess.CompletedProcess[str]:
 def main()->None:
     if not MIGRATION.is_file():
         raise RuntimeError(f"Missing P09 migration: {MIGRATION}")
+    if not CAPABILITY_SCOPE_MIGRATION.is_file():
+        raise RuntimeError(f"Missing P09 capability-scope migration: {CAPABILITY_SCOPE_MIGRATION}")
     if not CAPABILITY_MIGRATION.is_file():
         raise RuntimeError(f"Missing P09 capability migration: {CAPABILITY_MIGRATION}")
+    if not METERING_CAPABILITY_MIGRATION.is_file():
+        raise RuntimeError(f"Missing P09 metering-capability migration: {METERING_CAPABILITY_MIGRATION}")
     run(["docker","run","-d","--rm","--name",NAME,"-e","POSTGRES_PASSWORD=ci-only","postgres:17-alpine"])
     try:
         ready=False
@@ -68,6 +74,8 @@ create table public.ai_model_cost_configs(
  updated_by uuid references auth.users(id) on delete set null,created_at timestamptz not null default now(),
  updated_at timestamptz not null default now(),unique(provider_id,model_id,pricing_version)
 );
+create unique index ai_model_cost_one_active_version
+ on public.ai_model_cost_configs(provider_id,model_id) where status='active';
 create table public.generation_output_moderation_policies(
  policy_version text primary key,approval_reference text not null,configuration jsonb not null,
  status text not null default 'draft',effective_at timestamptz not null,expires_at timestamptz,
@@ -81,7 +89,7 @@ create table public.generation_output_moderation_policies(
 );
 create table public.agent_model_usage_metering(
  id uuid primary key default gen_random_uuid(),idempotency_key text not null unique,
- task_id text not null,trace_id text not null,owner_id text not null,agent_id text not null,
+ task_id text not null,trace_id text not null,owner_id text not null,billing_account_id text not null,agent_id text not null,
  source_id text not null,source_version integer not null,sensitivity text not null,
  provider_id text not null,model_id text not null,model_version text not null,
  usage_units bigint not null,usage_unit text not null,cost_microunits bigint not null,
@@ -107,7 +115,9 @@ insert into public.ai_model_cost_configs(
 );
 """)
         psql(MIGRATION.read_text(encoding="utf-8"))
+        psql(CAPABILITY_SCOPE_MIGRATION.read_text(encoding="utf-8"))
         psql(CAPABILITY_MIGRATION.read_text(encoding="utf-8"))
+        psql(METERING_CAPABILITY_MIGRATION.read_text(encoding="utf-8"))
         psql("""
 do $do$
 begin
@@ -125,11 +135,11 @@ end $do$;
         psql(f"""
 insert into auth.users(id) values('{OWNER}');
 insert into public.ai_model_cost_configs(
- id,provider_id,model_id,model_version,pricing_version,cost_unit,
+ id,capability,provider_id,model_id,model_version,pricing_version,cost_unit,
  input_micro_cost_per_token,output_micro_cost_per_token,max_cost_microunits,
  status,effective_at
 ) values(
- 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','provider-x','model-x','v1','price-v1','USD',
+ 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','text_generation','provider-x','model-x','v1','price-v1','USD',
  2,4,1000,'active',clock_timestamp()
 );
 do $do$
@@ -152,6 +162,13 @@ begin
 end $do$;
 update public.ai_model_cost_configs set policy_approved=false,policy_approval_reference=null,
  policy_approved_by=null,policy_approved_at=null where id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+insert into public.ai_model_cost_configs(
+ id,capability,provider_id,model_id,model_version,pricing_version,cost_unit,
+ input_micro_cost_per_token,output_micro_cost_per_token,max_cost_microunits,status,effective_at
+) values(
+ 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','embedding','provider-x','model-x','v1','price-embedding-v1','USD',
+ 2,0,1000,'active',clock_timestamp()
+);
 """)
 
         invalid=psql(f"""
@@ -193,21 +210,56 @@ insert into public.generation_output_moderation_policies(
 
         psql("""
 insert into public.agent_model_usage_metering(
- idempotency_key,task_id,trace_id,owner_id,agent_id,source_id,source_version,sensitivity,
+ idempotency_key,task_id,trace_id,owner_id,billing_account_id,agent_id,source_id,source_version,sensitivity,capability,
  provider_id,model_id,model_version,usage_units,usage_unit,cost_microunits,cost_unit,
  pricing_version,completed_at,payload_fingerprint
 ) values
- ('key-1','task-1','trace-1','owner-1','agent-1','skill-1',1,'private','provider-x','model-x','v1',10,'tokens',20,'USD','price-v1',clock_timestamp(),repeat('a',64)),
- ('key-2','task-2','trace-2','owner-1','agent-1','skill-1',1,'private','provider-x','model-x','v1',12,'tokens',30,'EUR','price-v2',clock_timestamp(),repeat('b',64));
+ ('key-1','task-1','trace-1','owner-1','payer-1','agent-1','skill-1',1,'internal','text_generation','provider-x','model-x','v1',10,'tokens',20,'USD','price-v1',clock_timestamp(),repeat('a',64)),
+ ('key-2','task-2','trace-2','owner-1','payer-1','agent-1','skill-1',1,'internal','embedding','provider-x','model-x','v1',12,'input_tokens',30,'EUR','price-v2',clock_timestamp(),repeat('b',64));
 do $do$
 declare v jsonb;
 begin
  v:=public.get_agent_model_usage_summary(clock_timestamp()-interval '1 day',clock_timestamp()+interval '1 second');
  if (v->'totals'->>'runs')::integer<>2 then raise exception 'usage summary total run count incorrect'; end if;
  if jsonb_array_length(v->'by_provider_model')<>2 then raise exception 'usage summary incorrectly mixed currencies/pricing versions'; end if;
+ if jsonb_array_length(v->'by_capability')<>2 then raise exception 'usage summary did not separate model capabilities'; end if;
 end $do$;
 """)
 
+        psql("""
+set role service_role;
+select public.record_agent_model_usage_metering('{
+ "idempotency_key":"rpc-embedding-1","task_id":"embedding-task-1","trace_id":"embedding-trace-1",
+ "owner_id":"owner-1","billing_account_id":"payer-1","agent_id":"agent-1","source_id":"source-1",
+ "source_version":1,"sensitivity":"internal","capability":"embedding","provider_id":"provider-x",
+ "model_id":"model-x","model_version":"v1","usage_units":4,"usage_unit":"input_tokens",
+ "cost_microunits":8,"cost_unit":"USD","pricing_version":"price-v1",
+ "completed_at":"2026-11-24T00:00:00+00:00","payload_fingerprint":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+}'::jsonb);
+select public.record_agent_model_usage_metering('{
+ "idempotency_key":"rpc-embedding-1","task_id":"embedding-task-1","trace_id":"embedding-trace-1",
+ "owner_id":"owner-1","billing_account_id":"payer-1","agent_id":"agent-1","source_id":"source-1",
+ "source_version":1,"sensitivity":"internal","capability":"embedding","provider_id":"provider-x",
+ "model_id":"model-x","model_version":"v1","usage_units":4,"usage_unit":"input_tokens",
+ "cost_microunits":8,"cost_unit":"USD","pricing_version":"price-v1",
+ "completed_at":"2026-11-24T00:00:00+00:00","payload_fingerprint":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+}'::jsonb);
+reset role;
+""")
+        conflict=psql("""
+set role service_role;
+select public.record_agent_model_usage_metering('{
+ "idempotency_key":"rpc-embedding-1","task_id":"embedding-task-1","trace_id":"embedding-trace-1",
+ "owner_id":"owner-1","billing_account_id":"payer-1","agent_id":"agent-1","source_id":"source-1",
+ "source_version":1,"sensitivity":"internal","capability":"embedding","provider_id":"provider-x",
+ "model_id":"model-x","model_version":"v1","usage_units":4,"usage_unit":"input_tokens",
+ "cost_microunits":9,"cost_unit":"USD","pricing_version":"price-v1",
+ "completed_at":"2026-11-24T00:00:00+00:00","payload_fingerprint":"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+}'::jsonb);
+reset role;
+""",check=False)
+        if conflict.returncode==0:
+            raise RuntimeError("metering RPC accepted conflicting reuse of an idempotency key")
         psql(f"""
 do $do$
 begin
