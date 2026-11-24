@@ -43,3 +43,54 @@ comment on column public.ai_model_cost_configs.policy_approved is
   'Explicit model execution-policy approval; activating a tariff alone never enables a model route.';
 comment on column public.ai_model_cost_configs.policy_approval_reference is
   'Auditable operator approval reference for the exact model/policy/pricing version.';
+
+-- Operator usage dashboard: aggregate provider/model usage without exposing owner IDs.
+create or replace function public.get_agent_model_usage_summary(
+  p_since timestamptz default now() - interval '30 days',
+  p_until timestamptz default now()
+) returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $usage$
+declare
+  v_result jsonb;
+begin
+  if p_since is null or p_until is null or p_since >= p_until
+     or p_until - p_since > interval '90 days' then
+    raise exception 'MODEL_USAGE_PERIOD_INVALID' using errcode='22023';
+  end if;
+
+  select jsonb_build_object(
+    'since',p_since,'until',p_until,
+    'totals',jsonb_build_object(
+      'runs',count(*),
+      'usage_units',coalesce(sum(usage_units),0),
+      'cost_microunits',coalesce(sum(cost_microunits),0)
+    ),
+    'by_provider_model',coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'provider_id',g.provider_id,'model_id',g.model_id,
+        'runs',g.runs,'usage_units',g.usage_units,'cost_microunits',g.cost_microunits,
+        'cost_unit',g.cost_unit,'pricing_version',g.pricing_version
+      ) order by g.cost_microunits desc)
+      from (
+        select provider_id,model_id,count(*) as runs,sum(usage_units) as usage_units,
+          sum(cost_microunits) as cost_microunits,min(cost_unit) as cost_unit,
+          min(pricing_version) as pricing_version
+        from public.agent_model_usage_metering
+        where completed_at>=p_since and completed_at<p_until
+        group by provider_id,model_id
+      ) g
+    ),'[]'::jsonb)
+  ) into v_result
+  from public.agent_model_usage_metering
+  where completed_at>=p_since and completed_at<p_until;
+  return v_result;
+end;
+$usage$;
+
+revoke all on function public.get_agent_model_usage_summary(timestamptz,timestamptz)
+  from public,anon,authenticated,service_role;
+grant execute on function public.get_agent_model_usage_summary(timestamptz,timestamptz)
+  to service_role;
