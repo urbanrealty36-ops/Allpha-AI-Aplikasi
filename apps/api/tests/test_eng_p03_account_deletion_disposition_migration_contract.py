@@ -198,3 +198,13 @@ def test_all_original_eng_p03_executor_migrations_have_replayable_versioned_sour
     assert "source_key text not null default 'account_export_jobs'" in sources[expected[4]]
     assert "status in ('pending','running','completed','preserved','failed')" in sources[expected[4]]
     assert "sync_account_deletion_source_policy_metadata" in sources[expected[5]]
+
+
+
+def test_dependency_and_legal_hold_requeues_write_audit_events():
+    migration = MIGRATIONS / "20261124012454_eng_p03_requeue_audit_trail.sql"
+    source = " ".join(migration.read_text(encoding="utf-8").lower().split())
+    assert "insert into public.account_lifecycle_events" in source
+    assert "dependency_policy_changed_reevaluation_required" in source
+    assert "legal_hold_released_reevaluation_required" in source
+    assert "tg_table_name" in source and "tg_op" in source
