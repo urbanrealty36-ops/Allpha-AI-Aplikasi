@@ -354,6 +354,10 @@ async def process_next_step(
             lease_token=lease_token, lease_seconds=lease_seconds, execute=execute_node,
         )
         final_state, error_code = "succeeded", None
+    except WorkflowOutcomeUnknown:
+        # A lost lease or uncertain heartbeat is not a deterministic node failure.
+        # Leave the claim to expire and reconcile; never finalize under a stale fence.
+        raise
     except WorkflowNodeError as exc:
         result = {"output_payload": None, "checkpoint": {"node_key": step.get("node_key"), "failed": True}}
         final_state, error_code = "failed", type(exc).__name__.upper()
