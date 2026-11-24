@@ -75,6 +75,7 @@ def test_content_transcode_worker_requires_https_callback(monkeypatch):
 def test_content_transcode_worker_enables_with_complete_config(monkeypatch):
     monkeypatch.setenv("ALLPHA_CONTENT_TRANSCODE_WORKER_ENABLED", "true")
     monkeypatch.setenv("ALLPHA_CLAMAV_ENABLED", "true")
+    _set_scanner_pins(monkeypatch)
     monkeypatch.setenv("SUPABASE_URL", "https://project.supabase.co")
     monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "server-only")
     monkeypatch.setenv("CLAMAV_HOST", "clamav.internal")
