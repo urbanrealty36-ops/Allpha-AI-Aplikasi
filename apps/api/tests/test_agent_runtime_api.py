@@ -5,6 +5,7 @@ import pytest
 import uuid
 from types import SimpleNamespace
 
+from fastapi import Request
 from fastapi.testclient import TestClient
 
 from allpha_api.agent_runtime_api import router
@@ -1116,7 +1117,7 @@ def test_tool_plan_task_envelope_carries_only_validated_knowledge_citations(monk
         "knowledge_context_sha256": hashlib.sha256(b"bounded knowledge context").hexdigest(),
         "knowledge_context_state": "available",
     }
-    async def authenticated_user_with_token(request):
+    async def authenticated_user_with_token(request: Request):
         request.state.supabase_access_token = "test-user-token"
         return {"id": OWNER}
 
