@@ -1136,6 +1136,17 @@ class AgentRevokePublication(BaseModel):
     expected_version: int = Field(ge=1)
 
 
+class AgentOwnershipTransferCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    recipient_user_id: uuid.UUID
+    idempotency_key: str = Field(min_length=8, max_length=160)
+
+
+class AgentOwnershipTransferResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    accept: bool
+
+
 _AGENT_FIELDS = "id,handle,display_name,description,avatar_url,persona,disclosure,boundaries,visibility,status,created_by,created_at,updated_at,version,public_owner_attribution,published_at,revoked_at"
 
 
@@ -1308,6 +1319,57 @@ async def list_my_agent_identity_versions(agent_id: uuid.UUID, request: Request,
                 "agent_id": f"eq.{agent_id}", "order": "version.desc", "limit": "50"},
     )
     return {"agent_id": str(agent_id), "current_version": agent[0]["version"], "items": versions or []}
+
+
+@app.get("/v1/agent-ownership-transfers", tags=["agents"])
+async def list_agent_ownership_transfers(request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    token = request.state.supabase_access_token
+    outgoing = await user_db_request(
+        "GET", "agent_ownership_transfer_requests", token,
+        params={"select": "*", "from_owner_user_id": f"eq.{user['id']}", "order": "created_at.desc", "limit": "100"},
+    )
+    incoming = await user_db_request(
+        "GET", "agent_ownership_transfer_requests", token,
+        params={"select": "*", "to_owner_user_id": f"eq.{user['id']}", "order": "created_at.desc", "limit": "100"},
+    )
+    return {"outgoing": outgoing or [], "incoming": incoming or []}
+
+
+@app.post("/v1/agents/{agent_id}/ownership-transfers", status_code=201, tags=["agents"])
+async def request_agent_ownership_transfer(agent_id: uuid.UUID, payload: AgentOwnershipTransferCreate, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    result = await user_db_request(
+        "POST", "rpc/request_agent_ownership_transfer", request.state.supabase_access_token,
+        body={
+            "p_agent_id": str(agent_id),
+            "p_recipient_user_id": str(payload.recipient_user_id),
+            "p_idempotency_key": payload.idempotency_key,
+        },
+    )
+    if not result:
+        raise HTTPException(status_code=409, detail={"code": "AGENT_TRANSFER_NOT_CREATED", "message": "Permintaan transfer kepemilikan Agent tidak dapat dibuat."})
+    return result[0] if isinstance(result, list) else result
+
+
+@app.post("/v1/agent-ownership-transfers/{request_id}/respond", tags=["agents"])
+async def respond_agent_ownership_transfer(request_id: uuid.UUID, payload: AgentOwnershipTransferResponse, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    result = await user_db_request(
+        "POST", "rpc/respond_agent_ownership_transfer", request.state.supabase_access_token,
+        body={"p_request_id": str(request_id), "p_accept": payload.accept},
+    )
+    if not result:
+        raise HTTPException(status_code=409, detail={"code": "AGENT_TRANSFER_RESPONSE_FAILED", "message": "Respons transfer kepemilikan Agent tidak dapat diproses."})
+    return result[0] if isinstance(result, list) else result
+
+
+@app.post("/v1/agent-ownership-transfers/{request_id}/cancel", tags=["agents"])
+async def cancel_agent_ownership_transfer(request_id: uuid.UUID, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    result = await user_db_request(
+        "POST", "rpc/cancel_agent_ownership_transfer", request.state.supabase_access_token,
+        body={"p_request_id": str(request_id)},
+    )
+    if not result:
+        raise HTTPException(status_code=409, detail={"code": "AGENT_TRANSFER_CANCEL_FAILED", "message": "Permintaan transfer kepemilikan Agent tidak dapat dibatalkan."})
+    return result[0] if isinstance(result, list) else result
 
 
 # ENG-P06 — owner-managed reusable Skills and declared capability requests.
