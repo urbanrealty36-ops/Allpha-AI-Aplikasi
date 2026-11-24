@@ -30,7 +30,7 @@ def fail(status: int, code: str, message: str) -> HTTPException:
 
 class RetentionPolicyCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    data_class: Literal["owner_private", "agent_operational", "tenant_shared", "published_knowledge", "session_scoped", "public_catalog"]
+    data_class: Literal["owner_private", "agent_operational", "tenant_shared", "published_knowledge", "session_scoped", "public_catalog", "account_export_artifact"]
     retention_days: int = Field(ge=0, le=36500)
     policy_version: str = Field(min_length=1, max_length=40, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,39}$")
     legal_basis: str = Field(min_length=8, max_length=500)
