@@ -185,9 +185,9 @@ def test_all_original_eng_p03_executor_migrations_have_replayable_versioned_sour
         "20261123142156_eng_p03_account_deletion_executor.sql",
         "20261123142329_eng_p03_deletion_dependency_requeue.sql",
         "20261123142451_eng_p03_retention_canonical_data_classes.sql",
-        "20261123142930_eng_p03_legal_hold_release_requeue.sql",
-        "20261123143130_eng_p03_storage_disposition_gate.sql",
-        "20261123143201_eng_p03_source_registry_metadata.sql",
+        "20261123142930_eng_p03_deletion_legal_hold_release_requeue.sql",
+        "20261123143130_eng_p03_deletion_storage_disposition_gate.sql",
+        "20261123143201_eng_p03_deletion_source_registry_metadata.sql",
     ]
     sources = {name: (MIGRATIONS / name).read_text(encoding="utf-8").lower() for name in expected}
     assert "create table if not exists public.account_deletion_execution_jobs" in sources[expected[0]]
