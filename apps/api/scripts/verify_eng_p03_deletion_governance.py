@@ -29,6 +29,8 @@ A="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 B="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
 C="cccccccc-cccc-4ccc-8ccc-cccccccccccc"
 D="dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+E="eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+F="ffffffff-ffff-4fff-8fff-ffffffffffff"
 HOLD_A="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 HOLD_B="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 OPEN_C="cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
@@ -147,15 +149,15 @@ create table public.playback_entitlements(
 create function auth.uid() returns uuid language sql stable as $uid$
  select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid
 $uid$;
-create function auth.role() returns text language sql stable as $
+create function auth.role() returns text language sql stable as $role$
  select nullif(current_setting('request.jwt.claim.role',true),'')
-$;
-create function auth.jwt() returns jsonb language sql stable as $
+$role$;
+create function auth.jwt() returns jsonb language sql stable as $jwt$
  select coalesce(nullif(current_setting('request.jwt.claims',true),'')::jsonb,'{}'::jsonb)
-$;
-create function public.digest(text,text) returns bytea language sql immutable as $
+$jwt$;
+create function public.digest(text,text) returns bytea language sql immutable as $digest$
  select extensions.digest($1,$2)
-$;
+$digest$;
 grant usage on schema auth to public;
 grant execute on function auth.role() to public;
 create table public.account_deletion_requests(
