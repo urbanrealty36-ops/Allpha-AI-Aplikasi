@@ -19,7 +19,7 @@ declare
   v_count integer:=0;
 begin
   if p_source_version is null or p_source_version<1
-     or jsonb_typeof(p_chunks)<>'array'
+     or p_chunks is null or jsonb_typeof(p_chunks) is distinct from 'array'
      or jsonb_array_length(p_chunks)>100 then
     raise exception 'KNOWLEDGE_CHUNK_BATCH_INVALID' using errcode='22023';
   end if;
@@ -47,7 +47,7 @@ begin
     v_chunk_index:=nullif(v_item->>'chunk_index','')::integer;
     if v_content is null or length(v_content)=0 or length(v_content)>1800
        or v_chunk_index is null or v_chunk_index<0
-       or jsonb_typeof(v_location)<>'object'
+       or v_location is null or jsonb_typeof(v_location) is distinct from 'object'
        or v_digest !~ '^[0-9a-f]{64}$'
        or encode(extensions.digest(convert_to(v_content,'UTF8'),'sha256'),'hex')<>v_digest then
       raise exception 'KNOWLEDGE_CHUNK_PROVENANCE_INVALID' using errcode='23514';
