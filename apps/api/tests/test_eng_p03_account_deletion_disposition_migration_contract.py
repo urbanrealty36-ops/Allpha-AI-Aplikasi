@@ -167,3 +167,13 @@ def test_deletion_request_metadata_uses_live_owner_directive_configuration_and_n
     assert "count(distinct p.data_class)=6" in source
     assert "decision_source='product_owner_directive'" in source
     assert "retention_policy_configured',false" in source
+
+
+
+def test_fk_rule_catalog_matches_real_constraints_and_governance_requires_active_agent_owners():
+    migration = MIGRATIONS / "20261124010741_eng_p03_fk_action_integrity_gate.sql"
+    source = " ".join(migration.read_text(encoding="utf-8").lower().split())
+    assert "private.account_deletion_fk_action_mismatch_count()" in source
+    assert "set delete_rule='restrict'" in source
+    assert "or private.account_deletion_fk_action_mismatch_count()>0 then" in source
+    assert "ao.ownership_role='owner' and ao.status='active'" in source
