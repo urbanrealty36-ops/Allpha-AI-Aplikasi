@@ -83,6 +83,8 @@ def test_media_workers_share_pinned_clamav_instream_adapter():
         assert "scan_media_bytes(" in source
     assert 'sock.sendall(b"zINSTREAM\\0")' in scanner
     assert 'sock.sendall(b"zINSTREAM\\\\0")' not in scanner
+    assert 'ALLPHA_CLAMAV_ENABLED' in callback
+    assert 'local_scanner_identity_pins()' in callback
 
 
 def test_retention_worker_fails_closed_until_destructive_purge_is_explicitly_enabled():
