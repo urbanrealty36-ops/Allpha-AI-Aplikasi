@@ -65,10 +65,11 @@ type NativeStory = { id: string; owner_id: string; body: string; content_type: s
 
 
 type NativeContentFile = { uri: string; name: string; mimeType?: string | null; size?: number | null };
-type AgentIdentity = { id: string; handle: string; display_name: string; description?: string; visibility: "private" | "public"; status: "draft" | "active" | "archived"; ownership?: { owner_user_id: string; role: "owner"; status: "active" } };
+type AgentIdentity = { id: string; handle: string; display_name: string; description?: string; visibility: "private" | "public"; status: "draft" | "active" | "archived"; version: number; public_owner_attribution?: boolean; published_at?: string | null; revoked_at?: string | null; ownership?: { owner_user_id: string; role: "owner"; status: "active" } };
 type CatalogSkill = { key: string; name: string; category: string; category_label: string; description: string; catalog_version?: string; source?: { kind?: string; repository?: string; source_url?: string }; character_profile: { archetype_key: string; display_role: string; asset_key: string | null; asset_status: string } };
 type SkillCatalogResponse = { items: CatalogSkill[]; categories: { key: string; label: string; count: number }[] };
-type AgentPassport = Pick<AgentIdentity, "id" | "handle" | "display_name" | "description" | "visibility" | "status"> & { disclosure?: string; created_at?: string; skills?: { id: string; name: string; slug: string; version: number; description?: string }[]; capabilities?: { id: string; capability_key: string; description?: string; risk_level: string }[] };
+type AgentPassport = Pick<AgentIdentity, "id" | "handle" | "display_name" | "description" | "visibility" | "status" | "version" | "public_owner_attribution" | "published_at"> & { disclosure?: string; created_at?: string; owner_attribution?: { username: string; display_name: string; avatar_url?: string | null } | null; skills?: { id: string; name: string; slug: string; version: number; description?: string }[]; capabilities?: { id: string; capability_key: string; description?: string; risk_level: string }[] };
+type AgentIdentityVersion = { id: string; version: number; event_type: string; snapshot: Record<string, unknown>; snapshot_sha256: string; recorded_at: string };
 type RegisteredTool = { key: string; version: string; name: string; description: string; risk_level: string; required_permission_scopes: string[]; executable: boolean };
 type AgentSkill = { id: string; slug: string; name: string; description?: string; status: "draft" | "published" | "archived"; version: number; required_permission_scopes?: string[]; tool_dependencies?: string[] };
 type AgentCapability = { id: string; capability_key: string; description?: string; status: "requested" | "approved" | "denied" | "revoked"; risk_level: string };
@@ -605,6 +606,8 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
   const [studioCapabilityKey, setStudioCapabilityKey] = useState("");
   const [studioCapabilityDescription, setStudioCapabilityDescription] = useState("");
   const [agentPassport, setAgentPassport] = useState<AgentPassport | null>(null);
+  const [agentIdentityVersions, setAgentIdentityVersions] = useState<Record<string, AgentIdentityVersion[]>>({});
+  const [identityVersionsAgentId, setIdentityVersionsAgentId] = useState<string | null>(null);
   const [runtimeSessions, setRuntimeSessions] = useState<Record<string, RuntimeSession[]>>({});
   const [runtimeSessionBusy, setRuntimeSessionBusy] = useState<string | null>(null);
   const [runtimeSkills, setRuntimeSkills] = useState<Record<string, RuntimeSkill[]>>({});
@@ -1715,14 +1718,45 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
     } catch (e) { setError(e instanceof Error ? e.message : "Agent tidak dapat dibuat."); }
     finally { setBusy(false); }
   }
-  async function updateAgent(agent: AgentIdentity, changes: Partial<Pick<AgentIdentity, "visibility" | "status">>) {
+  async function updateAgent(agent: AgentIdentity, changes: Partial<Pick<AgentIdentity, "visibility" | "status" | "public_owner_attribution">>) {
     setBusy(true); setError(""); setMessage("");
     try {
       const response = await fetch(apiBase + "/v1/agents/" + encodeURIComponent(agent.id), { method: "PATCH", headers: { Authorization: "Bearer " + session.access_token, "Content-Type": "application/json" }, body: JSON.stringify(changes) });
       const body = await response.json();
-      if (!response.ok) throw new Error(body?.error?.message || "Status Agent tidak dapat diperbarui.");
+      if (!response.ok) throw new Error(body?.detail?.message || body?.error?.message || "Identitas Agent tidak dapat diperbarui.");
       setMessage("Identitas Agent diperbarui."); await loadAgents();
-    } catch (e) { setError(e instanceof Error ? e.message : "Status Agent tidak dapat diperbarui."); }
+    } catch (e) { setError(e instanceof Error ? e.message : "Identitas Agent tidak dapat diperbarui."); }
+    finally { setBusy(false); }
+  }
+  async function publishAgent(agent: AgentIdentity) {
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const response = await fetch(apiBase + "/v1/agents/" + encodeURIComponent(agent.id) + "/publish", { method: "POST", headers: { Authorization: "Bearer " + session.access_token, "Content-Type": "application/json" }, body: JSON.stringify({ expected_version: agent.version, public_owner_attribution: agent.public_owner_attribution === true }) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body?.detail?.message || "Agent tidak dapat dipublikasikan.");
+      setMessage("Passport Agent dipublikasikan."); await loadAgents();
+    } catch (e) { setError(e instanceof Error ? e.message : "Agent tidak dapat dipublikasikan."); }
+    finally { setBusy(false); }
+  }
+  async function revokeAgentPublication(agent: AgentIdentity) {
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const response = await fetch(apiBase + "/v1/agents/" + encodeURIComponent(agent.id) + "/revoke-publication", { method: "POST", headers: { Authorization: "Bearer " + session.access_token, "Content-Type": "application/json" }, body: JSON.stringify({ expected_version: agent.version }) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body?.detail?.message || "Publikasi Agent tidak dapat dicabut.");
+      setMessage("Publikasi Passport dicabut; Agent kembali privat."); await loadAgents();
+    } catch (e) { setError(e instanceof Error ? e.message : "Publikasi Agent tidak dapat dicabut."); }
+    finally { setBusy(false); }
+  }
+  async function loadAgentIdentityVersions(agent: AgentIdentity) {
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const response = await fetch(apiBase + "/v1/agents/" + encodeURIComponent(agent.id) + "/versions", { headers: { Authorization: "Bearer " + session.access_token }, cache: "no-store" });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body?.detail?.message || "Riwayat identitas tidak dapat dimuat.");
+      setAgentIdentityVersions(current => ({ ...current, [agent.id]: Array.isArray(body.items) ? body.items : [] }));
+      setIdentityVersionsAgentId(agent.id);
+    } catch (e) { setError(e instanceof Error ? e.message : "Riwayat identitas tidak dapat dimuat."); }
     finally { setBusy(false); }
   }
   async function loadPassport(handle: string) {
@@ -1731,7 +1765,7 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
       const response = await fetch(apiBase + "/v1/agent-passports/" + encodeURIComponent(handle), { cache: "no-store" });
       const body = await response.json();
       if (!response.ok) throw new Error(body?.error?.message || "Passport publik tidak tersedia.");
-      setAgentPassport({ ...body.passport, skills: Array.isArray(body.skills) ? body.skills : [], capabilities: Array.isArray(body.capabilities) ? body.capabilities : [] });
+      setAgentPassport({ ...body.passport, owner_attribution: body.owner_attribution ?? null, skills: Array.isArray(body.skills) ? body.skills : [], capabilities: Array.isArray(body.capabilities) ? body.capabilities : [] });
     } catch (e) { setError(e instanceof Error ? e.message : "Passport tidak dapat dimuat."); }
     finally { setAgentLoading(false); }
   }
@@ -2149,7 +2183,7 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
       </> : tab === "data" ? <AccountDataLifecycleScreen apiBase={apiBase} getAccessToken={getNativeAccessToken}/> : tab === "agents" ? <>
         <Text style={s.kicker}>AI AGENT IDENTITY</Text><Text style={s.title}>Agent Studio & Passport</Text>
         <Text style={s.muted}>Identitas Agent terpisah dari Human. Ownership ditentukan backend dari sesi terautentikasi; tidak ada owner ID dari client.</Text>
-        {agentPassport ? <View style={s.socialRow}><Text style={s.title}>{agentPassport.display_name}</Text><Text style={s.body}>@{agentPassport.handle} · {agentPassport.status} · {agentPassport.visibility}</Text><Text style={s.body}>{agentPassport.description || "Tanpa deskripsi publik."}</Text><Text style={s.muted}>{agentPassport.disclosure || "AI Agent; respons dapat dihasilkan oleh model."}</Text><Text style={s.kicker}>PUBLISHED SKILLS</Text>{agentPassport.skills?.length ? agentPassport.skills.map(skill => <Text key={skill.id} style={s.body}>{skill.name} · {skill.slug} · v{skill.version}</Text>) : <Text style={s.muted}>Belum ada Skill yang dipublikasikan.</Text>}<Text style={s.kicker}>VERIFIED CAPABILITIES</Text>{agentPassport.capabilities?.length ? agentPassport.capabilities.map(cap => <Text key={cap.id} style={s.body}>{cap.capability_key} · {cap.risk_level} risk</Text>) : <Text style={s.muted}>Belum ada capability yang disetujui untuk ditampilkan.</Text>}<Button title="Kembali ke daftar" secondary onPress={() => setAgentPassport(null)}/></View> : <>
+        {agentPassport ? <View style={s.socialRow}><Text style={s.title}>{agentPassport.display_name}</Text><Text style={s.body}>@{agentPassport.handle} · {agentPassport.status} · {agentPassport.visibility}</Text><Text style={s.body}>{agentPassport.description || "Tanpa deskripsi publik."}</Text><Text style={s.muted}>{agentPassport.disclosure || "AI Agent; respons dapat dihasilkan oleh model."}</Text><Text style={s.muted}>Versi identitas: v{agentPassport.version}{agentPassport.published_at ? " · Dipublikasikan " + new Date(agentPassport.published_at).toLocaleDateString("id-ID") : ""}</Text>{agentPassport.owner_attribution && <Text style={s.body}>Human Owner: {agentPassport.owner_attribution.display_name} · @{agentPassport.owner_attribution.username}</Text>}<Text style={s.kicker}>PUBLISHED SKILLS</Text>{agentPassport.skills?.length ? agentPassport.skills.map(skill => <Text key={skill.id} style={s.body}>{skill.name} · {skill.slug} · v{skill.version}</Text>) : <Text style={s.muted}>Belum ada Skill yang dipublikasikan.</Text>}<Text style={s.kicker}>VERIFIED CAPABILITIES</Text>{agentPassport.capabilities?.length ? agentPassport.capabilities.map(cap => <Text key={cap.id} style={s.body}>{cap.capability_key} · {cap.risk_level} risk</Text>) : <Text style={s.muted}>Belum ada capability yang disetujui untuk ditampilkan.</Text>}<Button title="Kembali ke daftar" secondary onPress={() => setAgentPassport(null)}/></View> : <>
           <TextInput accessibilityLabel="Nama Agent" value={agentName} onChangeText={setAgentName} maxLength={80} style={field} placeholder="Nama Agent" placeholderTextColor="#8B94AC"/>
           <TextInput accessibilityLabel="Handle Agent" value={agentHandle} onChangeText={value => setAgentHandle(value.toLowerCase())} autoCapitalize="none" maxLength={30} style={field} placeholder="handle_agent (3–30 karakter)" placeholderTextColor="#8B94AC"/>
           <TextInput accessibilityLabel="Deskripsi Agent" value={agentDescription} onChangeText={setAgentDescription} maxLength={1000} style={field} placeholder="Deskripsi Agent" placeholderTextColor="#8B94AC"/>
@@ -2159,7 +2193,7 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
           {selectedCatalogSkill ? <Text style={s.muted}>Skill dipilih: {skillCatalog.find(item => item.key === selectedCatalogSkill)?.name} · Role AI Character: {skillCatalog.find(item => item.key === selectedCatalogSkill)?.character_profile.display_role}. Asset GLB tetap perlu diverifikasi sebelum dirender.</Text> : <Text style={s.muted}>Pilih satu Skill untuk menentukan bidang dan role karakter AI.</Text>}
           <Button title={busy ? "Membuat…" : "Buat Agent privat"} disabled={busy || skillCatalogLoading || !selectedCatalogSkill || agentName.trim().length < 2 || !/^[a-z0-9_]{3,30}$/.test(agentHandle.trim())} onPress={() => void createAgent()}/>
           <Button title="Muat ulang daftar" secondary disabled={agentLoading} onPress={() => void loadAgents()}/>
-          {agentLoading ? <ActivityIndicator color="#A5B4FC"/> : agents.length ? agents.map(agent => <View key={agent.id} style={s.socialRow}><Text style={s.body}>{agent.display_name} · @{agent.handle}</Text><Text style={s.muted}>{agent.status} · {agent.visibility} · {agent.ownership?.role || "owner"}</Text><View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}><Button title="Lihat Passport" secondary disabled={agent.status !== "active" || agent.visibility !== "public"} onPress={() => void loadPassport(agent.handle)}/><Button title={agent.visibility === "public" ? "Jadikan privat" : "Publikasikan"} disabled={busy || agent.status === "archived"} onPress={() => void updateAgent(agent, { visibility: agent.visibility === "public" ? "private" : "public", status: "active" })}/><Button title="Arsipkan" secondary disabled={busy || agent.status === "archived"} onPress={() => void updateAgent(agent, { status: "archived", visibility: "private" })}/><Button title="Kelola Skills & Tools" secondary onPress={() => void loadAgentStudio(agent.id)}/><Button title={runtimeSessionBusy === agent.id ? "Memuat…" : "Buat sesi runtime"} disabled={runtimeSessionBusy !== null} secondary onPress={() => void createRuntimeSession(agent)}/><Button title="Muat sesi & task" disabled={runtimeSessionBusy !== null} secondary onPress={() => void loadRuntimeSessions(agent.id)}/></View>{(runtimeSessions[agent.id] ?? []).map(item => {
+          {agentLoading ? <ActivityIndicator color="#A5B4FC"/> : agents.length ? agents.map(agent => <View key={agent.id} style={s.socialRow}><Text style={s.body}>{agent.display_name} · @{agent.handle}</Text><Text style={s.muted}>{agent.status} · {agent.visibility} · {agent.ownership?.role || "owner"}</Text><View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}><Button title="Lihat Passport" secondary disabled={agent.status !== "active" || agent.visibility !== "public"} onPress={() => void loadPassport(agent.handle)}/><Button title={agent.visibility === "public" ? "Cabut publikasi" : "Publikasikan"} disabled={busy || agent.status === "archived"} onPress={() => void (agent.visibility === "public" ? revokeAgentPublication(agent) : publishAgent(agent))}/><Button title={agent.public_owner_attribution ? "Sembunyikan Human Owner" : "Tampilkan Human Owner"} secondary disabled={busy || agent.visibility !== "public"} onPress={() => void updateAgent(agent, { public_owner_attribution: !agent.public_owner_attribution })}/><Button title="Riwayat identitas" secondary disabled={busy} onPress={() => void loadAgentIdentityVersions(agent)}/><Button title="Arsipkan" secondary disabled={busy || agent.status === "archived"} onPress={() => void updateAgent(agent, { status: "archived", visibility: "private" })}/><Button title="Kelola Skills & Tools" secondary onPress={() => void loadAgentStudio(agent.id)}/>{identityVersionsAgentId === agent.id && <View style={s.socialRow}><Text style={s.kicker}>RIWAYAT IDENTITAS · {agentIdentityVersions[agent.id]?.length ?? 0} VERSI</Text>{(agentIdentityVersions[agent.id] ?? []).map(version => <Text key={version.id} style={s.muted}>v{version.version} · {version.event_type} · {new Date(version.recorded_at).toLocaleString("id-ID")}</Text>)}</View>}<Button title={runtimeSessionBusy === agent.id ? "Memuat…" : "Buat sesi runtime"} disabled={runtimeSessionBusy !== null} secondary onPress={() => void createRuntimeSession(agent)}/><Button title="Muat sesi & task" disabled={runtimeSessionBusy !== null} secondary onPress={() => void loadRuntimeSessions(agent.id)}/></View>{(runtimeSessions[agent.id] ?? []).map(item => {
             const selectedSkill = (runtimeSkills[agent.id] ?? []).find(skill => skill.id === runtimeSkillBySession[item.id]);
             const allowedToolKeys = selectedSkill?.tool_dependencies ?? [];
             const tasks = runtimeTasks[item.id] ?? [];
