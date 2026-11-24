@@ -22,6 +22,7 @@ OWNER = "11111111-1111-4111-8111-111111111111"
 SOURCE_AGENT = "22222222-2222-4222-8222-222222222222"
 TARGET_AGENT = "66666666-6666-4666-8666-666666666666"
 SOURCE_SKILL = "33333333-3333-4333-8333-333333333333"
+PAID_SKILL = "77777777-7777-4777-8777-777777777777"
 
 
 def run(args: list[str], sql: str | None = None, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -196,9 +197,13 @@ values('{SOURCE_SKILL}','{SOURCE_AGENT}','{OWNER}','licensed_source','Licensed S
 update public.agent_skills set description='Source v2' where id='{SOURCE_SKILL}';
 update public.agent_skills set description='Source v3' where id='{SOURCE_SKILL}';
 update public.agent_skills set description='Source v4' where id='{SOURCE_SKILL}';
+insert into public.agent_skills(id,agent_id,created_by,slug,name,description,category,publication_terms,status,version)
+values('{PAID_SKILL}','{SOURCE_AGENT}','{OWNER}','paid_source','Paid Source Skill',
+ 'Paid Skill fixture for fail-closed entitlement checks','research',
+ '{{"license":"owner","requires_purchase":true}}'::jsonb,'draft',1);
 reset role;
 set role service_role;
-update public.agent_skills set status='published' where id='{SOURCE_SKILL}';
+update public.agent_skills set status='published' where id in ('{SOURCE_SKILL}','{PAID_SKILL}');
 reset role;
 do $do$
 begin
@@ -311,32 +316,16 @@ end $do$;
 """)
 
         # Paid licenses cannot be installed without a Billing entitlement.
-        psql(f"""
-set role service_role;
-select set_config('request.jwt.claim.sub','{OWNER}',false);
-select set_config('request.jwt.claim.role','authenticated',false);
-update public.agent_skills set status='draft' where id='{SOURCE_SKILL}';
-update public.agent_skills set publication_terms='{{"license":"owner","requires_purchase":true}}'::jsonb
- where id='{SOURCE_SKILL}';
-reset role;
-set role service_role;
-update public.agent_skills set status='published' where id='{SOURCE_SKILL}';
-reset role;
-""")
         paid = psql(f"""
 set role service_role;
-select set_config('request.jwt.claim.sub','{OWNER}',false);
-select set_config('request.jwt.claim.role','authenticated',false);
-select public.install_agent_skill('{TARGET_AGENT}','{SOURCE_AGENT}','{SOURCE_SKILL}',8,true,'p06-paid-license-denied', '11111111-1111-4111-8111-111111111111');
+select public.install_agent_skill('{TARGET_AGENT}','{SOURCE_AGENT}','{PAID_SKILL}',2,true,'p06-paid-license-denied','{OWNER}');
 """, check=False)
         if paid.returncode == 0 or "SKILL_LICENSE_ENTITLEMENT_REQUIRED" not in paid.stderr:
             raise RuntimeError("Paid Skill installation bypassed the Billing entitlement gate")
 
         denied = psql(f"""
 set role service_role;
-select set_config('request.jwt.claim.sub','{OWNER}',false);
-select set_config('request.jwt.claim.role','authenticated',false);
-select public.install_agent_skill('{TARGET_AGENT}','{SOURCE_AGENT}','{SOURCE_SKILL}',8,false,'p06-license-not-accepted', '11111111-1111-4111-8111-111111111111');
+select public.install_agent_skill('{TARGET_AGENT}','{SOURCE_AGENT}','{PAID_SKILL}',2,false,'p06-license-not-accepted','{OWNER}');
 """, check=False)
         if denied.returncode == 0 or "SKILL_LICENSE_ACCEPTANCE_REQUIRED" not in denied.stderr:
             raise RuntimeError("Skill installation unexpectedly succeeded without explicit license acceptance")
