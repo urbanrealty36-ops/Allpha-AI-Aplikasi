@@ -548,7 +548,7 @@ def test_agent_ownership_transfer_response_and_cancel_use_scoped_rpcs(monkeypatc
 def test_agent_ownership_transfer_and_consent_migration_is_forward_only_and_exportable():
     from pathlib import Path
     migrations=Path(__file__).resolve().parents[1]/"supabase"/"migrations"
-    migration=migrations/"20261124034500_eng_p05_ownership_transfer_retention_and_export.sql"
+    migration=migrations/"20261124032413_eng_p05_ownership_transfer_retention_and_export.sql"
     assert migration.is_file()
     sql=migration.read_text(encoding="utf-8").lower()
     assert "create or replace function public.request_agent_ownership_transfer" in sql
