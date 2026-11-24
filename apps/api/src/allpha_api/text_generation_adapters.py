@@ -90,7 +90,10 @@ class OpenAICompatibleTextGenerationAdapter:
             **({"tools": list(request.tool_definitions), "tool_choice": "auto"} if request.tool_definitions else {}),
         }
         try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(request.timeout_ms / 1000, connect=min(5.0, request.timeout_ms / 1000)), transport=self._transport) as client:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(request.timeout_ms / 1000, connect=min(5.0, request.timeout_ms / 1000)),
+                transport=self._transport, follow_redirects=False, trust_env=False,
+            ) as client:
                 response = await client.post(self._url, headers=headers, json=body)
                 response.raise_for_status()
                 payload = response.json()
