@@ -17,6 +17,7 @@ OWNERSHIP_TRANSFER_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123173919_e
 GOVERNANCE_RETRY_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123182248_eng_p03_governance_policy_gate_and_retry.sql"
 FK_ACTION_GATE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124010741_eng_p03_fk_action_integrity_gate.sql"
 EXPORT_DELETION_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124015229_eng_p03_account_export_deletion_lifecycle.sql"
+DELETION_RPC_AMBIGUITY_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124020721_eng_p03_account_deletion_rpc_ambiguity_fix.sql"
 MIGRATION=ROOT/"apps/api/supabase/migrations/20261123192200_eng_p03_deletion_legal_hold_governance_worker.sql"
 SOURCE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123153243_eng_p03_account_deletion_specialized_source_handlers.sql"
 OWNER_SCOPE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261123153456_eng_p03_agent_skill_deletion_owner_scope.sql"
@@ -388,6 +389,7 @@ insert into public.account_data_retention_policies(
             RETENTION_PRECISION_MIGRATION,FK_ACTION_GATE_MIGRATION,EXPORT_DELETION_MIGRATION,
         ):
             psql(migration.read_text(encoding="utf-8"))
+        psql(DELETION_RPC_AMBIGUITY_MIGRATION.read_text(encoding="utf-8"))
         psql(f"""
 insert into public.profiles(id,account_status) values ('{D}','active');
 set request.jwt.claim.role='service_role';
