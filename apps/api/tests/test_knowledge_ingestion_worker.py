@@ -100,6 +100,37 @@ def test_document_worker_rejects_source_owner_mismatch_before_policy_or_storage(
     assert store.batches == [] and store.completed == []
 
 
+@pytest.mark.parametrize(
+    ("field", "value", "error_code"),
+    [
+        ("size_bytes", 15 * 1024 * 1024 + 1, "KNOWLEDGE_SOURCE_SIZE_MISMATCH"),
+        ("size_bytes", True, "KNOWLEDGE_SOURCE_SIZE_MISMATCH"),
+        ("sha256", "not-a-sha256-digest", "KNOWLEDGE_SOURCE_SHA256_MISMATCH"),
+    ],
+)
+def test_document_worker_rejects_invalid_integrity_metadata_before_download(field, value, error_code):
+    store = FakeStore()
+    original_load_source = store.load_source
+
+    async def invalid_metadata_source(job):
+        source = await original_load_source(job)
+        source[field] = value
+        return source
+
+    store.load_source = invalid_metadata_source
+    worker = KnowledgeDocumentWorker(
+        store=store, storage=FakeStorage(), policy_resolver=FakePolicyResolver(),
+    )
+
+    async def forbidden_download(path):
+        raise AssertionError("invalid source metadata must be rejected before Storage access")
+
+    worker.storage.download = forbidden_download
+    assert asyncio.run(worker.process_once()) is True
+    assert store.failures == [(error_code, "document_parse_failed", False, 0)]
+    assert store.batches == [] and store.completed == []
+
+
 def test_document_worker_rejects_storage_hash_mismatch_before_parser(monkeypatch):
     store=FakeStore()
     async def clean_scan(*args):raise AssertionError("malware scan must not run after hash mismatch")
