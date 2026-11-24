@@ -48,7 +48,7 @@ class KnowledgePolicySnapshot:
 class KnowledgePolicySnapshotProvider(Protocol):
     async def resolve(
         self, *, owner_id: str, agent_id: str, audience: str,
-        tenant_id: str | None, session_id: str | None,
+        tenant_id: str | None, session_id: str | None, purpose: str,
     ) -> KnowledgePolicySnapshot | None:
         """Resolve authoritative, current policy/consent/grant facts from canonical storage."""
         ...
@@ -77,9 +77,12 @@ class VersionedKnowledgePolicyResolver:
     async def resolve(
         self, *, owner_id: str, agent_id: str, audience: str = "owner_private",
         tenant_id: str | None = None, session_id: str | None = None,
+        purpose: str = RETRIEVAL_PURPOSE,
     ) -> ResolvedKnowledgePolicy:
         if not isinstance(audience, str) or audience not in KNOWLEDGE_AUDIENCES:
             raise KnowledgePolicyUnavailable("knowledge retrieval audience is invalid")
+        if not isinstance(purpose, str) or not purpose.strip() or len(purpose) > 128:
+            raise KnowledgePolicyUnavailable("knowledge retrieval purpose is invalid")
 
         def canonical_scope_id(value: str | None, label: str) -> str | None:
             if value is None:
@@ -105,7 +108,7 @@ class VersionedKnowledgePolicyResolver:
         try:
             snapshot = await self._provider.resolve(
                 owner_id=owner_id, agent_id=agent_id, audience=audience,
-                tenant_id=tenant_id, session_id=session_id,
+                tenant_id=tenant_id, session_id=session_id, purpose=purpose,
             )
         except Exception as exc:
             raise KnowledgePolicyUnavailable("canonical knowledge policy provider failed") from exc
@@ -148,7 +151,7 @@ class VersionedKnowledgePolicyResolver:
         if (
             not isinstance(snapshot.allowed_purposes, (tuple, list))
             or any(not isinstance(value, str) for value in snapshot.allowed_purposes)
-            or RETRIEVAL_PURPOSE not in snapshot.allowed_purposes
+            or purpose not in snapshot.allowed_purposes
         ):
             raise KnowledgePolicyUnavailable("retrieval purpose is not permitted by policy")
         if (
@@ -188,6 +191,7 @@ class VersionedKnowledgePolicyResolver:
             decision_reference=snapshot.decision_reference,
             tenant_id=tenant_id,
             session_id=session_id,
+            purpose=purpose,
         )
 
 
@@ -205,12 +209,13 @@ class VersionedKnowledgeRetrievalPolicy:
     async def resolve_context(
         self, *, owner_id: str, agent_id: str, audience: str | None = None,
         tenant_id: str | None = None, session_id: str | None = None,
+        purpose: str = RETRIEVAL_PURPOSE,
     ) -> ResolvedKnowledgePolicy:
         try:
             return await self._resolver.resolve(
                 owner_id=owner_id, agent_id=agent_id,
                 audience=self._audience if audience is None else audience,
-                tenant_id=tenant_id, session_id=session_id,
+                tenant_id=tenant_id, session_id=session_id, purpose=purpose,
             )
         except KnowledgePolicyDenied as exc:
             from allpha_api.knowledge_retrieval import KnowledgeAccessDenied

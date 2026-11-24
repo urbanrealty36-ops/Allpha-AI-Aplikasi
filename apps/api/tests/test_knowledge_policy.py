@@ -39,8 +39,8 @@ class Provider:
         self.value = value
         self.calls = []
 
-    async def resolve(self, *, owner_id, agent_id, audience, tenant_id, session_id):
-        self.calls.append((owner_id, agent_id, audience, tenant_id, session_id))
+    async def resolve(self, *, owner_id, agent_id, audience, tenant_id, session_id, purpose):
+        self.calls.append((owner_id, agent_id, audience, tenant_id, session_id, purpose))
         return self.value
 
 
@@ -56,7 +56,7 @@ def test_versioned_policy_resolves_current_owner_agent_consent_and_sensitivities
         assert resolved.allowed_source_ids == ("00000000-0000-0000-0000-0000000000c9",)
         assert resolved.grant_version == "knowledge-grant.v1"
         assert resolved.audience == "owner_private"
-        assert provider.calls == [("owner-a", "agent-a", "owner_private", None, None)]
+        assert provider.calls == [("owner-a", "agent-a", "owner_private", None, None, "agent_context_retrieval")]
     asyncio.run(scenario())
 
 
@@ -98,7 +98,7 @@ def test_versioned_policy_fails_closed_when_snapshot_is_missing():
 
 def test_versioned_policy_fails_closed_when_provider_raises():
     class BrokenProvider:
-        async def resolve(self, *, owner_id, agent_id, audience, tenant_id, session_id):
+        async def resolve(self, *, owner_id, agent_id, audience, tenant_id, session_id, purpose):
             raise TimeoutError("synthetic test timeout")
 
     async def scenario():
@@ -245,7 +245,7 @@ def test_tenant_shared_policy_requires_and_binds_trusted_tenant_scope():
         )
         assert resolved.tenant_id == tenant_id
         assert resolved.session_id is None
-        assert provider.calls[-1] == ("owner-a", "agent-a", "tenant_shared", tenant_id, None)
+        assert provider.calls[-1] == ("owner-a", "agent-a", "tenant_shared", tenant_id, None, "agent_context_retrieval")
     asyncio.run(scenario())
 
 
@@ -295,6 +295,34 @@ def test_owner_private_policy_rejects_caller_supplied_tenant_or_session_scope():
             await VersionedKnowledgePolicyResolver(provider).resolve(
                 owner_id="owner-a", agent_id="agent-a",
                 tenant_id="00000000-0000-0000-0000-0000000000aa",
+            )
+        assert provider.calls == []
+    asyncio.run(scenario())
+
+
+def test_policy_provider_receives_exact_requested_purpose_and_enforces_it():
+    async def scenario():
+        provider = Provider(snapshot(allowed_purposes=("agent_context_retrieval", "knowledge_summarization")))
+        resolver = VersionedKnowledgePolicyResolver(provider)
+        resolved = await resolver.resolve(
+            owner_id="owner-a", agent_id="agent-a", purpose="knowledge_summarization"
+        )
+        assert resolved.purpose == "knowledge_summarization"
+        assert provider.calls[-1][-1] == "knowledge_summarization"
+        with pytest.raises(KnowledgePolicyUnavailable):
+            await resolver.resolve(
+                owner_id="owner-a", agent_id="agent-a", purpose="knowledge_export"
+            )
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("purpose", ["", " " * 129, None])
+def test_policy_rejects_invalid_purpose_before_provider_lookup(purpose):
+    async def scenario():
+        provider = Provider(snapshot())
+        with pytest.raises(KnowledgePolicyUnavailable):
+            await VersionedKnowledgePolicyResolver(provider).resolve(
+                owner_id="owner-a", agent_id="agent-a", purpose=purpose
             )
         assert provider.calls == []
     asyncio.run(scenario())
