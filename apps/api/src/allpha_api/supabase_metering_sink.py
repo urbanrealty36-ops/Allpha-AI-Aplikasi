@@ -53,6 +53,7 @@ class SupabaseMeteringSink(IdempotentMeteringSink):
                 pricing_version=record.pricing_version,
                 completed_at=record.completed_at,
                 billing_account_id=record.billing_account_id,
+                capability="text_generation",
             )
         payload: dict[str, Any] = asdict(record)
         payload["payload_fingerprint"] = record.payload_fingerprint()
