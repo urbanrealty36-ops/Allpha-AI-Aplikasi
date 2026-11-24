@@ -37,6 +37,10 @@ jobs:
         run: |
           sh -n apps/api/docker/shared-worker-entrypoint.sh
           docker build -f apps/api/Dockerfile.agent-runtime-worker -t allpha-shared-worker:ci apps/api
+      - name: Build gated Content Image worker image
+        run: docker build -f apps/api/Dockerfile.media-worker -t allpha-content-media-worker:ci apps/api
+      - name: Build gated Content Transcode worker image
+        run: docker build -f apps/api/Dockerfile.transcode-worker -t allpha-content-transcode-worker:ci apps/api
       - name: Verify ENG-P08 Memory consent, privacy, retention, owner pin/expiry and retrieval on disposable PostgreSQL 17
         run: python apps/api/scripts/verify_eng_p08_memory_coordinator.py
       - name: Verify ENG-P09 model policy approval and moderation governance on disposable PostgreSQL 17
