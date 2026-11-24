@@ -83,9 +83,9 @@ def knowledge_hit(content="Owner-approved document excerpt."):
     return RetrievalHit(
         owner_id="owner-a",
         agent_id="agent-a",
-        source_id="source-a",
+        source_id="11111111-1111-4111-8111-111111111111",
         source_version=4,
-        chunk_id="chunk-a",
+        chunk_id="22222222-2222-4222-8222-222222222222",
         content=content,
         content_sha256=hashlib.sha256(content.encode("utf-8")).hexdigest(),
         source_location={"kind": "page", "index": 3},
@@ -100,18 +100,18 @@ def test_knowledge_context_snapshot_keeps_prompt_content_separate_from_citation_
     context, references, digest = _knowledge_context_snapshot([hit])
 
     assert context == [{
-        "source_id": "source-a",
+        "source_id": "11111111-1111-4111-8111-111111111111",
         "source_version": 4,
-        "chunk_id": "chunk-a",
+        "chunk_id": "22222222-2222-4222-8222-222222222222",
         "source_location": {"kind": "page", "index": 3},
         "sensitivity": "internal",
         "content_sha256": hit.content_sha256,
         "retrieved_content_sha256": hit.content_sha256,
         "content": hit.content,
     }]
-    assert references[0]["source_id"] == "source-a"
+    assert references[0]["source_id"] == "11111111-1111-4111-8111-111111111111"
     assert references[0]["source_version"] == 4
-    assert references[0]["chunk_id"] == "chunk-a"
+    assert references[0]["chunk_id"] == "22222222-2222-4222-8222-222222222222"
     assert "content" not in references[0]
     assert len(digest) == 64
 
@@ -169,7 +169,7 @@ def test_agent_runtime_retrieves_owner_authorized_knowledge_and_keeps_provenance
         )
         assert state == "available"
         assert context[0]["content"] == "Owner-approved document excerpt."
-        assert refs[0]["source_id"] == "source-a"
+        assert refs[0]["source_id"] == "11111111-1111-4111-8111-111111111111"
         assert "content" not in refs[0]
         assert len(digest) == 64
 
