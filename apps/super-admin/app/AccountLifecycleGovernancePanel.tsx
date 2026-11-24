@@ -31,6 +31,7 @@ type DeletionRequest = {
   id: string; subject_ref: string; status: string; policy_version?: string | null;
   requested_at: string; scheduled_for?: string | null; error_code?: string | null;
   export_job_id?: string | null;
+  request_metadata?: Record<string, unknown> | null;
 };
 
 export default function AccountLifecycleGovernancePanel({ apiBase, getAccessToken }: Props) {
@@ -269,7 +270,7 @@ export default function AccountLifecycleGovernancePanel({ apiBase, getAccessToke
               <td><button disabled={busy || !draft || draft.reason.trim().length < 8 || !draft.policy_version.trim()} onClick={() => void saveSourcePolicy(item)}>Simpan</button></td>
             </tr>;
           })}
-          {!sourcePolicies.length && <tr><td colSpan={7} className="emptyCell">{loading ? "Memuat registry sumber…" : "Registry sumber belum tersedia."}</td></tr>}
+          {!sourcePolicies.length && <tr><td colSpan={8} className="emptyCell">{loading ? "Memuat registry sumber…" : "Registry sumber belum tersedia."}</td></tr>}
         </tbody></table></div>
       </section>
 
@@ -326,11 +327,11 @@ export default function AccountLifecycleGovernancePanel({ apiBase, getAccessToke
       </section>
 
       <section className="panel">
-        <header className="panelHead"><div><h3>Permintaan penghapusan akun</h3><p>Daftar permintaan dan status fail-closed. Penghapusan menunggu ekspor selesai dan kebijakan account_export_artifact aktif dengan durasi eksplisit; tidak ada durasi default.</p></div>
+        <header className="panelHead"><div><h3>Permintaan penghapusan akun</h3><p>Ekspor yang terkait penghapusan tetap tersedia sampai pengguna mengonfirmasi unduhan. Setelah konfirmasi, executor menangani Storage cleanup; kebijakan account_export_artifact bersifat opsional untuk expiry ekspor biasa.</p></div>
           <select aria-label="Filter status penghapusan" value={statusFilter} onChange={event => setStatusFilter(event.target.value)}><option value="">Semua status</option><option value="awaiting_policy">awaiting_policy</option><option value="scheduled">scheduled</option><option value="processing">processing</option><option value="blocked_legal_hold">blocked_legal_hold</option><option value="blocked_dependency">blocked_dependency</option><option value="completed">completed</option><option value="cancelled">cancelled</option><option value="failed">failed</option></select>
         </header>
-        <div className="tableWrap"><table><thead><tr><th>Request</th><th>Subject</th><th>Status</th><th>Export job</th><th>Diminta</th><th>Terjadwal</th><th>Error</th></tr></thead><tbody>
-          {requests.map(item => <tr key={item.id}><td><code>{item.id}</code></td><td><code>{item.subject_ref}</code></td><td><span className="pill warning">{item.status}</span></td><td>{item.export_job_id ? <code>{item.export_job_id}</code> : "—"}</td><td>{new Date(item.requested_at).toLocaleString("id-ID")}</td><td>{item.scheduled_for ? new Date(item.scheduled_for).toLocaleString("id-ID") : "—"}</td><td>{item.error_code || "—"}</td></tr>)}
+        <div className="tableWrap"><table><thead><tr><th>Request</th><th>Subject</th><th>Status</th><th>Export job</th><th>Konfirmasi unduhan</th><th>Diminta</th><th>Terjadwal</th><th>Error</th></tr></thead><tbody>
+          {requests.map(item => <tr key={item.id}><td><code>{item.id}</code></td><td><code>{item.subject_ref}</code></td><td><span className="pill warning">{item.status}</span></td><td>{item.export_job_id ? <code>{item.export_job_id}</code> : "—"}</td><td>{item.request_metadata?.export_download_confirmed_at ? "Dikonfirmasi" : item.export_job_id ? "Menunggu pengguna" : "—"}</td><td>{new Date(item.requested_at).toLocaleString("id-ID")}</td><td>{item.scheduled_for ? new Date(item.scheduled_for).toLocaleString("id-ID") : "—"}</td><td>{item.error_code || "—"}</td></tr>)}
           {!requests.length && <tr><td colSpan={7} className="emptyCell">{loading ? "Memuat permintaan…" : "Tidak ada permintaan pada filter ini."}</td></tr>}
         </tbody></table></div>
       </section>
