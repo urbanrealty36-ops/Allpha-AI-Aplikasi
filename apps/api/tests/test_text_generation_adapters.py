@@ -123,7 +123,7 @@ def test_router_factory_fails_closed_without_deployment_configuration(monkeypatc
         "ALLPHA_TEXTGEN_POLICY_VERSION", "ALLPHA_TEXTGEN_PRICING_VERSION",
         "ALLPHA_TEXTGEN_COST_UNIT", "ALLPHA_TEXTGEN_INPUT_MICRO_COST_PER_TOKEN",
         "ALLPHA_TEXTGEN_OUTPUT_MICRO_COST_PER_TOKEN", "ALLPHA_TEXTGEN_MAX_COST_MICROUNITS",
-        "ALLPHA_TEXTGEN_POLICY_APPROVED", "SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY",
+        "SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY",
     ):
         monkeypatch.delenv(key, raising=False)
     assert build_text_generation_router_from_environment() is None
@@ -137,6 +137,8 @@ def test_active_model_cost_verifier_accepts_only_matching_effective_active_tarif
         seen["auth"] = req.headers.get("Authorization")
         seen["params"] = dict(req.url.params)
         return httpx.Response(200, json=[{
+            "id": "policy-config-1",
+            "policy_version": "v1",
             "provider_id": "provider-test",
             "model_id": "model-test",
             "model_version": "model-version-1",
@@ -145,7 +147,13 @@ def test_active_model_cost_verifier_accepts_only_matching_effective_active_tarif
             "input_micro_cost_per_token": 3,
             "output_micro_cost_per_token": 5,
             "max_cost_microunits": 100,
+            "max_prompt_bytes": 16384,
+            "max_output_tokens": 1024,
+            "max_latency_ms": 30000,
             "policy_approved": True,
+            "policy_approval_reference": "MODEL-POLICY-APPROVAL-01",
+            "policy_approved_by": "11111111-1111-4111-8111-111111111111",
+            "policy_approved_at": "2026-10-16T00:00:00+00:00",
             "status": "active",
             "effective_at": "2026-10-16T00:00:00+00:00",
         }])
@@ -156,6 +164,8 @@ def test_active_model_cost_verifier_accepts_only_matching_effective_active_tarif
         model_version="model-version-1", pricing_version="price-v1",
         cost_unit="USD", input_cost_microunits_per_token=3,
         output_cost_microunits_per_token=5, max_cost_microunits=100,
+        policy_id="policy-config-1",policy_version="v1",
+        max_prompt_bytes=16384,max_output_tokens=1024,max_latency_ms=30000,
         transport=httpx.MockTransport(handler),
     )
     asyncio.run(verifier.verify())
@@ -172,6 +182,8 @@ def test_active_model_cost_verifier_fails_closed_without_an_active_tariff():
         model_version="model-version-1", pricing_version="price-v1",
         cost_unit="USD", input_cost_microunits_per_token=3,
         output_cost_microunits_per_token=5, max_cost_microunits=100,
+        policy_id="policy-config-1",policy_version="v1",
+        max_prompt_bytes=16384,max_output_tokens=1024,max_latency_ms=30000,
         transport=httpx.MockTransport(lambda req: httpx.Response(200, json=[])),
     )
     try:
@@ -182,36 +194,31 @@ def test_active_model_cost_verifier_fails_closed_without_an_active_tariff():
         raise AssertionError("missing active tariff must block runtime")
 
 
-def test_approved_runtime_policy_verifier_requires_exact_approved_registry_row():
-    import pytest
-    from allpha_api.text_generation_adapters import SupabaseApprovedRuntimePolicyVerifier
-
-    observed = {}
-
-    def handler(req: httpx.Request) -> httpx.Response:
-        observed["path"] = req.url.path
-        observed["params"] = dict(req.url.params)
-        return httpx.Response(200, json=[{
-            "id": "policy-1",
-            "policy_version": "v1",
-            "status": "approved",
-            "policy_digest": "a" * 64,
-            "approved_at": "2026-10-18T05:50:56Z",
-        }])
-
-    verifier = SupabaseApprovedRuntimePolicyVerifier(
-        supabase_url="https://db.invalid",
-        service_role_key="service-test",
-        policy_id="policy-1",
-        policy_version="v1",
-        transport=httpx.MockTransport(handler),
+def test_active_model_cost_verifier_requires_auditable_policy_approval_evidence():
+    verifier = SupabaseActiveModelCostVerifier(
+        supabase_url="https://db.invalid", service_role_key="service-test",
+        provider_id="provider-test", model_id="model-test",
+        model_version="model-version-1", pricing_version="price-v1",
+        cost_unit="USD", input_cost_microunits_per_token=3,
+        output_cost_microunits_per_token=5, max_cost_microunits=100,
+        policy_id="policy-config-1",policy_version="v1",
+        max_prompt_bytes=16384,max_output_tokens=1024,max_latency_ms=30000,
+        transport=httpx.MockTransport(lambda req: httpx.Response(200,json=[{
+            "id":"policy-config-1","policy_version":"v1","provider_id":"provider-test",
+            "model_id":"model-test","model_version":"model-version-1","pricing_version":"price-v1",
+            "cost_unit":"USD","input_micro_cost_per_token":3,"output_micro_cost_per_token":5,
+            "max_cost_microunits":100,"max_prompt_bytes":16384,"max_output_tokens":1024,
+            "max_latency_ms":30000,"policy_approved":True,"policy_approval_reference":"",
+            "policy_approved_by":None,"policy_approved_at":None,"status":"active",
+            "effective_at":"2026-10-16T00:00:00+00:00"
+        }])),
     )
-    asyncio.run(verifier.verify())
-    assert observed["path"] == "/rest/v1/agent_runtime_policies"
-    assert observed["params"]["id"] == "eq.policy-1"
-    assert observed["params"]["policy_version"] == "eq.v1"
-    assert observed["params"]["status"] == "eq.approved"
-
+    try:
+        asyncio.run(verifier.verify())
+    except RuntimeError as exc:
+        assert "approval evidence is incomplete" in str(exc)
+    else:
+        raise AssertionError("missing model policy approval evidence must block runtime")
 
 def test_approved_runtime_policy_verifier_fails_closed_when_policy_not_approved():
     from allpha_api.text_generation_adapters import SupabaseApprovedRuntimePolicyVerifier
