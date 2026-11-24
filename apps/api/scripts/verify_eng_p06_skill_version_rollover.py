@@ -24,14 +24,16 @@ def main():
     try:
         time.sleep(1)
         ready = False
-        for _ in range(60):
+        ready_streak = 0
+        for _ in range(90):
             probe = run(["docker","exec",NAME,"psql","-X","-A","-t","-U","postgres","-d","postgres","-c","select 1"],check=False)
             if probe.returncode == 0:
-                time.sleep(1)
-                stable = run(["docker","exec",NAME,"psql","-X","-A","-t","-U","postgres","-d","postgres","-c","select 1"],check=False)
-                if stable.returncode == 0:
+                ready_streak += 1
+                if ready_streak >= 3:
                     ready = True
                     break
+            else:
+                ready_streak = 0
             time.sleep(1)
         if not ready: raise RuntimeError("PostgreSQL 17 did not reach stable SQL readiness")
         psql("""
