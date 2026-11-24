@@ -6,6 +6,7 @@ import subprocess, sys, time, uuid
 ROOT = Path(__file__).resolve().parents[3]
 MIGRATION = ROOT / "apps/api/supabase/migrations/20261122154257_eng_p06_skill_version_rollover_runtime_pinning.sql"
 INSTALLATION_MIGRATION = ROOT / "apps/api/supabase/migrations/20261124034103_eng_p06_skill_installation_licensing_runtime_gate.sql"
+EXPIRY_MIGRATION = ROOT / "apps/api/supabase/migrations/20261124034604_eng_p06_skill_license_expiry_lifecycle.sql"
 NAME = "allpha-p06-" + uuid.uuid4().hex[:8]
 OWNER = "11111111-1111-4111-8111-111111111111"
 AGENT = "22222222-2222-4222-8222-222222222222"
@@ -104,6 +105,7 @@ grant select,insert,update,delete on public.agent_skill_versions to service_role
 """)
         psql(MIGRATION.read_text(encoding="utf-8"))
         psql(INSTALLATION_MIGRATION.read_text(encoding="utf-8"))
+        psql(EXPIRY_MIGRATION.read_text(encoding="utf-8"))
         psql("""
 insert into auth.users(id) values ('11111111-1111-4111-8111-111111111111');
 insert into public.ai_agents(id,visibility,status) values
@@ -250,6 +252,34 @@ begin
  if not exists(select 1 from public.account_deletion_source_policies where source_key='agent_skill_installations' and active and deletion_action='preserve') then raise exception 'installation license audit not protected by P03'; end if;
 end $;
 """)
+        # Re-install after revocation, then materialize an elapsed entitlement.
+        psql("""
+set role authenticated;
+select set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',false);
+select set_config('request.jwt.claim.role','authenticated',false);
+select public.install_agent_skill(
+ '66666666-6666-4666-8666-666666666666',
+ '22222222-2222-4222-8222-222222222222',
+ '33333333-3333-4333-8333-333333333333',
+ 5,true,'p06-install-key-0002'
+);
+reset role;
+update public.agent_skill_installations set license_expires_at=clock_timestamp()-interval '1 second'
+ where agent_id='66666666-6666-4666-8666-666666666666' and status='active';
+""")
+        psql("""
+set role authenticated;
+select set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',false);
+select set_config('request.jwt.claim.role','authenticated',false);
+select public.expire_agent_skill_installations('66666666-6666-4666-8666-666666666666');
+reset role;
+do $
+begin
+ if not exists(select 1 from public.agent_skill_installations where agent_id='66666666-6666-4666-8666-666666666666' and status='expired' and revocation_reason='license_expired') then raise exception 'elapsed Skill license was not marked expired'; end if;
+ if (select count(*) from public.agent_skill_installation_events where event_type in ('installed','revoked','expired'))<>4 then raise exception 'install/revoke/expiry audit trail incomplete'; end if;
+ if exists(select 1 from public.agent_skill_publications where id=(select installed_skill_id from public.agent_skill_installations where agent_id='66666666-6666-4666-8666-666666666666' and status='expired')) then raise exception 'expired installation remains visible in public Passport'; end if;
+end $;
+""")
         denied = psql("""
 set role authenticated;
 select set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',false);
@@ -262,7 +292,7 @@ select public.install_agent_skill(
 );
 """,check=False)
         if denied.returncode == 0: raise RuntimeError("Skill installation unexpectedly succeeded without license acceptance")
-        print("PASS: ENG-P06 immutable Skill publication, version rollover, explicit license acceptance, idempotent installation, draft clone, public Passport visibility, revocation, runtime gate source state and P03 export/retention integration.")
+        print("PASS: ENG-P06 immutable Skill publication, version rollover, explicit license acceptance, idempotent installation, draft clone, public Passport visibility, revocation, expiry events, runtime gate source state and P03 export/retention integration.")
     finally:
         run(["docker","rm","--force",NAME],check=False)
 
