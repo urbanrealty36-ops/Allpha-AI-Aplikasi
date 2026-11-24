@@ -83,6 +83,14 @@ select public.agent_memory_transition('set_policy','{OWNER}','{AGENT}',null,
  jsonb_build_object('memory_type','long_term','enabled',true,'consent_version','allpha.memory.v1',
   'allowed_purposes',jsonb_build_array('agent_generation_context','agent_runtime_context'),
   'allowed_sensitivities',jsonb_build_array('public','internal'),'retention_days',30));
+select public.agent_memory_transition('set_policy','{OWNER}','{AGENT}',null,
+ jsonb_build_object('memory_type','long_term','enabled',true,'consent_version','allpha.memory.v1',
+  'allowed_purposes',jsonb_build_array('agent_generation_context','agent_runtime_context'),
+  'allowed_sensitivities',jsonb_build_array('public','internal'),'retention_days',30));
+select public.agent_memory_transition('set_policy','{OWNER}','{AGENT}',null,
+ jsonb_build_object('memory_type','long_term','enabled',true,'consent_version','allpha.memory.v1',
+  'allowed_purposes',jsonb_build_array('agent_generation_context','agent_runtime_context'),
+  'allowed_sensitivities',jsonb_build_array('public','internal'),'retention_days',31));
 select public.agent_memory_transition('create_proposal','{OWNER}','{AGENT}',null,
  jsonb_build_object('memory_type','long_term','purpose','agent_generation_context','classification','internal',
   'content','{CONTENT}','content_sha256',encode(extensions.digest('{CONTENT}','sha256'),'hex'),
@@ -97,6 +105,9 @@ declare v_item uuid; v_policy uuid;
 begin
  select id,policy_id into v_item,v_policy from public.agent_memory_items where owner_user_id='{OWNER}' and agent_id='{AGENT}' limit 1;
  if v_item is null or v_policy is null then raise exception 'Memory proposal was not persisted'; end if;
+ if not exists(select 1 from public.agent_memory_policies where id=v_policy and policy_version=2 and retention_days=31) then
+  raise exception 'unchanged Memory policy caused version churn or changed retention was not versioned';
+ end if;
  if (select status from public.agent_memory_items where id=v_item)<>'pending' then raise exception 'new Memory must require owner approval'; end if;
  if not exists(select 1 from private.account_export_sources where source_key='agent_memory_items' and enabled) then raise exception 'Memory items missing from P03 export registry'; end if;
  if not exists(select 1 from public.account_deletion_source_policies where source_key='agent_memory_events' and active and deletion_action='preserve') then raise exception 'Memory event audit not preserved by P03'; end if;
