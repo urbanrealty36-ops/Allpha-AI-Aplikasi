@@ -138,4 +138,6 @@ def test_knowledge_document_scanner_uses_same_socket_config_as_readiness_probe()
     ).read_text(encoding="utf-8")
     assert '"clamdscan","--config-file=/run/clamav/clamdscan.conf","--no-summary"' in source
     assert "--config-file=/run/clamav/clamdscan.conf --ping=1" in entrypoint
+    assert "timeout 3s gosu worker clamdscan" in entrypoint
+    assert "seq 1 30" in entrypoint
     assert '"--fdpass"' not in source
