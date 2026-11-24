@@ -17,7 +17,8 @@ def policy_payload(**overrides):
         "policy_version": "knowledge-policy.v1", "owner_id": OWNER, "agent_id": AGENT,
         "allowed_sensitivities": ["internal", "confidential"], "allowed_source_ids": [SOURCE],
         "audience": "owner_private", "grant_version": "grant.v1", "decision_reference": "decision-123",
-        "knowledge_consent_granted": True, "consent_version": "consent.v1", "consent_revoked": False,
+        "knowledge_consent_granted": True, "consent_version": "consent.v1",
+        "consent_expires_at": None, "consent_revoked": False, "grant_expires_at": None,
         "allowed_purposes": ["knowledge_ingestion", "agent_context_retrieval"], "grants_active": True,
         "resolved_at_version": "snapshot-123", "tenant_id": None, "session_id": None,
     }
@@ -61,6 +62,8 @@ def test_provider_posts_trusted_scope_and_returns_typed_snapshot():
     policy_payload(allowed_purposes=None),
     policy_payload(knowledge_consent_granted="true"),
     policy_payload(consent_revoked=0),
+    policy_payload(consent_expires_at="2026-11-24T12:00:00"),
+    policy_payload(grant_expires_at=42),
 ])
 def test_provider_rejects_malformed_or_cross_scope_receipts(payload):
     async def handler(_request):
@@ -118,3 +121,23 @@ def test_provider_factory_requires_server_credentials(monkeypatch):
     monkeypatch.delenv("SUPABASE_SERVICE_ROLE_KEY", raising=False)
     with pytest.raises(KnowledgePolicyUnavailable):
         build_provider()
+
+
+def test_provider_preserves_timezone_aware_expiry_timestamps():
+    async def handler(_request):
+        return httpx.Response(200, json=policy_payload(
+            consent_expires_at="2026-12-01T10:00:00+07:00",
+            grant_expires_at="2026-12-02T10:00:00Z",
+        ))
+    provider = SupabaseKnowledgePolicySnapshotProvider(
+        supabase_url="https://project.supabase.co", service_role_key="server-only-test-key",
+        transport=httpx.MockTransport(handler),
+    )
+    async def scenario():
+        snapshot = await provider.resolve(
+            owner_id=OWNER, agent_id=AGENT, audience="owner_private",
+            tenant_id=None, session_id=None, purpose="knowledge_ingestion",
+        )
+        assert snapshot.consent_expires_at == "2026-12-01T10:00:00+07:00"
+        assert snapshot.grant_expires_at == "2026-12-02T10:00:00+00:00"
+    asyncio.run(scenario())
