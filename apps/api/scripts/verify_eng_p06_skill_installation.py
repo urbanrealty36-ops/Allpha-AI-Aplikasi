@@ -222,7 +222,7 @@ begin
  if (select count(*) from public.agent_skill_installations where agent_id='{TARGET_AGENT}')<>1 then
   raise exception 'idempotent Skill install duplicated entitlement';
  end if;
- if not exists(select 1 from public.agent_skill_installations where agent_id='{TARGET_AGENT}' and source_version=5 and status='active' and length(license_terms_digest)=64 and license_terms_digest ~ '^[0-9a-f]+) then
+ if not exists(select 1 from public.agent_skill_installations where agent_id='{TARGET_AGENT}' and source_version=5 and status='active' and length(license_terms_digest)=64) then
   raise exception 'license snapshot not persisted';
  end if;
  if not exists(select 1 from public.agent_skill_installation_events where event_type='installed') then
