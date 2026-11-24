@@ -811,3 +811,100 @@ def test_model_execution_policy_approval_requires_high_risk_scope(monkeypatch):
         assert response.json()["error"]["code"]=="OPERATOR_SCOPE_REQUIRED"
     finally:
         app.dependency_overrides.clear()
+
+
+def test_model_router_status_is_safe_and_reports_missing_provider_configuration(monkeypatch):
+    import allpha_api.model_costs_api as model_costs
+    async def fake_user_db(method,path,token,**kwargs):
+        return [{"id":"grant-1","user_id":"operator","scopes":["platform:operations.read"],"status":"active","expires_at":None}]
+    async def fake_audit(request,**kwargs):
+        return None
+    monkeypatch.setattr(security,"user_db_request",fake_user_db)
+    monkeypatch.setattr(security,"write_operator_audit",fake_audit)
+    monkeypatch.setattr(model_costs,"write_operator_audit",fake_audit)
+    previous=getattr(app.state,"text_generation_router",None)
+    app.state.text_generation_router=None
+    install_auth("operator")
+    try:
+        response=client.get("/v1/admin/model-costs/runtime-status")
+        assert response.status_code==200
+        body=response.json()
+        assert body["configured"] is False
+        assert body["ready"] is False
+        assert "ALLPHA_TEXTGEN_API_KEY" in body["missing_configuration"]
+    finally:
+        app.state.text_generation_router=previous
+        app.dependency_overrides.clear()
+
+
+def test_manual_review_moderation_policy_can_be_created_and_approved_with_high_risk_scope(monkeypatch):
+    import allpha_api.model_costs_api as model_costs
+    calls=[]
+    audits=[]
+    policy={"policy_version":"manual-review-v1","approval_reference":"MODERATION-REQUEST-2026-01",
+            "configuration":{"mode":"manual_review_only","manual_review_only":True},
+            "status":"draft","effective_at":"2026-11-24T00:00:00+00:00","expires_at":None,"approved_by":None}
+    async def fake_user_db(method,path,token,**kwargs):
+        return [{"id":"grant-1","user_id":"operator","scopes":["platform:capabilities.review","platform:capabilities.review.high_risk"],"status":"active","expires_at":None}]
+    async def fake_privileged(method,table,**kwargs):
+        calls.append((method,table,kwargs))
+        if method=="POST":
+            return [dict(policy)]
+        if method=="GET":
+            return [dict(policy)]
+        if method=="PATCH":
+            policy.update(kwargs["body"])
+            return [dict(policy)]
+        raise AssertionError(method)
+    async def fake_audit(request,**kwargs):
+        audits.append(kwargs)
+    monkeypatch.setattr(security,"user_db_request",fake_user_db)
+    monkeypatch.setattr(security,"write_operator_audit",fake_audit)
+    monkeypatch.setattr(model_costs,"privileged_rest_request",fake_privileged)
+    monkeypatch.setattr(model_costs,"write_operator_audit",fake_audit)
+    install_auth("operator")
+    try:
+        created=client.post("/v1/admin/model-costs/moderation-policies",json={
+            "policy_version":"manual-review-v1","approval_reference":"MODERATION-REQUEST-2026-01"
+        })
+        assert created.status_code==201
+        assert created.json()["item"]["configuration"]=={"mode":"manual_review_only","manual_review_only":True}
+        assert created.json()["runtime_enabled"] is False
+        approved=client.post("/v1/admin/model-costs/moderation-policies/manual-review-v1/approve",json={
+            "reason":"Manual review is the required fail-closed moderation mode.",
+            "approval_reference":"MODERATION-APPROVAL-2026-01"
+        })
+        assert approved.status_code==200
+        assert approved.json()["item"]["status"]=="approved"
+        assert approved.json()["item"]["approved_by"]=="operator"
+        assert approved.json()["runtime_enabled"] is False
+        assert [call[0] for call in calls]==["POST","GET","PATCH"]
+        assert audits[-1]["action"]=="generation_moderation_policy.approve"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_model_usage_summary_uses_service_rpc_and_validates_period(monkeypatch):
+    import allpha_api.model_costs_api as model_costs
+    calls=[]
+    async def fake_user_db(method,path,token,**kwargs):
+        return [{"id":"grant-1","user_id":"operator","scopes":["platform:operations.read"],"status":"active","expires_at":None}]
+    async def fake_privileged(method,path,**kwargs):
+        calls.append((method,path,kwargs))
+        return {"totals":{"runs":0},"by_provider_model":[]}
+    async def fake_audit(request,**kwargs):
+        return None
+    monkeypatch.setattr(security,"user_db_request",fake_user_db)
+    monkeypatch.setattr(security,"write_operator_audit",fake_audit)
+    monkeypatch.setattr(model_costs,"privileged_rest_request",fake_privileged)
+    monkeypatch.setattr(model_costs,"write_operator_audit",fake_audit)
+    install_auth("operator")
+    try:
+        response=client.get("/v1/admin/model-costs/usage-summary")
+        assert response.status_code==200
+        assert response.json()["totals"]["runs"]==0
+        assert calls[0][0:2]==("POST","rpc/get_agent_model_usage_summary")
+        invalid=client.get("/v1/admin/model-costs/usage-summary?since=2026-01-01T00:00:00Z&until=2026-11-24T00:00:00Z")
+        assert invalid.status_code==422
+    finally:
+        app.dependency_overrides.clear()
