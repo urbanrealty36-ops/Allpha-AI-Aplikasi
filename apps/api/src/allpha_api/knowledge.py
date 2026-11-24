@@ -323,7 +323,7 @@ async def retry_source(agent_id: uuid.UUID,source_id: uuid.UUID,payload: RetryRe
 
 @router.delete("/sources/{source_id}",status_code=204)
 async def delete_source(agent_id: uuid.UUID,source_id: uuid.UUID,request: Request,user: dict[str,Any]=Depends(current_user)):
-    await _owned(agent_id,request,user)
+    token = await _owned(agent_id,request,user)
     deletion=await _admin_db_request(
         "POST","rpc/begin_agent_knowledge_source_delete",
         body={"p_source_id":str(source_id),"p_agent_id":str(agent_id),"p_owner_id":str(user["id"])},
@@ -332,8 +332,17 @@ async def delete_source(agent_id: uuid.UUID,source_id: uuid.UUID,request: Reques
         raise HTTPException(503,detail={"code":"KNOWLEDGE_DELETE_FENCE_UNAVAILABLE","message":"Penguncian proses sumber pengetahuan gagal."})
     if deletion.get("already_deleted"):
         return None
+    source = await _source(agent_id, source_id, token, user)
+    try:
+        expected_storage_path = _canonical_knowledge_storage_path(
+            str(user["id"]), str(agent_id), str(source_id), source.get("filename"),
+        )
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(503,detail={"code":"KNOWLEDGE_DELETE_PATH_INVALID","message":"Referensi penyimpanan sumber pengetahuan tidak valid."}) from exc
+    if source.get("storage_path") != expected_storage_path:
+        raise HTTPException(503,detail={"code":"KNOWLEDGE_DELETE_PATH_INVALID","message":"Referensi penyimpanan sumber pengetahuan tidak valid."})
     storage_path=deletion.get("storage_path")
-    if not isinstance(storage_path,str) or not storage_path:
+    if storage_path != expected_storage_path:
         raise HTTPException(503,detail={"code":"KNOWLEDGE_DELETE_PATH_INVALID","message":"Referensi penyimpanan sumber pengetahuan tidak valid."})
     # The RPC marks the source deleting and cancels/fences all queued or leased jobs
     # before Storage is touched. A retry after Storage failure reuses the same fence.
