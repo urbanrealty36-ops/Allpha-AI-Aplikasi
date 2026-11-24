@@ -20,6 +20,10 @@ from allpha_api.lease_heartbeat import run_with_lease_heartbeat
 log = logging.getLogger(__name__)
 
 
+class KnowledgeJobLeaseLost(RuntimeError):
+    """The current document job no longer owns the source-state lease."""
+
+
 class KnowledgeStorageUnavailable(RuntimeError):
     pass
 
@@ -90,6 +94,8 @@ class KnowledgeDocumentWorker:
             )
             if not lease_active:
                 log.warning("Knowledge document job %s abandoned after lease loss", job_id)
+        except KnowledgeJobLeaseLost:
+            log.warning("Knowledge document job %s abandoned after source-state lease loss", job_id)
         except HTTPException as exc:
             detail = exc.detail if isinstance(exc.detail, dict) else {}
             code = str(detail.get("code") or "DOCUMENT_PROCESSING_FAILED")
@@ -128,7 +134,7 @@ class KnowledgeDocumentWorker:
             await self._fail(job, "SENSITIVITY_CLASSIFICATION_REQUIRED", "document_parse_failed", False, 0)
             return
 
-        await self.store.update_source_state(job, status="processing", stage="malware_scan", error_code=None)
+        await self._set_processing_state(job, stage="malware_scan")
         data = await self.storage.download(str(source.get("storage_path") or ""))
         expected_sha = str(source.get("sha256") or "").lower()
         expected_size = int(source.get("size_bytes") or 0)
@@ -139,15 +145,17 @@ class KnowledgeDocumentWorker:
             await self._fail(job, "KNOWLEDGE_SOURCE_SHA256_MISMATCH", "document_parse_failed", False, 0)
             return
 
-        await _scan(data, str(source["filename"]), str(source["media_type"]))
-        await self.store.update_source_state(job, status="processing", stage="document_parsing", error_code=None)
+        scanner_receipt = await _scan(data, str(source["filename"]), str(source["media_type"]))
+        await self._set_processing_state(
+            job, stage="document_parsing", scanner_receipt=scanner_receipt,
+        )
         pages = _extract(str(source["filename"]), data)
         chunks = _chunk(pages)
         if not chunks:
             await self._fail(job, "NO_TEXT_EXTRACTED", "document_parse_failed", False, 0)
             return
 
-        await self.store.update_source_state(job, status="processing", stage="chunk_persistence", error_code=None)
+        await self._set_processing_state(job, stage="chunk_persistence")
         total = 0
         for start in range(0, len(chunks), self.batch_size):
             batch = [
@@ -170,6 +178,16 @@ class KnowledgeDocumentWorker:
             "Knowledge document job %s extracted %s chunks; embedding job %s queued",
             job["id"], total, completed.get("embedding_job_id"),
         )
+
+    async def _set_processing_state(
+        self, job: dict, *, stage: str, scanner_receipt: dict | None = None,
+    ) -> None:
+        updated = await self.store.update_source_state(
+            job, status="processing", stage=stage, error_code=None,
+            scanner_receipt=scanner_receipt,
+        )
+        if updated is False:
+            raise KnowledgeJobLeaseLost("document source-state update rejected the current lease")
 
     async def _fail(self, job: dict, code: str, stage: str, retryable: bool, delay: int) -> None:
         try:
