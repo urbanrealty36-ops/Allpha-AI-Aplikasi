@@ -5,6 +5,7 @@ import uuid
 import pytest
 from fastapi import Request
 from fastapi.testclient import TestClient
+from types import SimpleNamespace
 
 from allpha_api.auth import current_user
 from allpha_api.knowledge_retrieval import (
@@ -20,7 +21,8 @@ from allpha_api.main import app
 def internal_request():
     return RetrievalRequest(
         owner_id="owner-a", agent_id="agent-a", query="contract details",
-        allowed_sensitivities=["internal"], limit=5, trace_id="trace-a",
+        allowed_sensitivities=["internal"], allowed_source_ids=["00000000-0000-0000-0000-0000000000c9"],
+        limit=5, trace_id="trace-a",
     )
 
 
@@ -31,6 +33,11 @@ class Policy:
     async def allowed_sensitivities(self, *, owner_id, agent_id):
         self.calls.append((owner_id, agent_id))
         return self.values
+    async def resolve_context(self, *, owner_id, agent_id):
+        self.calls.append((owner_id, agent_id))
+        return SimpleNamespace(policy_version="test-policy.v1", consent_version="test-consent.v1",
+            allowed_sensitivities=tuple(self.values), allowed_source_ids=("00000000-0000-0000-0000-0000000000c9",),
+            grant_version="test-grant.v1", audience="owner_private", decision_reference="test-decision")
 
 
 class Repo:
@@ -49,7 +56,7 @@ class Repo:
 
 def hit(**overrides):
     value = dict(
-        owner_id="owner-a", agent_id="agent-a", source_id="source-a", source_version=1,
+        owner_id="owner-a", agent_id="agent-a", source_id="00000000-0000-0000-0000-0000000000c9", source_version=1,
         chunk_id="chunk-a", content="matching source excerpt", content_sha256=hashlib.sha256(b"matching source excerpt").hexdigest(),
         source_location={"kind":"page","index":1}, sensitivity="internal",
         retrieval_method="keyword", score=0.5, index_generation=None,
@@ -84,6 +91,7 @@ def test_retrieval_scopes_search_and_returns_source_provenance():
         assert repo.search_args["owner_id"] == "owner-a"
         assert repo.search_args["agent_id"] == "agent-a"
         assert repo.search_args["allowed_sensitivities"] == ["internal"]
+        assert repo.search_args["allowed_source_ids"] == ["00000000-0000-0000-0000-0000000000c9"]
         assert repo.search_args["limit"] == 5
     asyncio.run(scenario())
 
@@ -280,7 +288,7 @@ def test_supabase_keyword_repository_pushes_security_filters_into_database_query
         repo = SupabaseKeywordKnowledgeRepository(access_token="user-token")
         hits = await repo.search_keyword(
             owner_id="owner-a", agent_id="agent-a", query="private phrase",
-            allowed_sensitivities=["internal"], limit=7, trace_id="trace-1",
+            allowed_sensitivities=["internal"], allowed_source_ids=["source-a"], limit=7, trace_id="trace-1",
         )
         assert len(hits) == 1 and hits[0].retrieval_method == "keyword"
         method, path, token, params = calls[0]
@@ -290,6 +298,7 @@ def test_supabase_keyword_repository_pushes_security_filters_into_database_query
         assert params["agent_knowledge_sources.owner_id"] == "eq.owner-a"
         assert params["agent_knowledge_sources.agent_id"] == "eq.agent-a"
         assert params["agent_knowledge_sources.status"] == "eq.ready"
+        assert params["source_id"] == "in.(source-a)"
         assert params["agent_knowledge_sources.sensitivity"] == "in.(internal)"
         assert params["search_vector"] == "fts(simple).private phrase"
         assert params["limit"] == "7"
@@ -317,7 +326,7 @@ def test_supabase_keyword_repository_rejects_source_version_conflict(monkeypatch
         with pytest.raises(KnowledgeRetrievalUnavailable):
             await repo.search_keyword(
                 owner_id="owner-a", agent_id="agent-a", query="private phrase",
-                allowed_sensitivities=["internal"], limit=5, trace_id="trace-1",
+                allowed_sensitivities=["internal"], allowed_source_ids=["source-a"], limit=5, trace_id="trace-1",
             )
     asyncio.run(scenario())
 
@@ -335,7 +344,7 @@ def test_hybrid_repository_fails_closed_without_approved_vector_adapter():
         with pytest.raises(KnowledgeRetrievalUnavailable):
             await repo.search_hybrid(
                 owner_id="owner-a", agent_id="agent-a", query="text",
-                allowed_sensitivities=["internal"], limit=5, trace_id="trace-1",
+                allowed_sensitivities=["internal"], allowed_source_ids=["source-a"], limit=5, trace_id="trace-1",
             )
     asyncio.run(scenario())
 
@@ -361,7 +370,7 @@ def test_keyword_only_repository_is_explicitly_keyword_not_hybrid(monkeypatch):
             keyword_repository=SupabaseKeywordKnowledgeRepository(access_token="user-token")
         )
         hits = await repo.search_hybrid(owner_id="owner-a", agent_id="agent-a", query="verified",
-            allowed_sensitivities=["internal"], limit=5, trace_id="trace-keyword")
+            allowed_sensitivities=["internal"], allowed_source_ids=["source-a"], limit=5, trace_id="trace-keyword")
         assert len(hits) == 1
         assert hits[0].retrieval_method == "keyword"
         assert hits[0].index_generation is None
@@ -428,7 +437,7 @@ def test_supabase_keyword_repository_rejects_unready_source_even_if_query_adapte
         with pytest.raises(KnowledgeRetrievalUnavailable):
             await repo.search_keyword(
                 owner_id="owner-a", agent_id="agent-a", query="must not leak",
-                allowed_sensitivities=["internal"], limit=5, trace_id="trace-unready",
+                allowed_sensitivities=["internal"], allowed_source_ids=["source-unready"], limit=5, trace_id="trace-unready",
             )
         assert calls[0][2]["agent_knowledge_sources.owner_id"] == "eq.owner-a"
         assert calls[0][2]["agent_knowledge_sources.agent_id"] == "eq.agent-a"
@@ -452,7 +461,9 @@ def test_public_route_traces_resolved_policy_and_consent_versions():
                 owner_id=owner_id,
                 agent_id=agent_id,
                 allowed_sensitivities=("internal",),
-                knowledge_consent_granted=True,
+                allowed_source_ids=("00000000-0000-0000-0000-0000000000c9",),
+                audience="owner_private", grant_version="knowledge-grant.v1", decision_reference="decision-42",
+                knowledge_consent_granted=True
                 consent_version="knowledge-consent.v2",
                 consent_revoked=False,
                 allowed_purposes=("agent_context_retrieval",),
@@ -481,6 +492,8 @@ def test_public_route_traces_resolved_policy_and_consent_versions():
         assert response.status_code == 200
         assert response.json()["policy_version"] == "knowledge-policy.v3"
         assert response.json()["consent_version"] == "knowledge-consent.v2"
+        assert response.json()["grant_version"] == "knowledge-grant.v1"
+        assert response.json()["audience"] == "owner_private"
 
     asyncio.run(scenario())
 
@@ -501,7 +514,9 @@ def test_public_route_fails_closed_on_revoked_knowledge_consent_before_search():
                 owner_id=owner_id,
                 agent_id=agent_id,
                 allowed_sensitivities=("internal",),
-                knowledge_consent_granted=True,
+                allowed_source_ids=("00000000-0000-0000-0000-0000000000c9",),
+                audience="owner_private", grant_version="knowledge-grant.v1", decision_reference="decision-42",
+                knowledge_consent_granted=True
                 consent_version="knowledge-consent.v2",
                 consent_revoked=True,
                 allowed_purposes=("agent_context_retrieval",),
@@ -558,7 +573,7 @@ def test_supabase_keyword_repository_rejects_content_digest_mismatch(monkeypatch
         with pytest.raises(KnowledgeRetrievalUnavailable, match="content digest"):
             await repo.search_keyword(
                 owner_id="owner-a", agent_id="agent-a", query="private phrase",
-                allowed_sensitivities=["internal"], limit=5, trace_id="trace-digest",
+                allowed_sensitivities=["internal"], allowed_source_ids=["source-a"], limit=5, trace_id="trace-digest",
             )
 
     asyncio.run(scenario())
@@ -598,7 +613,7 @@ def test_supabase_keyword_repository_rejects_cross_owner_source_relation(monkeyp
         with pytest.raises(KnowledgeRetrievalUnavailable, match="owner/source/version"):
             await repo.search_keyword(
                 owner_id="owner-a", agent_id="agent-a", query="private phrase",
-                allowed_sensitivities=["internal"], limit=5, trace_id="trace-cross-owner",
+                allowed_sensitivities=["internal"], allowed_source_ids=["source-a"], limit=5, trace_id="trace-cross-owner",
             )
 
     asyncio.run(scenario())
