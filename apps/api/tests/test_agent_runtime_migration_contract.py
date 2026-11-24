@@ -62,7 +62,7 @@ def test_runtime_execution_trace_is_append_only_owner_scoped_and_lease_fenced():
     assert "v_task.lease_expires_at<=now()" in sql
     assert "agent_runtime_execution_event_detail_key_denied" in sql
     assert "grant select,insert on public.agent_runtime_execution_events to service_role" in sql
-    assert "from public, anon, authenticated" in sql
+    assert "from public,anon,authenticated" in sql
 
 
 def test_durable_tool_plan_reservations_are_owner_idempotent_and_do_not_store_raw_intent():
