@@ -22,8 +22,9 @@ _MAX_POLICY_RESPONSE_BYTES = 64 * 1024
 _REQUIRED_FIELDS = frozenset({
     "policy_version", "owner_id", "agent_id", "allowed_sensitivities",
     "allowed_source_ids", "audience", "grant_version", "decision_reference",
-    "knowledge_consent_granted", "consent_version", "consent_revoked",
-    "allowed_purposes", "grants_active", "resolved_at_version", "tenant_id", "session_id",
+    "knowledge_consent_granted", "consent_version", "consent_expires_at",
+    "consent_revoked", "grant_expires_at", "allowed_purposes", "grants_active",
+    "resolved_at_version", "tenant_id", "session_id",
 })
 
 
