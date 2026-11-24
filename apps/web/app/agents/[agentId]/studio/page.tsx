@@ -7,7 +7,7 @@ import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../../../lib/supabase";
 import AgentTaskSchedulePanel from "../../../../components/reference-ui/AgentTaskSchedulePanel";
 
-type KnowledgeSource = { id: string; filename: string; size_bytes: number; status: string; processing_stage: string; error_code?: string | null; sha256: string; created_at: string; latest_job?: { id: string; status: string; stage: string; attempt: number; progress: number; error_code?: string | null } | null };
+type KnowledgeSource = { id: string; filename: string; size_bytes: number; status: string; processing_stage: string; sensitivity?: "public" | "internal" | "confidential" | "restricted" | null; error_code?: string | null; sha256: string; created_at: string; latest_job?: { id: string; status: string; stage: string; attempt: number; progress: number; error_code?: string | null } | null };
 type RetrievalResult = { source_id: string; source_version: number; chunk_id: string; content: string; content_sha256: string; source_location: Record<string, unknown>; sensitivity: string; retrieval_method: "vector" | "keyword" | "hybrid"; score: number; provider_id?: string | null; model_id?: string | null; model_version?: string | null; index_generation?: string | null };
 type RetrievalResponse = { trace_id: string; results: RetrievalResult[] };
 type Skill = {
@@ -50,6 +50,8 @@ export default function AgentStudioPage() {
   const retrievalRequestSequence = useRef(0);
   useEffect(() => { retrievalRequestSequence.current += 1; setRetrievalResults([]); setRetrievalTraceId(""); setRetrievalError(""); setRetrievalLoading(false); }, [agentId]);
   const [knowledgeFile, setKnowledgeFile] = useState<File | null>(null);
+  const [knowledgeSensitivity, setKnowledgeSensitivity] = useState<"public" | "internal" | "confidential" | "restricted">("internal");
+  const [sourceSensitivityDrafts, setSourceSensitivityDrafts] = useState<Record<string, "public" | "internal" | "confidential" | "restricted">>({});
   const [registeredTools, setRegisteredTools] = useState<RegisteredTool[]>([]);
   const [capabilities, setCapabilities] = useState<Capability[]>([]);
   const [versionHistory, setVersionHistory] = useState<{ skillId: string; items: SkillVersion[] } | null>(null);
@@ -267,12 +269,28 @@ export default function AgentStudioPage() {
     if (!session || !knowledgeFile) return;
     setSaving(true); setError(""); setNotice("");
     try {
-      const form = new FormData(); form.append("file", knowledgeFile);
+      const form = new FormData(); form.append("file", knowledgeFile); form.append("sensitivity", knowledgeSensitivity);
       const response = await fetch(`${apiBase}/v1/agents/${agentId}/knowledge/sources`, { method: "POST", headers: { Authorization: "Bearer " + session.access_token }, body: form });
       if (!response.ok) throw new Error(await readError(response));
       setKnowledgeFile(null); setNotice("Dokumen masuk karantina privat. Tetapkan klasifikasi sensitivitas, lalu mulai pemrosesan melalui worker.");
       await load(session);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Dokumen gagal diunggah."); }
+    finally { setSaving(false); }
+  }
+
+  async function saveKnowledgeSensitivity(source: KnowledgeSource) {
+    if (!session) return;
+    const sensitivity = sourceSensitivityDrafts[source.id] ?? source.sensitivity ?? "internal";
+    setSaving(true); setError(""); setNotice("");
+    try {
+      const response = await fetch(`${apiBase}/v1/agents/${agentId}/knowledge/sources/${source.id}/sensitivity`, {
+        method: "PATCH", headers: { Authorization: "Bearer " + session.access_token, "Content-Type": "application/json" },
+        body: JSON.stringify({ sensitivity }),
+      });
+      if (!response.ok) throw new Error(await readError(response));
+      setNotice("Klasifikasi sensitivitas sumber berhasil disimpan.");
+      await load(session);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Klasifikasi sensitivitas gagal disimpan."); }
     finally { setSaving(false); }
   }
 
@@ -449,14 +467,29 @@ export default function AgentStudioPage() {
     {notice && <div role="status" className="rounded-xl border p-3 text-sm">{notice}</div>}
     <section className="space-y-4 rounded-2xl border p-4 sm:p-5">
       <div><h2 className="text-xl font-semibold">Sumber pengetahuan</h2><p className="mt-1 text-sm text-neutral-600">PDF, Markdown, TXT, DOCX · maksimum 15 MiB. Dokumen tetap privat dan dikarantina sampai pemeriksaan malware berhasil; status indexed belum berarti siap untuk retrieval.</p></div>
-      <form onSubmit={uploadKnowledge} className="flex flex-col gap-3 sm:flex-row sm:items-end">
-        <label className="grid flex-1 gap-1 text-sm">Pilih dokumen<input type="file" accept=".pdf,.md,.txt,.docx,application/pdf,text/markdown,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={e => setKnowledgeFile(e.target.files?.[0] || null)} className="rounded-lg border p-2" required /></label>
+      <form onSubmit={uploadKnowledge} className="grid gap-3 sm:grid-cols-[1fr_220px_auto] sm:items-end">
+        <label className="grid gap-1 text-sm">Pilih dokumen<input type="file" accept=".pdf,.md,.txt,.docx,application/pdf,text/markdown,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={e => setKnowledgeFile(e.target.files?.[0] || null)} className="rounded-lg border p-2" required /></label>
+        <label className="grid gap-1 text-sm">Klasifikasi sensitivitas
+          <select value={knowledgeSensitivity} onChange={e => setKnowledgeSensitivity(e.target.value as typeof knowledgeSensitivity)} className="rounded-lg border px-3 py-2">
+            <option value="public">Public</option><option value="internal">Internal</option><option value="confidential">Confidential</option><option value="restricted">Restricted</option>
+          </select>
+        </label>
         <button disabled={saving || !session || !knowledgeFile} className="rounded-xl bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">{saving ? "Memproses…" : "Unggah ke karantina"}</button>
       </form>
       <div className="space-y-3">{knowledgeSources.length === 0 ? <p className="rounded-xl border border-dashed p-4 text-sm text-neutral-600">Belum ada sumber pengetahuan.</p> : knowledgeSources.map(source => <article key={source.id} className="rounded-xl border p-3">
         <div className="flex flex-wrap items-start justify-between gap-2"><div><h3 className="font-semibold">{source.filename}</h3><p className="mt-1 text-xs text-neutral-500">{(source.size_bytes / 1024).toFixed(1)} KiB · SHA-256 {source.sha256.slice(0, 12)}…</p></div><span className="rounded-full border px-2 py-1 text-xs">{source.status}</span></div>
-        <p className="mt-2 text-sm text-neutral-600">Tahap: {source.processing_stage}{source.error_code ? " · " + source.error_code : ""}</p>{source.latest_job && <p className="mt-1 text-xs text-neutral-500">Job: {source.latest_job.status} · {source.latest_job.stage} · {source.latest_job.progress}% · percobaan {source.latest_job.attempt}{source.latest_job.error_code ? " · " + source.latest_job.error_code : ""}</p>}
-        <div className="mt-3 flex flex-wrap gap-2">{(source.status === "quarantined" || source.status === "failed") && <button type="button" disabled={saving} onClick={() => void knowledgeAction(source, source.status === "failed" ? "retry" : "process")} className="rounded-lg border px-3 py-1.5 text-xs disabled:opacity-50">{source.status === "failed" ? "Coba lagi" : "Proses dokumen"}</button>}<button type="button" disabled={saving} onClick={() => { if (window.confirm("Hapus dokumen dan seluruh chunk terkait?")) void knowledgeAction(source, "delete"); }} className="rounded-lg border border-red-300 px-3 py-1.5 text-xs text-red-700 disabled:opacity-50">Hapus</button></div>
+        <p className="mt-2 text-sm text-neutral-600">Tahap: {source.processing_stage}{source.error_code ? " · " + source.error_code : ""}</p>
+        <p className="mt-1 text-xs text-neutral-500">Sensitivitas tersimpan: {source.sensitivity || "belum diklasifikasikan"}</p>
+        {source.latest_job && <p className="mt-1 text-xs text-neutral-500">Job: {source.latest_job.status} · {source.latest_job.stage} · {source.latest_job.progress}% · percobaan {source.latest_job.attempt}{source.latest_job.error_code ? " · " + source.latest_job.error_code : ""}</p>}
+        {(source.status === "quarantined" || source.status === "failed") && <div className="mt-3 flex flex-wrap items-end gap-2">
+          <label className="grid gap-1 text-xs">Klasifikasi
+            <select value={sourceSensitivityDrafts[source.id] ?? source.sensitivity ?? "internal"} onChange={e => setSourceSensitivityDrafts(current => ({...current,[source.id]:e.target.value as "public" | "internal" | "confidential" | "restricted"}))} className="rounded-lg border px-2 py-1.5">
+              <option value="public">Public</option><option value="internal">Internal</option><option value="confidential">Confidential</option><option value="restricted">Restricted</option>
+            </select>
+          </label>
+          <button type="button" disabled={saving} onClick={() => void saveKnowledgeSensitivity(source)} className="rounded-lg border px-3 py-1.5 text-xs disabled:opacity-50">Simpan klasifikasi</button>
+        </div>}
+        <div className="mt-3 flex flex-wrap gap-2">{(source.status === "quarantined" || source.status === "failed") && <button type="button" disabled={saving || !source.sensitivity || (sourceSensitivityDrafts[source.id] !== undefined && sourceSensitivityDrafts[source.id] !== source.sensitivity)} onClick={() => void knowledgeAction(source, source.status === "failed" ? "retry" : "process")} className="rounded-lg border px-3 py-1.5 text-xs disabled:opacity-50">{source.status === "failed" ? "Coba lagi" : "Proses dokumen"}</button>}<button type="button" disabled={saving} onClick={() => { if (window.confirm("Hapus dokumen dan seluruh chunk terkait?")) void knowledgeAction(source, "delete"); }} className="rounded-lg border border-red-300 px-3 py-1.5 text-xs text-red-700 disabled:opacity-50">Hapus</button></div>
       </article>)}</div>
     </section>
     <section className="space-y-4 rounded-2xl border p-4 sm:p-5">
