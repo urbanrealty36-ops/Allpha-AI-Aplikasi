@@ -191,3 +191,70 @@ def test_runtime_skill_resolution_fails_closed_after_license_expiry():
         return httpx.Response(200,json=[{"snapshot":{"id":"skill-1","agent_id":"agent-1","version":7,"status":"published"}}])
     store=AgentRuntimeStore(supabase_url="https://example.supabase.co",service_key="test-service-role-key",transport=httpx.MockTransport(handler))
     assert asyncio.run(store.get_skill("owner-1","agent-1","skill-1",version=7)) is None
+
+
+
+def test_agent_runtime_store_revalidates_current_knowledge_source_and_chunk_snapshot():
+    requests = []
+    source_id = "11111111-1111-4111-8111-111111111111"
+    chunk_id = "22222222-2222-4222-8222-222222222222"
+    digest = "a" * 64
+
+    async def handler(request):
+        requests.append(request)
+        if request.url.path.endswith("/agent_knowledge_sources"):
+            return httpx.Response(200, json=[{
+                "id": source_id, "owner_id": "owner-1", "agent_id": "agent-1",
+                "source_version": 3, "status": "ready", "sensitivity": "internal",
+            }])
+        if request.url.path.endswith("/agent_knowledge_chunks"):
+            return httpx.Response(200, json=[{
+                "id": chunk_id, "source_id": source_id, "owner_id": "owner-1",
+                "agent_id": "agent-1", "source_version": 3, "content_sha256": digest,
+            }])
+        return httpx.Response(404)
+
+    store = AgentRuntimeStore(
+        supabase_url="https://example.supabase.co",
+        service_key="test-service-role-key",
+        transport=httpx.MockTransport(handler),
+    )
+    refs = [{
+        "source_id": source_id, "source_version": 3, "chunk_id": chunk_id,
+        "sensitivity": "internal", "content_sha256": digest,
+    }]
+    assert asyncio.run(store.validate_knowledge_context_refs("owner-1", "agent-1", refs)) is True
+    assert requests[0].url.params["owner_id"] == "eq.owner-1"
+    assert requests[0].url.params["agent_id"] == "eq.agent-1"
+    assert requests[0].url.params["status"] == "eq.ready"
+    assert requests[1].url.params["owner_id"] == "eq.owner-1"
+    assert requests[1].url.params["agent_id"] == "eq.agent-1"
+
+
+def test_agent_runtime_store_rejects_stale_knowledge_source_or_chunk_version():
+    source_id = "11111111-1111-4111-8111-111111111111"
+    chunk_id = "22222222-2222-4222-8222-222222222222"
+
+    async def handler(request):
+        if request.url.path.endswith("/agent_knowledge_sources"):
+            return httpx.Response(200, json=[{
+                "id": source_id, "owner_id": "owner-1", "agent_id": "agent-1",
+                "source_version": 4, "status": "ready", "sensitivity": "internal",
+            }])
+        if request.url.path.endswith("/agent_knowledge_chunks"):
+            return httpx.Response(200, json=[{
+                "id": chunk_id, "source_id": source_id, "owner_id": "owner-1",
+                "agent_id": "agent-1", "source_version": 3, "content_sha256": "a" * 64,
+            }])
+        return httpx.Response(404)
+
+    store = AgentRuntimeStore(
+        supabase_url="https://example.supabase.co",
+        service_key="test-service-role-key",
+        transport=httpx.MockTransport(handler),
+    )
+    refs = [{
+        "source_id": source_id, "source_version": 3, "chunk_id": chunk_id,
+        "sensitivity": "internal", "content_sha256": "a" * 64,
+    }]
+    assert asyncio.run(store.validate_knowledge_context_refs("owner-1", "agent-1", refs)) is False
