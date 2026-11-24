@@ -38,3 +38,23 @@ def test_run_timeout_cancels_unfinished_steps_atomically():
 def test_migration_is_source_only():
     assert "Source-only migration" in MIGRATION
     assert "not authorization to mutate canonical production" in MIGRATION
+
+
+HEARTBEAT_MIGRATION = (
+    Path(__file__).resolve().parents[1]
+    / "supabase"
+    / "migrations"
+    / "20261124071000_eng_p11_workflow_step_lease_heartbeat.sql"
+).read_text(encoding="utf-8")
+
+
+def test_workflow_heartbeat_is_owner_scoped_lease_fenced_and_service_only():
+    sql=" ".join(HEARTBEAT_MIGRATION.split())
+    assert "function public.heartbeat_workflow_step(" in sql
+    assert "p_run_id" in sql and "p_owner_user_id" in sql and "p_step_id" in sql
+    assert "step_row.lease_token is distinct from p_lease_token" in sql
+    assert "step_row.lease_expires_at <= now()" in sql
+    assert "run_row.cancel_requested" in sql
+    assert "run_deadline" in sql and "least(now() + make_interval" in sql
+    assert "from public, anon, authenticated;" in sql
+    assert "to service_role;" in sql
