@@ -137,6 +137,8 @@ class KnowledgeRetrievalService:
                 raise KnowledgeAccessDenied("retrieval adapter returned disallowed sensitivity")
             if not hit.source_id or not hit.chunk_id or not hit.content_sha256:
                 raise KnowledgeRetrievalUnavailable("retrieval result lacks source/chunk provenance")
+            if hashlib.sha256(hit.content.encode("utf-8")).hexdigest() != hit.content_sha256:
+                raise KnowledgeRetrievalUnavailable("retrieval result content digest does not match citation provenance")
         return hits
 
 
