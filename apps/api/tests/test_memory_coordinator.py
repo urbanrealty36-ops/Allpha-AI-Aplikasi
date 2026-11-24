@@ -66,6 +66,8 @@ def test_retrieve_context_uses_ranked_policy_scoped_search_and_content_digest(mo
     assert search["body"]["p_query"] == "How should summaries be written?"
     assert search["body"]["p_max_sensitivity"] == "internal"
     assert search["body"]["p_policy_ids"] == ["policy-1"]
+    ownership = next(call for call in store.calls if call["path"] == "agent_ownerships")
+    assert ownership["params"]["ownership_role"] == "eq.owner"
 
 
 def test_retrieve_context_uses_metadata_recency_when_query_is_absent(monkeypatch):
@@ -102,3 +104,16 @@ def test_retrieve_context_rejects_rows_above_sensitivity_ceiling(monkeypatch):
         asyncio.run(store.retrieve_context(
             OWNER, AGENT, query="preference", max_sensitivity="internal",
         ))
+
+
+def test_explicit_memory_intent_checks_current_owner_before_existing_source_lookup(monkeypatch):
+    monkeypatch.setenv("ALLPHA_MEMORY_COORDINATOR_ENABLED","true")
+    store=FakeMemoryCoordinator(owned=False)
+    with pytest.raises(MemoryDenied):
+        asyncio.run(store.propose_explicit_intent(
+            OWNER,AGENT,"remember that the owner prefers concise summaries",
+            source_ref={"generation_job_id":"generation-1"},
+        ))
+    assert store.calls[0]["path"]=="agent_ownerships"
+    assert store.calls[0]["params"]["ownership_role"]=="eq.owner"
+    assert not any(call["path"]=="agent_memory_items" for call in store.calls)
