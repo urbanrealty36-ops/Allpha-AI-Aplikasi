@@ -266,7 +266,7 @@ async def build_embedding_router_from_environment(
                 model_id=model_id,
                 model_version=model_version,
                 dimensions=dimensions,
-                max_attempts=min(8, max(1, integer("ALLPHA_EMBEDDING_MAX_ATTEMPTS") if os.getenv("ALLPHA_EMBEDDING_MAX_ATTEMPTS") else 3),
+                max_attempts=min(8, max(1, integer("ALLPHA_EMBEDDING_MAX_ATTEMPTS") if os.getenv("ALLPHA_EMBEDDING_MAX_ATTEMPTS") else 3)),
             )
             for sensitivity in sensitivities
         },
