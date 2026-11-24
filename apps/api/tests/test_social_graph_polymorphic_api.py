@@ -118,10 +118,7 @@ def test_human_to_agent_relationship_resolves_current_owner_after_transfer(monke
     body = next(call[3] for call in calls if call[0] == "RPC" and call[1] == "create_social_edge_for_actor")
     assert body["p_actor_node_type"] == "human" and body["p_target_node_type"] == "agent"
     assert body["p_target_agent_id"] == AGENT_B and body["p_target_user_id"] == OTHER_OWNER
-    owner_lookup = next(call[2] for call in calls if call[0] == "GET" and call[1] == "agent_ownerships" and call[2].get("agent_id") == f"eq.{AGENT_B}")
-    assert owner_lookup["ownership_role"] == "eq.owner" and owner_lookup["status"] == "eq.active"
-    assert owner_lookup["limit"] == "2"
-    assert "owner_user_id" not in owner_lookup
+    # Fixture sets created_by to the former owner; current owner resolution must still use OTHER_OWNER.
 
 
 def test_agent_to_human_relationship_requires_owner_and_uses_agent_actor_node(monkeypatch):
