@@ -118,7 +118,7 @@ grant select, insert, update on public.agent_runtime_tool_plans to service_role;
 revoke all on function public.guard_agent_runtime_tool_plan_update() from public, anon, authenticated;
 
 comment on table public.agent_runtime_tool_plans is
-  'Owner-scoped durable Model Router tool-plan reservations. Raw user intent, Memory text and Knowledge text are not stored; only digests, validated tool plans, sanitized planner evidence and content-free citations are retained.';
+  'Owner-scoped durable Model Router tool-plan reservations. Raw user intent, private memory and knowledge text are not stored; only digests, validated tool plans, sanitized planner evidence and content-free citations are retained.';
 comment on column public.agent_runtime_tool_plans.memory_context_refs is
   'Bounded non-content provenance references for owner-consented Memory items used by the planner.';
 comment on column public.agent_runtime_tool_plans.memory_context_sha256 is
