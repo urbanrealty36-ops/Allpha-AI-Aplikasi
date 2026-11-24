@@ -215,6 +215,24 @@ begin
   raise exception 'Memory table access grants are not read-only for the service role';
  end if;
 end $do$;
+set role service_role;
+select public.agent_memory_transition('create_proposal','{OWNER}','{AGENT}',null,
+ jsonb_build_object('memory_type','long_term','purpose','agent_generation_context','classification','internal',
+  'content','Global expiry context','content_sha256',encode(extensions.digest('Global expiry context','sha256'),'hex'),
+  'source_ref',jsonb_build_object('kind','expire-all-test'),'provenance',jsonb_build_object('capture_mode','test'),
+  'confidence',0.8,'retention_expires_at',(clock_timestamp()+interval '30 days')::text));
+reset role;
+update public.agent_memory_items set retention_expires_at=clock_timestamp()-interval '1 second'
+ where owner_user_id='{OWNER}' and source_ref->>'kind'='expire-all-test';
+set role service_role;
+select public.agent_memory_transition('expire_all',null,null,null,'{{}}'::jsonb);
+reset role;
+do $do$
+begin
+ if not exists(select 1 from public.agent_memory_items where owner_user_id='{OWNER}' and status='expired' and content='') then
+  raise exception 'global Memory retention executor did not erase expired content';
+ end if;
+end $do$;
 delete from auth.users where id='{OWNER}';
 do $do$
 begin
