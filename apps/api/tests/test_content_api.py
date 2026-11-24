@@ -370,3 +370,200 @@ def test_ai_cinema_catalog_and_creator_contracts_are_registered_and_fail_closed(
     assert 'enable row level security' in sql
     assert 'cinema_publication_gate' in sql
     assert 'create policy cinema_titles_public_catalog_read' in sql
+
+
+def test_resumable_media_init_reserves_owner_scoped_row_and_returns_signed_tus_contract(monkeypatch):
+    calls = []
+    media_id = "00000000-0000-0000-0000-000000000302"
+    digest = "a" * 64
+
+    async def fake_owner(*args, **kwargs):
+        return {"id": CONTENT_ID, "owner_id": "owner-a", "status": "draft", "content_type": "video", "version": 1}
+
+    async def fake_db(method, table, **kwargs):
+        calls.append((method, table, kwargs))
+        if method == "GET" and table == "content_media":
+            return []
+        if method == "POST" and table == "content_media":
+            return [{"id": media_id, **kwargs["body"]}]
+        raise AssertionError((method, table, kwargs))
+
+    async def fake_token(path):
+        assert path == f"owner-a/{CONTENT_ID}/{media_id}-movie.mp4"
+        return "scoped-storage-token", "https://project.storage.supabase.co/storage/v1/upload/resumable"
+
+    monkeypatch.setattr(content_api, "_owner_content", fake_owner)
+    monkeypatch.setattr(content_api, "_server_db", fake_db)
+    monkeypatch.setattr(content_api, "_create_resumable_upload_token", fake_token)
+    app.dependency_overrides[current_user] = auth_as("owner-a")
+    try:
+        response = client.post(
+            f"/v1/content/{CONTENT_ID}/media/resumable",
+            headers={"Idempotency-Key": media_id},
+            json={"filename": "movie.mp4", "media_type": "video/mp4", "size_bytes": 16, "sha256": digest},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["upload_token"] == "scoped-storage-token"
+    assert body["tus_endpoint"] == "https://project.storage.supabase.co/storage/v1/upload/resumable"
+    assert body["upload_metadata"]["bucketName"] == "content-media"
+    assert body["upload_metadata"]["objectName"].endswith(f"{media_id}-movie.mp4")
+    assert body["chunk_size_bytes"] == 6 * 1024 * 1024
+    assert calls[1][2]["body"]["status"] == "uploading"
+    assert calls[1][2]["body"]["sha256"] == digest
+
+
+def test_resumable_media_init_rejects_idempotency_key_reuse(monkeypatch):
+    media_id = "00000000-0000-0000-0000-000000000303"
+
+    async def fake_owner(*args, **kwargs):
+        return {"id": CONTENT_ID, "status": "draft"}
+
+    async def fake_db(method, table, **kwargs):
+        if method == "GET" and table == "content_media":
+            return [{
+                "id": media_id, "content_id": CONTENT_ID, "owner_id": "owner-a",
+                "filename": "different.mp4", "media_type": "video/mp4", "size_bytes": 16,
+                "sha256": "b" * 64, "storage_path": "owner-a/existing",
+                "status": "uploading",
+            }]
+        raise AssertionError((method, table, kwargs))
+
+    monkeypatch.setattr(content_api, "_owner_content", fake_owner)
+    monkeypatch.setattr(content_api, "_server_db", fake_db)
+    app.dependency_overrides[current_user] = auth_as("owner-a")
+    try:
+        response = client.post(
+            f"/v1/content/{CONTENT_ID}/media/resumable",
+            headers={"Idempotency-Key": media_id},
+            json={"filename": "movie.mp4", "media_type": "video/mp4", "size_bytes": 16, "sha256": "a" * 64},
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "MEDIA_IDEMPOTENCY_KEY_REUSED"
+
+
+def test_resumable_media_complete_verifies_object_hash_and_queues_existing_lifecycle(monkeypatch):
+    import hashlib
+
+    media_id = "00000000-0000-0000-0000-000000000304"
+    data = b"\x00\x00\x00\x18ftypisomtest"
+    digest = hashlib.sha256(data).hexdigest()
+    calls = []
+
+    async def fake_owner(*args, **kwargs):
+        return {"id": CONTENT_ID, "owner_id": "owner-a", "status": "draft", "content_type": "video", "version": 1}
+
+    async def fake_db(method, table, **kwargs):
+        calls.append((method, table, kwargs))
+        if method == "GET" and table == "content_media":
+            return [{
+                "id": media_id, "content_id": CONTENT_ID, "owner_id": "owner-a",
+                "bucket_id": "content-media", "storage_path": "owner-a/media/movie.mp4",
+                "filename": "movie.mp4", "media_type": "video/mp4", "size_bytes": len(data),
+                "sha256": digest, "status": "uploading",
+            }]
+        if method == "PATCH" and table == "content_media":
+            return [{"id": media_id, "status": "uploaded", "sha256": digest}]
+        raise AssertionError((method, table, kwargs))
+
+    class Stored:
+        content = data
+
+    async def fake_storage(method, path, **kwargs):
+        assert method == "GET"
+        assert path == "content-media/owner-a/media/movie.mp4"
+        return Stored()
+
+    monkeypatch.setattr(content_api, "_owner_content", fake_owner)
+    monkeypatch.setattr(content_api, "_server_db", fake_db)
+    monkeypatch.setattr(content_api, "_storage", fake_storage)
+    app.dependency_overrides[current_user] = auth_as("owner-a")
+    try:
+        response = client.post(f"/v1/content/{CONTENT_ID}/media/{media_id}/complete")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["item"]["status"] == "uploaded"
+    patch = next(call for call in calls if call[0] == "PATCH" and call[1] == "content_media")
+    assert patch[2]["params"]["status"] == "eq.uploading"
+    assert patch[2]["body"] == {"status": "uploaded"}
+
+
+def test_resumable_media_complete_rejects_hash_mismatch_without_promoting_media(monkeypatch):
+    media_id = "00000000-0000-0000-0000-000000000305"
+    data = b"\x00\x00\x00\x18ftypisomtest"
+    patches = []
+
+    async def fake_owner(*args, **kwargs):
+        return {"id": CONTENT_ID, "status": "draft", "content_type": "video", "version": 1}
+
+    async def fake_db(method, table, **kwargs):
+        if method == "GET" and table == "content_media":
+            return [{
+                "id": media_id, "content_id": CONTENT_ID, "owner_id": "owner-a",
+                "bucket_id": "content-media", "storage_path": "owner-a/media/movie.mp4",
+                "filename": "movie.mp4", "media_type": "video/mp4", "size_bytes": len(data),
+                "sha256": "f" * 64, "status": "uploading",
+            }]
+        if method == "PATCH":
+            patches.append((method, table, kwargs))
+            return []
+        raise AssertionError((method, table, kwargs))
+
+    class Stored:
+        content = data
+
+    async def fake_storage(*args, **kwargs):
+        return Stored()
+
+    monkeypatch.setattr(content_api, "_owner_content", fake_owner)
+    monkeypatch.setattr(content_api, "_server_db", fake_db)
+    monkeypatch.setattr(content_api, "_storage", fake_storage)
+    app.dependency_overrides[current_user] = auth_as("owner-a")
+    try:
+        response = client.post(f"/v1/content/{CONTENT_ID}/media/{media_id}/complete")
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "MEDIA_UPLOAD_HASH_MISMATCH"
+    assert patches == []
+
+
+def test_signed_resumable_upload_token_uses_service_credentials_and_direct_storage_hostname(monkeypatch):
+    captured = {}
+
+    class FakeResponse:
+        status_code = 200
+        def json(self):
+            return {"token": "short-lived-signed-upload-token"}
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *args):
+            return None
+        async def post(self, url, **kwargs):
+            captured["url"] = url
+            captured["headers"] = kwargs["headers"]
+            captured["json"] = kwargs["json"]
+            return FakeResponse()
+
+    monkeypatch.setenv("SUPABASE_URL", "https://project.supabase.co")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "server-only-test-key")
+    monkeypatch.setattr(content_api.httpx, "AsyncClient", FakeClient)
+
+    import asyncio
+    token, endpoint = asyncio.run(content_api._create_resumable_upload_token("owner-a/content-a/media-a.mp4"))
+    assert token == "short-lived-signed-upload-token"
+    assert endpoint == "https://project.storage.supabase.co/storage/v1/upload/resumable"
+    assert "/object/upload/sign/content-media/owner-a/content-a/media-a.mp4" in captured["url"]
+    assert captured["headers"]["Authorization"] == "Bearer server-only-test-key"
+    assert captured["json"] == {"upsert": False}
