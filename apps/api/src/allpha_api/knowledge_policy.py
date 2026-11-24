@@ -16,7 +16,11 @@ RETRIEVAL_PURPOSE = "agent_context_retrieval"
 
 
 class KnowledgePolicyUnavailable(RuntimeError):
-    """Canonical policy facts are missing, invalid, stale, or revoked."""
+    """Canonical policy facts are missing, invalid, or cannot be verified."""
+
+
+class KnowledgePolicyDenied(KnowledgePolicyUnavailable):
+    """A verified current policy explicitly denies Knowledge retrieval."""
 
 
 @dataclass(frozen=True)
@@ -84,7 +88,7 @@ class VersionedKnowledgePolicyResolver:
         ):
             raise KnowledgePolicyUnavailable("knowledge consent or grant state is invalid")
         if not snapshot.knowledge_consent_granted or snapshot.consent_revoked or not snapshot.grants_active:
-            raise KnowledgePolicyUnavailable("knowledge consent or access grant is not active")
+            raise KnowledgePolicyDenied("knowledge consent or access grant is not active")
         if (
             not isinstance(snapshot.allowed_purposes, (tuple, list))
             or any(not isinstance(value, str) for value in snapshot.allowed_purposes)
@@ -116,6 +120,9 @@ class VersionedKnowledgeRetrievalPolicy:
     async def allowed_sensitivities(self, *, owner_id: str, agent_id: str) -> list[str]:
         try:
             resolved = await self._resolver.resolve(owner_id=owner_id, agent_id=agent_id)
+        except KnowledgePolicyDenied as exc:
+            from allpha_api.knowledge_retrieval import KnowledgeAccessDenied
+            raise KnowledgeAccessDenied("knowledge consent or access grant is not active") from exc
         except KnowledgePolicyUnavailable as exc:
             # Translate policy failure into the retrieval API's stable fail-closed error.
             from allpha_api.knowledge_retrieval import KnowledgeRetrievalUnavailable
