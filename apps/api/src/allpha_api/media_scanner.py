@@ -52,7 +52,7 @@ def scan_media_bytes(data: bytes, host: str, port: int, *, timeout_seconds: int 
             result = sock.recv(4096).decode("utf-8", "replace")
     except OSError as exc:
         raise RuntimeError("MEDIA_SCANNER_UNAVAILABLE") from exc
-    normalized_result = result.replace("\\0", "").strip()
+    normalized_result = result.replace("\0", "").strip()
     if not normalized_result.endswith("OK") or "FOUND" in normalized_result or "ERROR" in normalized_result:
         raise RuntimeError("MEDIA_SCAN_NOT_CLEAN")
     return {
