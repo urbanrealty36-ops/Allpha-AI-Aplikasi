@@ -379,7 +379,9 @@ insert into public.account_data_retention_policies(
         ):
             marker="create or replace function "+function_name
             start=owner_lower.index(marker)
-            end=owner_lower.index("$function$;",start)+len("$function$;")
+            opening=owner_lower.index("$function$",start)
+            closing=owner_lower.index("$function$",opening+len("$function$"))
+            end=owner_lower.index(";",closing)+1
             psql(owner_source[start:end])
         for migration in (
             OWNERSHIP_TRANSFER_MIGRATION,GOVERNANCE_RETRY_MIGRATION,
