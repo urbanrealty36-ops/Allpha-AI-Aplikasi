@@ -218,8 +218,8 @@ def test_storage_download_stream_is_bounded_without_content_length(monkeypatch):
     storage = SupabaseKnowledgeStorage(
         supabase_url="https://supabase.example",
         service_key="server-secret",
+        transport=httpx.MockTransport(handler),
     )
-    storage._transport = httpx.MockTransport(handler)
 
     async def run():
         with pytest.raises(KnowledgeStorageObjectTooLarge):
@@ -255,13 +255,13 @@ def test_storage_download_rejects_declared_oversize_before_reading(monkeypatch):
         supabase_url="https://supabase.example",
         service_key="server-secret",
         timeout_seconds=1,
-    )
-    storage._transport = httpx.MockTransport(
-        lambda request: httpx.Response(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(
             200,
             headers={"content-length": "5"},
-            stream=UnreadableBody(),
-        )
+                stream=UnreadableBody(),
+            )
+        ),
     )
 
     async def run():
