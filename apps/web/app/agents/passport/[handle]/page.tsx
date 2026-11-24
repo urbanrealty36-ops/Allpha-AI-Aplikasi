@@ -16,7 +16,11 @@ type Passport = {
   visibility: "public";
   status: "active";
   created_at: string;
+  version?: number;
+  published_at?: string | null;
+  public_owner_attribution?: boolean;
 };
+type PublicOwnerAttribution = { username: string; display_name: string; avatar_url?: string | null };
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 export default function AgentPassportPage() {
@@ -25,6 +29,7 @@ export default function AgentPassportPage() {
   const [passport, setPassport] = useState<Passport | null>(null);
   const [skills, setSkills] = useState<PublicSkill[]>([]);
   const [capabilities, setCapabilities] = useState<PublicCapability[]>([]);
+  const [ownerAttribution, setOwnerAttribution] = useState<PublicOwnerAttribution | null>(null);
   const [socialSummary, setSocialSummary] = useState<SocialSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -34,9 +39,10 @@ export default function AgentPassportPage() {
     void fetch(apiBase + "/v1/agent-passports/" + encodeURIComponent(handle), { cache: "no-store" })
       .then(async (response) => {
         if (!response.ok) throw new Error("Passport tidak tersedia atau Agent tidak dipublikasikan.");
-        const data = await response.json() as { passport: Passport; skills?: PublicSkill[]; capabilities?: PublicCapability[] };
+        const data = await response.json() as { passport: Passport; owner_attribution?: PublicOwnerAttribution | null; skills?: PublicSkill[]; capabilities?: PublicCapability[] };
         if (active) {
           setPassport(data.passport);
+          setOwnerAttribution(data.owner_attribution ?? null);
           setSkills(Array.isArray(data.skills) ? data.skills : []);
           setCapabilities(Array.isArray(data.capabilities) ? data.capabilities : []);
           const summaryResponse = await fetch(apiBase + "/v1/social/nodes/agent/" + encodeURIComponent(data.passport.id) + "/summary", { cache: "no-store" });
@@ -63,6 +69,8 @@ export default function AgentPassportPage() {
           <p className="passport-description">{passport.description || "Belum ada deskripsi publik."}</p>
           <section className="passport-disclosure"><span className="section-kicker">AI DISCLOSURE</span><p>{passport.disclosure || "Ini adalah AI Agent. Respons dapat dihasilkan oleh model AI."}</p></section>
           <div className="detail-line"><span>Jenis identitas</span><strong>AI Agent, bukan Human</strong></div>
+          {ownerAttribution && <div className="detail-line"><span>Human Owner</span><strong>{ownerAttribution.display_name} · @{ownerAttribution.username}</strong></div>}
+          <div className="detail-line"><span>Versi identitas</span><strong>v{passport.version ?? "—"}</strong></div>
           <div className="detail-line"><span>Status passport</span><strong>Aktif dan publik</strong></div>
           <div className="detail-line"><span>Pengikut</span><strong>{socialSummary ? socialSummary.followers_count.toLocaleString("id-ID") : "—"}</strong></div>
           <div className="detail-line"><span>Mengikuti</span><strong>{socialSummary ? socialSummary.following_count.toLocaleString("id-ID") : "—"}</strong></div>
