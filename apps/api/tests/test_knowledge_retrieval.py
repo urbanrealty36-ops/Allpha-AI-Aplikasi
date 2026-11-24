@@ -52,7 +52,7 @@ def hit(**overrides):
         owner_id="owner-a", agent_id="agent-a", source_id="source-a", source_version=1,
         chunk_id="chunk-a", content="matching source excerpt", content_sha256=hashlib.sha256(b"matching source excerpt").hexdigest(),
         source_location={"kind":"page","index":1}, sensitivity="internal",
-        retrieval_method="hybrid", score=0.5, index_generation=None,
+        retrieval_method="keyword", score=0.5, index_generation=None,
     )
     value.update(overrides)
     return RetrievalHit(**value)
@@ -601,4 +601,35 @@ def test_supabase_keyword_repository_rejects_cross_owner_source_relation(monkeyp
                 allowed_sensitivities=["internal"], limit=5, trace_id="trace-cross-owner",
             )
 
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("overrides", [
+    {"source_version": 0}, {"source_version": True}, {"source_location": None},
+    {"score": float("nan")}, {"score": float("inf")},
+    {"retrieval_method": "vector"},
+    {"retrieval_method": "hybrid", "provider_id": "p", "model_id": "m", "model_version": "v1", "index_generation": " "},
+])
+def test_retrieval_rejects_hits_with_invalid_citation_or_vector_provenance(overrides):
+    async def scenario():
+        repo = Repo(hits=[hit(**overrides)])
+        with pytest.raises(KnowledgeRetrievalUnavailable):
+            await KnowledgeRetrievalService(repo, Policy()).retrieve(internal_request())
+    asyncio.run(scenario())
+
+
+def test_retrieval_accepts_vector_hit_with_full_model_and_index_identity():
+    async def scenario():
+        repo = Repo(hits=[hit(retrieval_method="vector", provider_id="p", model_id="m", model_version="v1", index_generation="gen-1")])
+        assert len(await KnowledgeRetrievalService(repo, Policy()).retrieve(internal_request())) == 1
+    asyncio.run(scenario())
+
+
+def test_retrieval_rejects_duplicate_chunks_and_over_limit_results():
+    async def scenario():
+        with pytest.raises(KnowledgeRetrievalUnavailable):
+            await KnowledgeRetrievalService(Repo(hits=[hit(), hit()]), Policy()).retrieve(internal_request())
+        many = [hit(chunk_id=f"c{i}") for i in range(6)]
+        with pytest.raises(KnowledgeRetrievalUnavailable):
+            await KnowledgeRetrievalService(Repo(hits=many), Policy()).retrieve(internal_request())
     asyncio.run(scenario())

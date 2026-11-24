@@ -123,3 +123,48 @@ def test_shared_worker_keeps_other_consumers_alive_when_remote_scanner_is_missin
     assert "disable_knowledge_documents" in script
     assert "export ALLPHA_KNOWLEDGE_DOCUMENT_WORKER_ENABLED=false" in script
     assert 'exec gosu worker "$@"' in script
+
+
+def _base_env(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "service")
+    for name in ("URL", "API_KEY", "ALLOWED_HOSTS", "MODE"):
+        monkeypatch.delenv(f"ALLPHA_DOCUMENT_SCANNER_{name}", raising=False)
+
+
+@pytest.mark.parametrize("url,key,hosts", [
+    ("https://scanner.example.com/scan", "", "scanner.example.com"),
+    ("https://scanner.example.com/scan", "k", ""),
+    ("http://scanner.example.com/scan", "k", "scanner.example.com"),
+    ("https://10.0.0.1/scan", "k", "10.0.0.1"),
+    ("https://scanner.example.com/scan", "k", "other.example.com"),
+])
+def test_document_consumer_refuses_to_start_on_invalid_remote_scanner_config(monkeypatch, url, key, hosts):
+    _base_env(monkeypatch)
+    monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_URL", url)
+    monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_API_KEY", key)
+    monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_ALLOWED_HOSTS", hosts)
+    with pytest.raises(SystemExit, match="disabled"):
+        knowledge_ingestion_worker.build_worker_from_environment()
+
+
+def test_document_consumer_refuses_to_start_without_any_scanner(monkeypatch):
+    _base_env(monkeypatch)
+    with pytest.raises(SystemExit, match="disabled"):
+        knowledge_ingestion_worker.build_worker_from_environment()
+
+
+def test_document_consumer_starts_with_valid_remote_scanner_config(monkeypatch):
+    _base_env(monkeypatch)
+    monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_URL", "https://scanner.example.com/scan")
+    monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_API_KEY", "k")
+    monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_ALLOWED_HOSTS", "scanner.example.com")
+    assert knowledge_ingestion_worker.build_worker_from_environment().batch_size == 50
+
+
+def test_invalid_scanner_config_failure_does_not_starve_runtime_consumers(monkeypatch):
+    _base_env(monkeypatch)
+    monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_URL", "http://scanner.example.com/scan")
+    assert agent_runtime_worker._consumer_enabled(
+        "Knowledge document", lambda: knowledge_ingestion_worker.build_worker_from_environment() and True
+    ) is False

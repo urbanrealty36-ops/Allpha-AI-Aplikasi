@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import uuid
 import hashlib
+import math
 import httpx
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol
@@ -130,6 +131,9 @@ class KnowledgeRetrievalService:
             limit=request.limit,
             trace_id=request.trace_id,
         )
+        if len(hits) > request.limit:
+            raise KnowledgeRetrievalUnavailable("retrieval adapter returned more results than requested")
+        seen_chunks: set[str] = set()
         for hit in hits:
             if hit.owner_id != request.owner_id or hit.agent_id != request.agent_id:
                 raise KnowledgeAccessDenied("retrieval adapter returned cross-owner/agent data")
@@ -139,6 +143,20 @@ class KnowledgeRetrievalService:
                 raise KnowledgeRetrievalUnavailable("retrieval result lacks source/chunk provenance")
             if hashlib.sha256(hit.content.encode("utf-8")).hexdigest() != hit.content_sha256:
                 raise KnowledgeRetrievalUnavailable("retrieval result content digest does not match citation provenance")
+            if (
+                type(hit.source_version) is not int or hit.source_version < 1
+                or not isinstance(hit.source_location, dict)
+                or not isinstance(hit.score, (int, float)) or not math.isfinite(hit.score)
+                or hit.chunk_id in seen_chunks
+            ):
+                raise KnowledgeRetrievalUnavailable("retrieval result citation provenance is invalid")
+            seen_chunks.add(hit.chunk_id)
+            if hit.retrieval_method in ("vector", "hybrid") and not all(
+                isinstance(value, str) and value.strip()
+                for value in (hit.provider_id, hit.model_id, hit.model_version, hit.index_generation)
+            ):
+                # Vector evidence without immutable model/index identity cannot be cited or audited.
+                raise KnowledgeRetrievalUnavailable("vector retrieval result lacks model/index provenance")
         return hits
 
 

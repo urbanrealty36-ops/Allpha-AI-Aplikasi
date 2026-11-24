@@ -1,11 +1,12 @@
 import asyncio
 import hashlib
+import json
 
 import httpx
 import pytest
 from fastapi import HTTPException
 
-from allpha_api import knowledge
+from allpha_api import document_scanner, knowledge
 from allpha_api.document_scanner import CONTRACT_VERSION
 
 
@@ -15,10 +16,13 @@ class FakeResponse:
         self.payload = payload
         self.invalid_json = invalid_json
 
-    def json(self):
+    headers = {}
+
+    async def aiter_bytes(self):
         if self.invalid_json:
-            raise ValueError("invalid JSON")
-        return self.payload
+            yield b"{not json"
+        else:
+            yield json.dumps(self.payload).encode()
 
 
 class FakeAsyncClient:
@@ -36,11 +40,20 @@ class FakeAsyncClient:
     async def __aexit__(self, *args):
         return False
 
-    async def post(self, endpoint, *, files, headers):
+    def stream(self, method, endpoint, *, files, headers):
         type(self).calls.append((endpoint, files, headers))
         if type(self).error:
             raise type(self).error
-        return type(self).response
+        response = type(self).response
+
+        class Context:
+            async def __aenter__(self):
+                return response
+
+            async def __aexit__(self, *args):
+                return False
+
+        return Context()
 
 
 @pytest.fixture(autouse=True)
@@ -50,6 +63,11 @@ def scanner_client_mock(monkeypatch):
     FakeAsyncClient.calls = []
     FakeAsyncClient.options = []
     monkeypatch.setattr(knowledge.httpx, "AsyncClient", FakeAsyncClient)
+
+    async def public_resolver(host):
+        return None
+
+    monkeypatch.setattr(document_scanner, "_resolve_public_addresses", public_resolver)
     monkeypatch.delenv("ALLPHA_DOCUMENT_SCANNER_URL", raising=False)
     monkeypatch.delenv("ALLPHA_DOCUMENT_SCANNER_API_KEY", raising=False)
     monkeypatch.delenv("ALLPHA_DOCUMENT_SCANNER_ALLOWED_HOSTS", raising=False)

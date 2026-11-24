@@ -75,6 +75,16 @@ class EmbeddingResponse(BaseModel):
     trace_id: str = Field(min_length=1, max_length=128)
     completed_at: datetime
 
+    @field_validator("provider_id", "model_id", "model_version")
+    @classmethod
+    def identity_is_concrete(cls, value: str) -> str:
+        """Provider identity and model version must be explicit and immutable, never blank or a moving alias."""
+        if value != value.strip() or not value:
+            raise ValueError("provider/model identity must be non-blank and untrimmed")
+        if value.lower() in {"latest", "default", "auto", "unknown", "none", "null"}:
+            raise ValueError("model identity must be an immutable version, not a moving alias")
+        return value
+
     @model_validator(mode="after")
     def validate_cost_attribution(self):
         values = (self.usage_units, self.usage_unit, self.cost_microunits, self.cost_unit, self.pricing_version)

@@ -81,6 +81,29 @@ async def _admin_db_request(method: str, path: str, access_token: str | None = N
     return response.json()
 
 
+_PUBLIC_PROVENANCE_KEYS = ("kind", "filename", "sha256", "source_version", "sensitivity")
+_PUBLIC_SCAN_KEYS = ("scanner_id", "engine_version", "signature_version", "sha256", "contract_version", "receipt_id")
+_PUBLIC_JOB_KEYS = tuple(JOB_FIELDS.split(","))
+
+
+def _public_source(source: dict) -> dict:
+    """Client-safe source projection: no storage path, no internal provenance or actor fields."""
+    result = {key: value for key, value in source.items() if key not in ("storage_path", "provenance")}
+    provenance = source.get("provenance") if isinstance(source.get("provenance"), dict) else {}
+    safe = {key: provenance[key] for key in _PUBLIC_PROVENANCE_KEYS if key in provenance}
+    scan = provenance.get("malware_scan")
+    if isinstance(scan, dict):
+        safe["malware_scan"] = {key: scan[key] for key in _PUBLIC_SCAN_KEYS if key in scan}
+    result["provenance"] = safe
+    return result
+
+
+def _public_job(job: object) -> object:
+    if not isinstance(job, dict):
+        return job
+    return {key: job[key] for key in _PUBLIC_JOB_KEYS if key in job}
+
+
 async def _scan(data: bytes,filename: str,media_type: str):
     endpoint=os.getenv("ALLPHA_DOCUMENT_SCANNER_URL","").strip()
     mode=os.getenv("ALLPHA_DOCUMENT_SCANNER_MODE","").strip().lower()
@@ -128,13 +151,7 @@ async def _scan(data: bytes,filename: str,media_type: str):
     try:
         scanner = RemoteDocumentScanner.from_environment()
         receipt = await scanner.scan(data, filename=filename, media_type=media_type)
-        return {
-            "scanner_id": receipt.scanner_id,
-            "engine_version": receipt.engine_version,
-            "signature_version": receipt.signature_version,
-            "sha256": receipt.sha256,
-            "contract_version": receipt.contract_version,
-        }
+        return receipt.as_provenance()
     except DocumentScannerConfigurationError as exc:
         raise HTTPException(503,detail={"code":"SCANNER_NOT_CONFIGURED","message":"Pemindai malware memerlukan URL HTTPS, credential, dan hostname allowlist yang valid."}) from exc
     except DocumentMalwareDetected as exc:
@@ -187,7 +204,7 @@ async def upload_source(agent_id: uuid.UUID,request: Request,file: UploadFile=Fi
     try: await _storage("POST",f"agent-knowledge/{path}",data,media)
     except HTTPException:
         await _admin_db_request("DELETE","agent_knowledge_sources",token,params={"id":f"eq.{sid}"}); raise
-    return {"source":rows[0],"job":None,"publication":"private","retrieval_ready":False,"next_action":"process"}
+    return {"source":_public_source(rows[0]),"job":None,"publication":"private","retrieval_ready":False,"next_action":"process"}
 
 @router.get("/sources")
 async def list_sources(agent_id: uuid.UUID,request: Request,user: dict[str,Any]=Depends(current_user)):
@@ -199,7 +216,7 @@ async def list_sources(agent_id: uuid.UUID,request: Request,user: dict[str,Any]=
     latest={}
     for job in (jobs or []):
         latest.setdefault(job["source_id"],job)
-    return {"items":[{**source,"latest_job":latest.get(source["id"])} for source in sources]}
+    return {"items":[{**_public_source(source),"latest_job":_public_job(latest.get(source["id"]))} for source in sources]}
 
 @router.patch("/sources/{source_id}/sensitivity")
 async def classify_source(agent_id: uuid.UUID,source_id: uuid.UUID,body: SensitivityRequest,request: Request,user: dict[str,Any]=Depends(current_user)):
@@ -222,7 +239,7 @@ async def classify_source(agent_id: uuid.UUID,source_id: uuid.UUID,body: Sensiti
 async def get_source(agent_id: uuid.UUID,source_id: uuid.UUID,request: Request,user: dict[str,Any]=Depends(current_user)):
     token=await _owned(agent_id,request,user); source=await _source(agent_id,source_id,token,user)
     jobs=await user_db_request("GET","agent_knowledge_jobs",token,params={"select":JOB_FIELDS,"source_id":f"eq.{source_id}","agent_id":f"eq.{agent_id}","owner_id":f"eq.{user['id']}","order":"created_at.desc","limit":"20"})
-    return {"source":source,"jobs":jobs or []}
+    return {"source":_public_source(source),"jobs":[_public_job(job) for job in (jobs or [])]}
 
 async def _enqueue_document_processing(agent_id: uuid.UUID,source_id: uuid.UUID,request: Request,user: dict[str,Any],reason: str | None = None):
     token=await _owned(agent_id,request,user)
@@ -238,7 +255,7 @@ async def _enqueue_document_processing(agent_id: uuid.UUID,source_id: uuid.UUID,
     )
     if not isinstance(job,dict) or not job.get("id"):
         raise HTTPException(503,detail={"code":"KNOWLEDGE_ENQUEUE_FAILED","message":"Job pemrosesan dokumen belum dapat dimasukkan ke antrean."})
-    return {"source_id":str(source_id),"status":job.get("status","queued"),"job":job,
+    return {"source_id":str(source_id),"status":job.get("status","queued"),"job":_public_job(job),
             "retrieval_ready":False,"next_stage":"awaiting_malware_scan"}
 
 @router.post("/sources/{source_id}/process",status_code=202)

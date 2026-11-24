@@ -13,6 +13,7 @@ from urllib.parse import quote
 import httpx
 from fastapi import HTTPException
 
+from allpha_api.document_scanner import DocumentScannerConfigurationError, RemoteDocumentScanner
 from allpha_api.knowledge import _chunk, _extract, _scan
 from allpha_api.knowledge_worker import SupabaseKnowledgeJobStore, WorkerConfigurationError
 from allpha_api.lease_heartbeat import run_with_lease_heartbeat
@@ -242,6 +243,14 @@ def build_worker_from_environment() -> KnowledgeDocumentWorker:
         raise SystemExit("Knowledge document worker disabled: server-side Supabase credentials are required")
     if not scanner_url and scanner_mode != "clamd":
         raise SystemExit("Knowledge document worker disabled: configure ALLPHA_DOCUMENT_SCANNER_URL or local ALLPHA_DOCUMENT_SCANNER_MODE=clamd")
+    if scanner_url:
+        # Startup is gated on a *valid* remote scanner (HTTPS, allowlisted host,
+        # credential present), not merely a non-empty URL. Invalid config keeps the
+        # document consumer off so every source stays quarantined.
+        try:
+            RemoteDocumentScanner.from_environment()
+        except DocumentScannerConfigurationError as exc:
+            raise SystemExit(f"Knowledge document worker disabled: invalid remote scanner configuration ({exc})") from exc
     if not scanner_url and scanner_mode == "clamd":
         scanner = shutil.which("clamdscan")
         if not scanner:
