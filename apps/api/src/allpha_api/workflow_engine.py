@@ -26,6 +26,17 @@ class WorkflowNode(BaseModel):
     config: dict[str, Any] = Field(default_factory=dict)
     timeout_seconds: int = Field(default=5, ge=1, le=30)
 
+    @model_validator(mode="after")
+    def validate_node_config(self) -> "WorkflowNode":
+        if self.kind == "approval":
+            message = self.config.get("message")
+            context = self.config.get("context", {})
+            if not isinstance(message, str) or not message.strip() or len(message) > 1000:
+                raise ValueError("approval nodes require a non-empty message of at most 1000 characters")
+            if not isinstance(context, dict):
+                raise ValueError("approval node context must be an object")
+        return self
+
 
 class WorkflowEdge(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
