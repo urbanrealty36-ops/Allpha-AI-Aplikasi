@@ -119,10 +119,11 @@ def test_agent_update_rejects_ownership_and_authority_fields():
 
 
 def test_agent_update_accepts_bounded_profile_fields():
-    value = AgentUpdate.model_validate({"display_name": "Research Agent", "visibility": "public", "status": "active"})
+    value = AgentUpdate.model_validate({"display_name": "Research Agent", "visibility": "public", "status": "active", "public_owner_attribution": True})
     assert value.display_name == "Research Agent"
     assert value.visibility == "public"
     assert value.status == "active"
+    assert value.public_owner_attribution is True
 
 
 
@@ -266,14 +267,16 @@ def test_get_agent_returns_only_current_active_owner_record(monkeypatch):
     assert calls[1][3]["params"]["id"] == "eq.00000000-0000-0000-0000-000000000001"
 
 
-def test_patch_agent_updates_only_after_active_owner_check(monkeypatch):
+def test_patch_agent_uses_atomic_owner_and_version_checked_rpc(monkeypatch):
     calls = []
 
     async def fake_user_db_request(method, path, access_token, **kwargs):
         calls.append((method, path, access_token, kwargs))
-        if path == "agent_ownerships":
-            return [{"agent_id": "00000000-0000-0000-0000-000000000001", "ownership_role": "owner", "status": "active"}]
-        return [{"id": "00000000-0000-0000-0000-000000000001", "display_name": "Updated Agent", "visibility": "public", "status": "active"}]
+        if path == "ai_agents":
+            return [{"id": "00000000-0000-0000-0000-000000000001", "version": 4}]
+        if path == "rpc/update_my_ai_agent":
+            return [{"id": "00000000-0000-0000-0000-000000000001", "display_name": "Updated Agent", "visibility": "public", "status": "active", "version": 5}]
+        raise AssertionError(path)
 
     async def fake_current_user(request: Request):
         request.state.supabase_access_token = "human-a-token"
@@ -292,11 +295,10 @@ def test_patch_agent_updates_only_after_active_owner_check(monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["agent"]["display_name"] == "Updated Agent"
-    assert [call[1] for call in calls] == ["agent_ownerships", "ai_agents"]
-    assert calls[1][0] == "PATCH"
-    assert calls[1][2] == "human-a-token"
-    assert calls[1][3]["body"] == {"display_name": "Updated Agent", "visibility": "public", "status": "active"}
-    assert calls[1][3]["prefer"] == "return=representation"
+    assert [call[1] for call in calls] == ["ai_agents", "rpc/update_my_ai_agent"]
+    assert calls[1][0:3] == ("POST", "rpc/update_my_ai_agent", "human-a-token")
+    assert calls[1][3]["body"]["p_expected_version"] == 4
+    assert calls[1][3]["body"]["p_changes"] == {"display_name": "Updated Agent", "visibility": "public", "status": "active"}
 
 
 def test_patch_agent_does_not_update_when_caller_is_not_owner(monkeypatch):
@@ -323,8 +325,7 @@ def test_patch_agent_does_not_update_when_caller_is_not_owner(monkeypatch):
 
     assert response.status_code == 404
     assert len(calls) == 1
-    assert calls[0][1] == "agent_ownerships"
-    assert calls[0][3]["params"]["owner_user_id"] == "eq.human-b"
+    assert calls[0][1] == "ai_agents"
 
 
 
@@ -361,3 +362,102 @@ def test_agent_schema_and_rpc_migration_match_api_contract():
     assert "p_disclosure text" in forward_sql.lower()
     assert "p_boundaries jsonb" in forward_sql.lower()
     assert "grant execute on function public.create_ai_agent(text, text, text, text, jsonb, text, text, jsonb) to authenticated" in forward_sql.lower()
+
+
+def test_publish_agent_uses_owner_scoped_versioned_rpc(monkeypatch):
+    calls=[]
+    async def fake_user_db_request(method,path,access_token,**kwargs):
+        calls.append((method,path,access_token,kwargs))
+        return [{"id":"agent-1","status":"active","visibility":"public","version":6,"public_owner_attribution":True}]
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token="owner-token"
+        return {"id":"owner-1","email":"owner@example.invalid"}
+    monkeypatch.setattr("allpha_api.main.user_db_request",fake_user_db_request)
+    app.dependency_overrides[current_user]=fake_current_user
+    try:
+        response=client.post("/v1/agents/00000000-0000-0000-0000-000000000001/publish",
+            headers={"Authorization":"Bearer test"},json={"expected_version":5,"public_owner_attribution":True})
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code==200
+    assert calls[0][0:3]==("POST","rpc/publish_my_ai_agent","owner-token")
+    assert calls[0][3]["body"]=={"p_agent_id":"00000000-0000-0000-0000-000000000001","p_expected_version":5,"p_public_owner_attribution":True}
+
+
+def test_revoke_agent_publication_uses_owner_scoped_versioned_rpc(monkeypatch):
+    calls=[]
+    async def fake_user_db_request(method,path,access_token,**kwargs):
+        calls.append((method,path,access_token,kwargs))
+        return [{"id":"agent-1","status":"draft","visibility":"private","version":7,"public_owner_attribution":False}]
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token="owner-token"
+        return {"id":"owner-1","email":"owner@example.invalid"}
+    monkeypatch.setattr("allpha_api.main.user_db_request",fake_user_db_request)
+    app.dependency_overrides[current_user]=fake_current_user
+    try:
+        response=client.post("/v1/agents/00000000-0000-0000-0000-000000000001/revoke-publication",
+            headers={"Authorization":"Bearer test"},json={"expected_version":6})
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code==200
+    assert calls[0][1]=="rpc/revoke_my_ai_agent_publication"
+    assert calls[0][3]["body"]["p_expected_version"]==6
+
+
+def test_agent_identity_versions_are_owner_scoped(monkeypatch):
+    calls=[]
+    async def fake_user_db_request(method,path,access_token,**kwargs):
+        calls.append((method,path,access_token,kwargs))
+        if path=="ai_agents":
+            return [{"id":"agent-1","version":3}]
+        if path=="agent_identity_versions":
+            return [{"version":3,"event_type":"updated","snapshot":{"display_name":"Agent"},"snapshot_sha256":"a"*64}]
+        raise AssertionError(path)
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token="owner-token"
+        return {"id":"owner-1","email":"owner@example.invalid"}
+    monkeypatch.setattr("allpha_api.main.user_db_request",fake_user_db_request)
+    app.dependency_overrides[current_user]=fake_current_user
+    try:
+        response=client.get("/v1/agents/00000000-0000-0000-0000-000000000001/versions",
+            headers={"Authorization":"Bearer test"})
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code==200
+    assert response.json()["current_version"]==3
+    assert response.json()["items"][0]["event_type"]=="updated"
+    assert calls[1][3]["params"]["limit"]=="50"
+
+
+def test_public_passport_owner_attribution_requires_explicit_consent(monkeypatch):
+    calls=[]
+    async def fake_user_db_request(method,path,access_token,**kwargs):
+        calls.append((method,path,access_token,kwargs))
+        if path=="ai_agents":
+            return [{"id":"agent-1","handle":"public_agent","display_name":"Public Agent","disclosure":"AI-generated responses","visibility":"public","status":"active","public_owner_attribution":True,"version":3,"published_at":"2026-11-24T00:00:00Z"}]
+        if path=="agent_skill_publications" or path=="agent_capabilities":
+            return []
+        if path=="rpc/get_public_agent_owner_attribution":
+            return [{"username":"human-owner","display_name":"Human Owner","avatar_url":"https://cdn.example.invalid/avatar.png"}]
+        raise AssertionError(path)
+    monkeypatch.setattr("allpha_api.main.user_db_request",fake_user_db_request)
+    response=client.get("/v1/agent-passports/public_agent")
+    assert response.status_code==200
+    assert response.json()["owner_attribution"]["username"]=="human-owner"
+    assert "owner_user_id" not in response.json()["owner_attribution"]
+    assert calls[-1][1]=="rpc/get_public_agent_owner_attribution"
+
+
+def test_agent_identity_history_and_publication_migration_is_forward_only():
+    from pathlib import Path
+    migrations=Path(__file__).resolve().parents[1]/"supabase"/"migrations"
+    migration=migrations/"20261124031340_eng_p05_agent_identity_versions_and_passport_attribution.sql"
+    assert migration.is_file()
+    sql=migration.read_text(encoding="utf-8").lower()
+    assert "create table if not exists public.agent_identity_versions" in sql
+    assert "create trigger ai_agents_capture_identity_version" in sql
+    assert "public_owner_attribution" in sql
+    assert "public.publish_my_ai_agent" in sql
+    assert "public.revoke_my_ai_agent_publication" in sql
+    assert "public.get_public_agent_owner_attribution" in sql
+    assert "agent_identity_versions" in sql and "owned_agents" in sql
