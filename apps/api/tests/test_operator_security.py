@@ -755,7 +755,7 @@ def test_model_execution_policy_approval_is_separate_from_tariff_activation_and_
     calls=[]
     audits=[]
     item={
-        "id":config_id,"provider_id":"nvidia-nim","model_id":"qwen/model",
+        "id":config_id,"capability":"text_generation","provider_id":"nvidia-nim","model_id":"qwen/model",
         "model_version":"v1","pricing_version":"price-v2","policy_version":"p2",
         "status":"active","policy_approved":False,"effective_at":"2026-11-24T00:00:00Z",
     }
