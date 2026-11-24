@@ -63,24 +63,19 @@ begin
 
   select jsonb_build_object(
     'since',p_since,'until',p_until,
-    'totals',jsonb_build_object(
-      'runs',count(*),
-      'usage_units',coalesce(sum(usage_units),0),
-      'cost_microunits',coalesce(sum(cost_microunits),0)
-    ),
+    'totals',jsonb_build_object('runs',count(*)),
     'by_provider_model',coalesce((
       select jsonb_agg(jsonb_build_object(
-        'provider_id',g.provider_id,'model_id',g.model_id,
+        'provider_id',g.provider_id,'model_id',g.model_id,'usage_unit',g.usage_unit,
         'runs',g.runs,'usage_units',g.usage_units,'cost_microunits',g.cost_microunits,
         'cost_unit',g.cost_unit,'pricing_version',g.pricing_version
       ) order by g.cost_microunits desc)
       from (
-        select provider_id,model_id,count(*) as runs,sum(usage_units) as usage_units,
-          sum(cost_microunits) as cost_microunits,min(cost_unit) as cost_unit,
-          min(pricing_version) as pricing_version
+        select provider_id,model_id,usage_unit,count(*) as runs,sum(usage_units) as usage_units,
+          sum(cost_microunits) as cost_microunits,cost_unit,pricing_version
         from public.agent_model_usage_metering
         where completed_at>=p_since and completed_at<p_until
-        group by provider_id,model_id
+        group by provider_id,model_id,usage_unit,cost_unit,pricing_version
       ) g
     ),'[]'::jsonb)
   ) into v_result
