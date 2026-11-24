@@ -258,6 +258,87 @@ def _knowledge_context_snapshot(hits: list[Any], *, max_chars: int = 6000) -> tu
     return context, references, hashlib.sha256(encoded).hexdigest()
 
 
+def _validate_knowledge_context_provenance(
+    refs: Any, digest: Any, state: Any,
+) -> tuple[list[dict[str, Any]], str, str]:
+    empty_digest = hashlib.sha256(b"[]").hexdigest()
+    if state not in {"not_configured", "empty", "available"}:
+        raise HTTPException(status_code=409, detail={
+            "code": "TOOL_PLAN_KNOWLEDGE_PROVENANCE_INVALID",
+            "message": "Status provenance Knowledge pada rencana tidak valid.",
+        })
+    if not isinstance(digest, str) or len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
+        raise HTTPException(status_code=409, detail={
+            "code": "TOOL_PLAN_KNOWLEDGE_PROVENANCE_INVALID",
+            "message": "Digest provenance Knowledge pada rencana tidak valid.",
+        })
+    if not isinstance(refs, list) or len(refs) > 8:
+        raise HTTPException(status_code=409, detail={
+            "code": "TOOL_PLAN_KNOWLEDGE_PROVENANCE_INVALID",
+            "message": "Daftar referensi Knowledge pada rencana tidak valid.",
+        })
+    if (state == "available") != bool(refs):
+        raise HTTPException(status_code=409, detail={
+            "code": "TOOL_PLAN_KNOWLEDGE_PROVENANCE_INVALID",
+            "message": "Status dan daftar referensi Knowledge pada rencana tidak konsisten.",
+        })
+    normalized: list[dict[str, Any]] = []
+    for ref in refs:
+        if not isinstance(ref, dict) or "content" in ref:
+            raise HTTPException(status_code=409, detail={
+                "code": "TOOL_PLAN_KNOWLEDGE_PROVENANCE_INVALID",
+                "message": "Referensi Knowledge harus berupa metadata tanpa konten dokumen.",
+            })
+        source_version = ref.get("source_version")
+        location = ref.get("source_location")
+        score = ref.get("score")
+        if (
+            not isinstance(ref.get("source_id"), str) or not ref["source_id"]
+            or not isinstance(ref.get("chunk_id"), str) or not ref["chunk_id"]
+            or not isinstance(source_version, int) or isinstance(source_version, bool) or source_version < 1
+            or ref.get("sensitivity") not in {"public", "internal", "confidential", "restricted"}
+            or ref.get("retrieval_method") not in {"vector", "keyword", "hybrid"}
+            or not isinstance(location, dict)
+            or set(location) != {"kind", "index"}
+            or location.get("kind") not in {"document", "page", "paragraph"}
+            or not isinstance(location.get("index"), int) or isinstance(location.get("index"), bool)
+            or location["index"] < 1
+            or not isinstance(score, (int, float)) or isinstance(score, bool) or not math.isfinite(float(score))
+        ):
+            raise HTTPException(status_code=409, detail={
+                "code": "TOOL_PLAN_KNOWLEDGE_PROVENANCE_INVALID",
+                "message": "Metadata referensi Knowledge pada rencana tidak valid.",
+            })
+        for digest_key in ("content_sha256", "retrieved_content_sha256"):
+            value = ref.get(digest_key)
+            if not isinstance(value, str) or len(value) != 64 or any(char not in "0123456789abcdef" for char in value):
+                raise HTTPException(status_code=409, detail={
+                    "code": "TOOL_PLAN_KNOWLEDGE_PROVENANCE_INVALID",
+                    "message": "Digest referensi Knowledge pada rencana tidak valid.",
+                })
+        normalized.append({
+            "source_id": ref["source_id"],
+            "source_version": source_version,
+            "chunk_id": ref["chunk_id"],
+            "source_location": {"kind": location["kind"], "index": location["index"]},
+            "sensitivity": ref["sensitivity"],
+            "content_sha256": ref["content_sha256"],
+            "retrieved_content_sha256": ref["retrieved_content_sha256"],
+            "retrieval_method": ref["retrieval_method"],
+            "score": float(score),
+            "provider_id": ref.get("provider_id"),
+            "model_id": ref.get("model_id"),
+            "model_version": ref.get("model_version"),
+            "index_generation": ref.get("index_generation"),
+        })
+    if state != "available" and digest != empty_digest:
+        raise HTTPException(status_code=409, detail={
+            "code": "TOOL_PLAN_KNOWLEDGE_PROVENANCE_INVALID",
+            "message": "Digest konteks Knowledge kosong tidak valid.",
+        })
+    return normalized, digest, state
+
+
 async def _retrieve_agent_knowledge_context(
     request: Request, *, owner_id: str, agent_id: str, query: str, trace_id: str,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], str, str]:
@@ -1909,6 +1990,14 @@ async def create_task(payload: TaskCreate, request: Request,
             if planner_evidence:
                 input_payload["planner_evidence"] = planner_evidence
             if plan_row:
+                knowledge_refs, knowledge_digest, knowledge_state = _validate_knowledge_context_provenance(
+                    plan_row.get("knowledge_context_refs") or [],
+                    plan_row.get("knowledge_context_sha256") or hashlib.sha256(b"[]").hexdigest(),
+                    plan_row.get("knowledge_context_state") or "not_configured",
+                )
+                input_payload["knowledge_context_refs"] = knowledge_refs
+                input_payload["knowledge_context_sha256"] = knowledge_digest
+                input_payload["knowledge_context_state"] = knowledge_state
                 input_payload["_tool_plan_id"] = str(plan_row["id"])
             required_calls = len(normalized_plan)
         else:
