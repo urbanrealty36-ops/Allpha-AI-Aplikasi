@@ -307,6 +307,7 @@ class SupabaseActiveModelCostVerifier(SupabaseApprovedRuntimePolicyVerifier):
             raise ValueError("active model-cost verifier configuration is incomplete")
         self._expected = {
             "id": policy_id,
+            "capability": "text_generation",
             "policy_version": policy_version,
             "provider_id": provider_id,
             "model_id": model_id,
@@ -330,6 +331,7 @@ class SupabaseActiveModelCostVerifier(SupabaseApprovedRuntimePolicyVerifier):
             "select": ",".join((*self._expected.keys(), "status", "effective_at", "policy_approval_reference", "policy_approved_by", "policy_approved_at")),
             "id": "eq." + str(self._expected["id"]),
             "policy_version": "eq." + str(self._expected["policy_version"]),
+            "capability": "eq.text_generation",
             "provider_id": "eq." + str(self._expected["provider_id"]),
             "model_id": "eq." + str(self._expected["model_id"]),
             "model_version": "eq." + str(self._expected["model_version"]),
