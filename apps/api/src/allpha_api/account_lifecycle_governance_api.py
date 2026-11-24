@@ -306,7 +306,7 @@ async def list_deletion_requests(
     if status is not None and status not in allowed_statuses:
         raise fail(422, "ACCOUNT_DELETION_STATUS_INVALID", "Status permintaan tidak valid.")
     params = {
-        "select": "id,user_id,subject_ref,status,policy_version,requested_at,scheduled_for,completed_at,cancelled_at,error_code,request_metadata",
+        "select": "id,user_id,subject_ref,status,policy_version,requested_at,scheduled_for,completed_at,cancelled_at,error_code,request_metadata,export_job_id",
         "order": "requested_at.desc",
         "limit": str(limit),
     }
