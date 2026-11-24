@@ -73,6 +73,8 @@ type AgentIdentityVersion = { id: string; version: number; event_type: string; s
 type AgentOwnershipTransfer = { id: string; agent_id: string; from_owner_user_id: string; to_owner_user_id: string; status: "pending" | "accepted" | "rejected" | "cancelled" | "expired"; expires_at: string; created_at: string };
 type RegisteredTool = { key: string; version: string; name: string; description: string; risk_level: string; required_permission_scopes: string[]; executable: boolean };
 type AgentSkill = { id: string; slug: string; name: string; description?: string; status: "draft" | "published" | "archived"; version: number; required_permission_scopes?: string[]; tool_dependencies?: string[] };
+type PublicSkillPublication = { id: string; agent_id: string; slug: string; name: string; description: string; category: string; version: number; publication_terms: Record<string, unknown> };
+type SkillInstallation = { id: string; agent_id: string; source_agent_id: string; source_skill_id: string; source_version: number; installed_skill_id: string; status: "active"|"revoked"|"expired"; license_terms_snapshot: Record<string, unknown>; license_terms_digest: string; license_expires_at?: string | null; accepted_at: string };
 type AgentCapability = { id: string; capability_key: string; description?: string; status: "requested" | "approved" | "denied" | "revoked"; risk_level: string };
 type RuntimeSession = { id: string; owner_user_id: string; agent_id: string; title: string; status: string; created_at: string; last_activity_at: string };
 type RuntimeSkill = { id: string; slug: string; name: string; status: "draft" | "published" | "archived"; version: number; tool_dependencies?: string[]; budget_limits?: { max_runtime_seconds?: number; max_tool_calls?: number } };
@@ -595,6 +597,12 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
   const [registeredTools, setRegisteredTools] = useState<RegisteredTool[]>([]);
   const [studioToolDependencies, setStudioToolDependencies] = useState<string[]>([]);
   const [studioCapabilities, setStudioCapabilities] = useState<AgentCapability[]>([]);
+  const [publicSkillPublications, setPublicSkillPublications] = useState<PublicSkillPublication[]>([]);
+  const [skillInstallations, setSkillInstallations] = useState<SkillInstallation[]>([]);
+  const [selectedSkillPublicationId, setSelectedSkillPublicationId] = useState("");
+  const [acceptSkillLicense, setAcceptSkillLicense] = useState(false);
+  const [skillInstallRevokeReason, setSkillInstallRevokeReason] = useState("");
+  const [skillInstallBusy, setSkillInstallBusy] = useState(false);
   const [knowledgeSources, setKnowledgeSources] = useState<KnowledgeSource[]>([]);
   const [knowledgeLoading, setKnowledgeLoading] = useState(false);
   const [retrievalQuery, setRetrievalQuery] = useState("");
@@ -1827,21 +1835,27 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
     retrievalRequestSequence.current += 1; setStudioAgentId(agentId); setRetrievalQuery(""); setRetrievalResults([]); setRetrievalTraceId(""); setRetrievalError(""); setRetrievalLoading(false); setAgentLoading(true); setError("");
     try {
       const headers = { Authorization: "Bearer " + session.access_token };
-      const [skillsResponse, capabilitiesResponse, toolsResponse, knowledgeResponse] = await Promise.all([
+      const [skillsResponse, capabilitiesResponse, toolsResponse, knowledgeResponse, publicSkillsResponse, installationsResponse] = await Promise.all([
         fetch(apiBase + "/v1/agents/" + encodeURIComponent(agentId) + "/skills", { headers, cache: "no-store" }),
         fetch(apiBase + "/v1/agents/" + encodeURIComponent(agentId) + "/capabilities", { headers, cache: "no-store" }),
         fetch(apiBase + "/v1/tools", { headers, cache: "no-store" }),
         fetch(apiBase + "/v1/agents/" + encodeURIComponent(agentId) + "/knowledge/sources", { headers, cache: "no-store" }),
+        fetch(apiBase + "/v1/agent-skills/publications?limit=100", { cache: "no-store" }),
+        fetch(apiBase + "/v1/agents/" + encodeURIComponent(agentId) + "/skill-installations", { headers, cache: "no-store" }),
       ]);
-      const [skillsBody, capabilitiesBody, toolsBody, knowledgeBody] = await Promise.all([skillsResponse.json(), capabilitiesResponse.json(), toolsResponse.json(), knowledgeResponse.json()]);
+      const [skillsBody, capabilitiesBody, toolsBody, knowledgeBody, publicSkillsBody, installationsBody] = await Promise.all([skillsResponse.json(), capabilitiesResponse.json(), toolsResponse.json(), knowledgeResponse.json(), publicSkillsResponse.json(), installationsResponse.json()]);
       if (!skillsResponse.ok) throw new Error(skillsBody?.error?.message || "Skills tidak dapat dimuat.");
       if (!capabilitiesResponse.ok) throw new Error(capabilitiesBody?.error?.message || "Capabilities tidak dapat dimuat.");
       if (!toolsResponse.ok) throw new Error(toolsBody?.error?.message || "Tool Registry tidak dapat dimuat.");
       if (!knowledgeResponse.ok) throw new Error(knowledgeBody?.error?.message || "Sumber pengetahuan tidak dapat dimuat.");
+      if (!publicSkillsResponse.ok) throw new Error(publicSkillsBody?.error?.message || "Katalog Skill publik tidak dapat dimuat.");
+      if (!installationsResponse.ok) throw new Error(installationsBody?.error?.message || "Instalasi Skill tidak dapat dimuat.");
       setStudioSkills(Array.isArray(skillsBody.items) ? skillsBody.items : []);
       setStudioCapabilities(Array.isArray(capabilitiesBody.items) ? capabilitiesBody.items : []);
       setRegisteredTools(Array.isArray(toolsBody.items) ? toolsBody.items.filter((tool: RegisteredTool) => tool.executable) : []);
       setKnowledgeSources(Array.isArray(knowledgeBody.items) ? knowledgeBody.items : []);
+      setPublicSkillPublications(Array.isArray(publicSkillsBody.items) ? publicSkillsBody.items.filter((item: PublicSkillPublication) => item.agent_id !== agentId) : []);
+      setSkillInstallations(Array.isArray(installationsBody.items) ? installationsBody.items : []);
     } catch (e) { setError(e instanceof Error ? e.message : "Agent Studio tidak dapat dimuat."); }
     finally { setAgentLoading(false); }
   }
@@ -1938,6 +1952,39 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
     } catch (e) { setError(e instanceof Error ? e.message : "Skill tidak dapat dibuat."); }
     finally { setBusy(false); }
   }
+  async function installPublicAgentSkill(publication: PublicSkillPublication) {
+    if (!studioAgentId || !acceptSkillLicense) { setError("Persetujuan lisensi Skill wajib diberikan."); return; }
+    setSkillInstallBusy(true); setError(""); setMessage("");
+    try {
+      const result = await apiRequest("/v1/agents/" + encodeURIComponent(studioAgentId) + "/skills/install", {
+        method:"POST",
+        body:JSON.stringify({
+          source_agent_id:publication.agent_id,source_skill_id:publication.id,source_version:publication.version,
+          accept_license:true,idempotency_key:createClientUuid(),
+        }),
+      }) as {installation?:SkillInstallation;installed_skill_id?:string};
+      if (!result.installation?.id || !result.installed_skill_id) throw new Error("Database tidak mengembalikan bukti instalasi Skill.");
+      setAcceptSkillLicense(false);setSelectedSkillPublicationId("");
+      setMessage("Skill berhasil di-install sebagai draft. Snapshot sumber dan persetujuan lisensi tersimpan.");
+      await loadAgentStudio(studioAgentId);
+    } catch(e) { setError(e instanceof Error ? e.message : "Instalasi Skill gagal."); }
+    finally { setSkillInstallBusy(false); }
+  }
+
+  async function revokePublicAgentSkillInstallation(installation: SkillInstallation) {
+    if (!studioAgentId || skillInstallRevokeReason.trim().length<8) { setError("Alasan pencabutan lisensi minimal 8 karakter."); return; }
+    setSkillInstallBusy(true);setError("");setMessage("");
+    try {
+      await apiRequest("/v1/agents/"+encodeURIComponent(studioAgentId)+"/skill-installations/"+encodeURIComponent(installation.id)+"/revoke",{
+        method:"POST",body:JSON.stringify({reason:skillInstallRevokeReason.trim()}),
+      });
+      setSkillInstallRevokeReason("");
+      setMessage("Lisensi dicabut. Agent Runtime menolak snapshot ini dan Passport tidak lagi menampilkannya.");
+      await loadAgentStudio(studioAgentId);
+    } catch(e) { setError(e instanceof Error ? e.message : "Pencabutan lisensi gagal."); }
+    finally { setSkillInstallBusy(false); }
+  }
+
   async function requestStudioCapability() {
     if (!studioAgentId) return;
     setBusy(true); setError(""); setMessage("");
@@ -2306,7 +2353,7 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
           <Text style={s.muted}>Chunk: {item.chunk_id}</Text><Text style={s.muted}>SHA-256: {item.content_sha256}</Text><Text style={s.muted}>Lokasi sumber: {JSON.stringify(item.source_location)}</Text>
           {(item.provider_id || item.model_id || item.model_version || item.index_generation) && <Text style={s.muted}>Indeks: {[item.provider_id, item.model_id, item.model_version, item.index_generation].filter(Boolean).join(" · ")}</Text>}
         </View>)}
-      </View><Text style={s.kicker}>SKILLS ({studioSkills.length})</Text>{studioSkills.map(skill => <View key={skill.id} style={s.socialRow}><Text style={s.body}>{skill.name} · {skill.slug} · v{skill.version}</Text><Text style={s.muted}>{skill.status} · scopes: {skill.required_permission_scopes?.join(", ") || "belum ditentukan"}</Text></View>)}<TextInput accessibilityLabel="Capability key" value={studioCapabilityKey} onChangeText={setStudioCapabilityKey} autoCapitalize="none" style={field} placeholder="calendar.read" placeholderTextColor="#8B94AC"/><TextInput accessibilityLabel="Deskripsi capability" value={studioCapabilityDescription} onChangeText={setStudioCapabilityDescription} style={field} placeholder="Tujuan capability" placeholderTextColor="#8B94AC"/><Button title={busy ? "Menyimpan…" : "Ajukan capability"} secondary disabled={busy || studioCapabilityKey.trim().length < 3} onPress={() => void requestStudioCapability()}/><Text style={s.kicker}>CAPABILITIES ({studioCapabilities.length})</Text>{studioCapabilities.map(cap => <View key={cap.id} style={s.socialRow}><Text style={s.body}>{cap.capability_key} · {cap.status}</Text><Text style={s.muted}>Risiko: {cap.risk_level} · bukan izin runtime</Text></View>)}<Button title="Tutup Agent Studio" secondary onPress={() => { retrievalRequestSequence.current += 1; setStudioAgentId(null); setRetrievalQuery(""); setRetrievalResults([]); setRetrievalTraceId(""); setRetrievalError(""); }}/></View>}
+      </View><Text style={s.kicker}>SKILLS ({studioSkills.length})</Text>{studioSkills.map(skill => <View key={skill.id} style={s.socialRow}><Text style={s.body}>{skill.name} · {skill.slug} · v{skill.version}</Text><Text style={s.muted}>{skill.status} · scopes: {skill.required_permission_scopes?.join(", ") || "belum ditentukan"}</Text></View>)}<TextInput accessibilityLabel="Capability key" value={studioCapabilityKey} onChangeText={setStudioCapabilityKey} autoCapitalize="none" style={field} placeholder="calendar.read" placeholderTextColor="#8B94AC"/><TextInput accessibilityLabel="Deskripsi capability" value={studioCapabilityDescription} onChangeText={setStudioCapabilityDescription} style={field} placeholder="Tujuan capability" placeholderTextColor="#8B94AC"/><Button title={busy ? "Menyimpan…" : "Ajukan capability"} secondary disabled={busy || studioCapabilityKey.trim().length < 3} onPress={() => void requestStudioCapability()}/><Text style={s.kicker}>INSTALL SKILL & LICENSE</Text><Text style={s.muted}>Pilih Skill dari Agent publik. Persetujuan lisensi mengikat snapshot versi sumber; Skill yang terpasang menjadi draft dan wajib ditinjau sebelum dipublikasikan.</Text>{publicSkillPublications.map(item=><Pressable key={item.id+"-"+item.version} accessibilityRole="radio" accessibilityState={{selected:selectedSkillPublicationId===item.id}} onPress={()=>{setSelectedSkillPublicationId(item.id);setAcceptSkillLicense(false);}} style={[s.socialRow,{borderWidth:1,borderColor:selectedSkillPublicationId===item.id?"#818CF8":"#334155"}]}><Text style={s.body}>{item.name} · v{item.version}</Text><Text style={s.muted}>{item.category} · Source Agent {item.agent_id}</Text><Text style={s.muted}>{JSON.stringify(item.publication_terms)}</Text></Pressable>)}{selectedSkillPublicationId && <View style={s.socialRow}><Pressable accessibilityRole="checkbox" accessibilityState={{checked:acceptSkillLicense}} onPress={()=>setAcceptSkillLicense(value=>!value)} style={{flexDirection:"row",gap:8,alignItems:"center"}}><Text style={s.body}>{acceptSkillLicense?"☑":"□"} Saya menyetujui terms dan lisensi versi Skill ini.</Text></Pressable><Button title={skillInstallBusy?"Memasang…":"Terima lisensi & install draft"} disabled={skillInstallBusy||!acceptSkillLicense||!publicSkillPublications.some(item=>item.id===selectedSkillPublicationId)} onPress={()=>{const item=publicSkillPublications.find(item=>item.id===selectedSkillPublicationId);if(item)void installPublicAgentSkill(item);}}/></View>}<Text style={s.kicker}>INSTALASI AKTIF & RIWAYAT LISENSI ({skillInstallations.length})</Text>{skillInstallations.map(item=><View key={item.id} style={s.socialRow}><Text style={s.body}>Source Skill {item.source_skill_id} · v{item.source_version} · {item.status}</Text><Text style={s.muted}>Installed Skill: {item.installed_skill_id} · License {item.license_terms_digest.slice(0,16)}…</Text>{item.license_expires_at&&<Text style={s.muted}>Berlaku sampai {new Date(item.license_expires_at).toLocaleDateString("id-ID")}</Text>}{item.status==="active"&&<><TextInput accessibilityLabel="Alasan pencabutan lisensi" value={skillInstallRevokeReason} onChangeText={setSkillInstallRevokeReason} style={field} placeholder="Alasan pencabutan lisensi (min. 8 karakter)" placeholderTextColor="#8B94AC"/><Button title="Cabut lisensi" secondary disabled={skillInstallBusy||skillInstallRevokeReason.trim().length<8} onPress={()=>void revokePublicAgentSkillInstallation(item)}/></>}</View>)}<Text style={s.kicker}>CAPABILITIES ({studioCapabilities.length})</Text>{studioCapabilities.map(cap => <View key={cap.id} style={s.socialRow}><Text style={s.body}>{cap.capability_key} · {cap.status}</Text><Text style={s.muted}>Risiko: {cap.risk_level} · bukan izin runtime</Text></View>)}<Button title="Tutup Agent Studio" secondary onPress={() => { retrievalRequestSequence.current += 1; setStudioAgentId(null); setRetrievalQuery(""); setRetrievalResults([]); setRetrievalTraceId(""); setRetrievalError(""); }}/></View>}
         </>}
       </> : tab === "agentSocial" ? <AgentSocialControls session={session} apiBase={apiBase}/> : tab === "challenges" ? <>
         <Text style={s.kicker}>ENG-P12 · SKILL CHALLENGE</Text><Text style={s.title}>Evaluasi versi Skill</Text>
