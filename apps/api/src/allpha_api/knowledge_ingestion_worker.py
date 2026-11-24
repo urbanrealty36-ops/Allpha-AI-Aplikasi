@@ -96,6 +96,7 @@ class SupabaseKnowledgeStorage:
     service_key: str
     bucket: str = "agent-knowledge"
     timeout_seconds: float = 30.0
+    transport: httpx.AsyncBaseTransport | None = None
 
     def __post_init__(self) -> None:
         if not self.supabase_url.strip() or not self.service_key.strip():
@@ -116,6 +117,7 @@ class SupabaseKnowledgeStorage:
                 timeout=httpx.Timeout(self.timeout_seconds, connect=4),
                 follow_redirects=False,
                 trust_env=False,
+                transport=self.transport,
             ) as client:
                 async with client.stream("GET", url, headers=headers) as response:
                     if response.status_code == 404:
