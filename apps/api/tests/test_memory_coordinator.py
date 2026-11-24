@@ -117,3 +117,31 @@ def test_explicit_memory_intent_checks_current_owner_before_existing_source_look
     assert store.calls[0]["path"]=="agent_ownerships"
     assert store.calls[0]["params"]["ownership_role"]=="eq.owner"
     assert not any(call["path"]=="agent_memory_items" for call in store.calls)
+
+
+def test_memory_api_agent_scope_requires_active_owner_role(monkeypatch):
+    from types import SimpleNamespace
+    from allpha_api import memory_api
+    calls=[]
+    async def fake_user_db_request(method,path,token,**kwargs):
+        calls.append((method,path,token,kwargs))
+        return [{"agent_id":AGENT}]
+    monkeypatch.setattr(memory_api,"user_db_request",fake_user_db_request)
+    request=SimpleNamespace(state=SimpleNamespace(supabase_access_token="owner-token"))
+    asyncio.run(memory_api._owner(AGENT,request,{"id":OWNER}))
+    assert calls[0][0:3]==("GET","agent_ownerships","owner-token")
+    assert calls[0][3]["params"]["ownership_role"]=="eq.owner"
+    assert calls[0][3]["params"]["status"]=="eq.active"
+
+
+def test_memory_api_agent_scope_rejects_non_owner(monkeypatch):
+    from types import SimpleNamespace
+    from fastapi import HTTPException
+    from allpha_api import memory_api
+    async def fake_user_db_request(method,path,token,**kwargs):
+        return []
+    monkeypatch.setattr(memory_api,"user_db_request",fake_user_db_request)
+    request=SimpleNamespace(state=SimpleNamespace(supabase_access_token="non-owner-token"))
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(memory_api._owner(AGENT,request,{"id":OTHER}))
+    assert error.value.status_code==404
