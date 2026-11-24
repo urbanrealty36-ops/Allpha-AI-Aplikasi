@@ -77,7 +77,7 @@ def test_eng_p07_full_text_index_and_embedding_handoff_contract():
     fulltext = (migrations / "20261014173000_eng_p07_knowledge_fulltext_index.sql").read_text(encoding="utf-8").lower()
     api = (Path(__file__).parents[1] / "src" / "allpha_api" / "knowledge.py").read_text(encoding="utf-8")
     worker = (Path(__file__).parents[1] / "src" / "allpha_api" / "knowledge_worker.py").read_text(encoding="utf-8")
-    pipeline = (Path(__file__).parents[1] / "supabase" / "migrations" / "20261124110000_eng_p07_knowledge_document_worker_pipeline.sql").read_text(encoding="utf-8")
+    pipeline = (Path(__file__).parents[1] / "supabase" / "migrations" / "20261124044949_eng_p07_knowledge_document_worker_pipeline.sql").read_text(encoding="utf-8")
     assert "generated always as (to_tsvector" in fulltext
     assert "using gin(search_vector)" in fulltext
     assert "rpc/enqueue_agent_knowledge_document_job" in api
@@ -91,7 +91,7 @@ def test_knowledge_mutations_are_api_only_and_storage_paths_are_scoped():
     api = (Path(__file__).parents[1] / "src" / "allpha_api" / "knowledge.py").read_text(encoding="utf-8")
     assert "grant select on public.agent_knowledge_sources,public.agent_knowledge_jobs,public.agent_knowledge_chunks to authenticated" in sql
     assert "s.storage_path=storage.objects.name and s.status='quarantined'" in sql
-    lockdown = (Path(__file__).parents[1] / "supabase" / "migrations" / "20261124120000_eng_p07_knowledge_api_only_writes.sql").read_text(encoding="utf-8").lower()
+    lockdown = (Path(__file__).parents[1] / "supabase" / "migrations" / "20261124045041_eng_p07_knowledge_api_only_writes.sql").read_text(encoding="utf-8").lower()
     assert "revoke insert,update,delete on public.agent_knowledge_sources,public.agent_knowledge_jobs,public.agent_knowledge_chunks" in lockdown
     assert "drop policy if exists agent_knowledge_storage_owner_insert" in lockdown
     assert "SUPABASE_SERVICE_ROLE_KEY" in api
