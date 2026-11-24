@@ -61,21 +61,21 @@ async def _resolve_target(target_type: str, target_id: str, token: str) -> tuple
         return target_id, rows[0]["visibility"]
 
     rows = await _server_db("GET", "ai_agents", params={
-        "select": "id,created_by,status,visibility,handle,display_name",
+        "select": "id,status,visibility,handle,display_name",
         "id": f"eq.{target_id}", "limit": "1",
     })
     if not rows or rows[0].get("status") != "active" or rows[0].get("visibility") not in {"public", "private"}:
         raise HTTPException(404, detail={"code": "SOCIAL_TARGET_UNAVAILABLE", "message": "Agent tidak tersedia atau belum dipublikasikan."})
-    owner_id = str(rows[0].get("created_by") or "")
-    if not owner_id:
-        raise HTTPException(409, detail={"code": "SOCIAL_AGENT_OWNER_MISSING", "message": "Kepemilikan Agent belum dapat diverifikasi."})
+    # Ownership is mutable. created_by is immutable provenance and must never
+    # be used as the current Human Owner after an explicit transfer.
     ownership = await _server_db("GET", "agent_ownerships", params={
         "select": "agent_id,owner_user_id,ownership_role,status",
-        "agent_id": f"eq.{target_id}", "owner_user_id": f"eq.{owner_id}",
-        "ownership_role": "eq.owner", "status": "eq.active", "limit": "1",
+        "agent_id": f"eq.{target_id}", "ownership_role": "eq.owner",
+        "status": "eq.active", "limit": "2",
     })
-    if not ownership:
-        raise HTTPException(404, detail={"code": "SOCIAL_TARGET_UNAVAILABLE", "message": "Kepemilikan publik Agent tidak dapat diverifikasi."})
+    if len(ownership or []) != 1 or not ownership[0].get("owner_user_id"):
+        raise HTTPException(409, detail={"code": "SOCIAL_AGENT_OWNER_AMBIGUOUS", "message": "Agent harus memiliki tepat satu Human Owner aktif."})
+    owner_id = str(ownership[0]["owner_user_id"])
     owner_profiles = await _server_db("GET", "profiles", params={
         "select": "id,account_status", "id": f"eq.{owner_id}", "limit": "1",
     })
