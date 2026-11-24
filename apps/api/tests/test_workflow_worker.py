@@ -214,14 +214,14 @@ def test_long_running_node_renews_its_lease_until_completion(monkeypatch):
     import allpha_api.workflow_worker as worker
 
     monkeypatch.setattr(worker, "_heartbeat_interval", lambda _seconds: 0.01)
-    claimed = step()
+    claimed = step(node_kind="agent_task")
     store = FakeStore(claim=claimed, finalize={"status": "succeeded", "run_status": "running"})
 
     async def slow_node(*_args):
         await asyncio.sleep(0.05)
         return {"output_payload": {"value": "done"}, "checkpoint": {"node_key": "greet"}}
 
-    monkeypatch.setattr(worker, "evaluate_deterministic_node", slow_node)
+    monkeypatch.setattr(worker, "execute_agent_task_node", slow_node)
     result = asyncio.run(process_next_step(store, owner_id="owner", run_id="run-1", lease_seconds=5))
 
     assert result["step_status"] == "succeeded"
@@ -235,7 +235,7 @@ def test_lost_workflow_lease_cancels_node_and_never_finalizes(monkeypatch):
     import allpha_api.workflow_worker as worker
 
     monkeypatch.setattr(worker, "_heartbeat_interval", lambda _seconds: 0.01)
-    claimed = step()
+    claimed = step(node_kind="agent_task")
     store = FakeStore(claim=claimed)
     store.heartbeat_result = None
     cancelled = asyncio.Event()
@@ -247,7 +247,7 @@ def test_lost_workflow_lease_cancels_node_and_never_finalizes(monkeypatch):
             cancelled.set()
         return {"output_payload": {"value": "unsafe"}, "checkpoint": {"node_key": "greet"}}
 
-    monkeypatch.setattr(worker, "evaluate_deterministic_node", slow_node)
+    monkeypatch.setattr(worker, "execute_agent_task_node", slow_node)
     with pytest.raises(WorkflowOutcomeUnknown, match="lease was lost"):
         asyncio.run(process_next_step(store, owner_id="owner", run_id="run-1", lease_seconds=5))
 
@@ -259,7 +259,7 @@ def test_uncertain_workflow_heartbeat_never_finalizes_or_retries_node(monkeypatc
     import allpha_api.workflow_worker as worker
 
     monkeypatch.setattr(worker, "_heartbeat_interval", lambda _seconds: 0.01)
-    claimed = step()
+    claimed = step(node_kind="agent_task")
     store = FakeStore(claim=claimed)
     store.heartbeat_error = WorkflowPersistenceError("heartbeat response timeout")
 
@@ -267,7 +267,7 @@ def test_uncertain_workflow_heartbeat_never_finalizes_or_retries_node(monkeypatc
         await asyncio.sleep(1)
         return {"output_payload": {"value": "unknown"}, "checkpoint": {"node_key": "greet"}}
 
-    monkeypatch.setattr(worker, "evaluate_deterministic_node", slow_node)
+    monkeypatch.setattr(worker, "execute_agent_task_node", slow_node)
     with pytest.raises(WorkflowOutcomeUnknown, match="heartbeat outcome is unknown"):
         asyncio.run(process_next_step(store, owner_id="owner", run_id="run-1", lease_seconds=5))
     assert store.finalize_calls == 0
