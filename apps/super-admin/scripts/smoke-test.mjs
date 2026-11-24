@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 const page=readFileSync(new URL("../app/page.tsx",import.meta.url),"utf8");
 const spatialGovernance=readFileSync(new URL("../app/spatial-governance/page.tsx",import.meta.url),"utf8");
+const agentCapabilities=readFileSync(new URL("../app/agent-capabilities/page.tsx",import.meta.url),"utf8");
 const themeBuilder=readFileSync(new URL("../app/spatial-themes/page.tsx",import.meta.url),"utf8");
 const pkg=JSON.parse(readFileSync(new URL("../package.json",import.meta.url),"utf8"));
 assert.ok(pkg.dependencies.next);
@@ -29,6 +30,18 @@ assert.match(themeBuilder,/integrity_mismatches/);
 assert.match(themeBuilder,/14 kategori/);
 assert.match(themeBuilder,/rights verified/);
 assert.doesNotMatch(themeBuilder,/SUPABASE_SERVICE_ROLE_KEY|service_role/i);
+
+assert.match(agentCapabilities,/\/v1\/admin\/operator\/runtime-policies/);
+assert.match(agentCapabilities,/\/v1\/admin\/operator\/capabilities/);
+assert.match(agentCapabilities,/platform:capabilities\.review\.high_risk/);
+assert.match(agentCapabilities,/approved_tool_keys/);
+assert.match(agentCapabilities,/Runtime policy draft tersimpan/);
+assert.match(agentCapabilities,/reviewRuntimePolicy/);
+assert.match(agentCapabilities,/policy_version:policyVersion\.trim\(\)/);
+assert.match(agentCapabilities,/payload\.policy_version=policyVersion/);
+assert.doesNotMatch(agentCapabilities,/policy_version:Number\(policyVersion\)/);
+assert.match(agentCapabilities,/Terima lisensi|Skill/);
+
 console.log("ENG-P06 operator security and ENG-P22 Theme Builder source smoke tests passed.");
 
 const receiptReconciliation = readFileSync(new URL("../app/spatial-receipts/page.tsx", import.meta.url), "utf8");
