@@ -20,7 +20,7 @@ FILES=[
  MIGRATIONS/"20261124052416_eng_p07_delete_fence_owner_atomicity.sql",
  MIGRATIONS/"20261124052559_eng_p07_delete_fence_authorize_before_lookup.sql",
  MIGRATIONS/"20261124081300_eng_p07_knowledge_job_lease_heartbeat.sql",
- MIGRATIONS/"20261124091500_eng_p07_knowledge_source_state_lease_fence.sql",
+ MIGRATIONS/"20261124091222_eng_p07_knowledge_source_state_lease_fence.sql",
 ]
 NAME="allpha-p07-knowledge-"+uuid.uuid4().hex[:8]
 OWNER="11111111-1111-4111-8111-111111111111"
