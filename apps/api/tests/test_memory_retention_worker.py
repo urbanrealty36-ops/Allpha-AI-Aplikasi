@@ -4,6 +4,7 @@ import asyncio
 import pytest
 
 from allpha_api.memory_retention_worker import MemoryRetentionWorker, run_forever, _enabled
+from allpha_api.memory_coordinator import MemoryUnavailable
 
 
 def test_memory_retention_worker_is_disabled_by_default(monkeypatch):
@@ -37,7 +38,7 @@ def test_memory_retention_worker_rejects_malformed_expiry_receipt():
         async def expire_due_batch(self, *, limit):
             return {"expired_count": limit + 1}
 
-    with pytest.raises(Exception, match="invalid expiry count"):
+    with pytest.raises(MemoryUnavailable, match="invalid expiry count"):
         asyncio.run(MemoryRetentionWorker(Store(), batch_size=3).process_once())
 
 
