@@ -267,6 +267,9 @@ begin
  if has_function_privilege('authenticated','public.get_agent_model_usage_summary(timestamptz,timestamptz)','EXECUTE') then raise exception 'authenticated can execute model usage summary'; end if;
  if not has_function_privilege('service_role','public.get_agent_model_usage_summary(timestamptz,timestamptz)','EXECUTE') then raise exception 'service_role cannot execute model usage summary'; end if;
  if has_function_privilege('anon','public.get_agent_model_usage_summary(timestamptz,timestamptz)','EXECUTE') then raise exception 'anon can execute usage summary'; end if;
+ if has_function_privilege('anon','public.record_agent_model_usage_metering(jsonb)','EXECUTE') then raise exception 'anon can write model usage metering'; end if;
+ if has_function_privilege('authenticated','public.record_agent_model_usage_metering(jsonb)','EXECUTE') then raise exception 'authenticated can write model usage metering'; end if;
+ if not has_function_privilege('service_role','public.record_agent_model_usage_metering(jsonb)','EXECUTE') then raise exception 'service_role cannot write model usage metering'; end if;
 end $do$;
 """)
         print("PASS: ENG-P09 PostgreSQL 17 model tariff/policy separation, immutable approval evidence, draft fail-closed, single active manual moderation policy, unit-safe usage summary and service-only grants.")
