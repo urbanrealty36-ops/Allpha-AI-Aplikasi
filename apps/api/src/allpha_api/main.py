@@ -1283,9 +1283,9 @@ async def list_public_agent_skill_publications(
 
 @app.get("/v1/agents/{agent_id}/skill-installations", tags=["agents"])
 async def list_agent_skill_installations(agent_id: uuid.UUID, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    await user_db_request(
-        "POST", "rpc/expire_agent_skill_installations", request.state.supabase_access_token,
-        body={"p_agent_id": str(agent_id)},
+    await service_db_request(
+        "expire_agent_skill_installations",
+        body={"p_agent_id": str(agent_id), "p_actor_user_id": user["id"]},
     )
     rows = await user_db_request(
         "GET", "agent_skill_installations", request.state.supabase_access_token,
@@ -1298,8 +1298,8 @@ async def list_agent_skill_installations(agent_id: uuid.UUID, request: Request, 
 async def install_agent_skill(agent_id: uuid.UUID, payload: AgentSkillInstallRequest, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     if not payload.accept_license:
         raise HTTPException(status_code=422, detail={"code": "SKILL_LICENSE_ACCEPTANCE_REQUIRED", "message": "Persetujuan lisensi Skill wajib diberikan sebelum instalasi."})
-    result = await user_db_request(
-        "POST", "rpc/install_agent_skill", request.state.supabase_access_token,
+    result = await service_db_request(
+        "install_agent_skill",
         body={
             "p_agent_id": str(agent_id),
             "p_source_agent_id": str(payload.source_agent_id),
@@ -1307,6 +1307,7 @@ async def install_agent_skill(agent_id: uuid.UUID, payload: AgentSkillInstallReq
             "p_source_version": payload.source_version,
             "p_accept_license": payload.accept_license,
             "p_idempotency_key": payload.idempotency_key,
+            "p_actor_user_id": user["id"],
         },
     )
     if not result:
@@ -1316,9 +1317,10 @@ async def install_agent_skill(agent_id: uuid.UUID, payload: AgentSkillInstallReq
 
 @app.post("/v1/agents/{agent_id}/skill-installations/{installation_id}/revoke", tags=["agents"])
 async def revoke_agent_skill_installation(agent_id: uuid.UUID, installation_id: uuid.UUID, payload: AgentSkillInstallationRevoke, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    result = await user_db_request(
-        "POST", "rpc/revoke_agent_skill_installation", request.state.supabase_access_token,
-        body={"p_agent_id": str(agent_id), "p_installation_id": str(installation_id), "p_reason": payload.reason},
+    result = await service_db_request(
+        "revoke_agent_skill_installation",
+        body={"p_agent_id": str(agent_id), "p_installation_id": str(installation_id),
+              "p_reason": payload.reason, "p_actor_user_id": user["id"]},
     )
     if not result:
         raise HTTPException(status_code=409, detail={"code": "SKILL_INSTALL_REVOCATION_UNCONFIRMED", "message": "Pencabutan instalasi Skill belum terkonfirmasi."})
