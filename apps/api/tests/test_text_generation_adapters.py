@@ -355,3 +355,34 @@ def test_text_generation_request_rejects_unmatched_or_unbounded_conversation_mes
         replace(request(), prompt="", conversation_messages=({"role": "tool", "content": "orphan"},))
     with pytest.raises(ValueError, match="at most 32 entries"):
         replace(request(), conversation_messages=tuple({"role": "user", "content": "x"} for _ in range(33)))
+
+
+def test_text_generation_router_uses_database_policy_approval_not_environment_boolean(monkeypatch):
+    values={
+        "ALLPHA_TEXTGEN_BASE_URL":"https://provider.invalid/v1",
+        "ALLPHA_TEXTGEN_API_KEY":"server-only-test-secret",
+        "ALLPHA_TEXTGEN_PROVIDER_ID":"provider-test",
+        "ALLPHA_TEXTGEN_MODEL_ID":"model-test",
+        "ALLPHA_TEXTGEN_MODEL_VERSION":"model-v1",
+        "ALLPHA_TEXTGEN_POLICY_ID":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "ALLPHA_TEXTGEN_POLICY_VERSION":"policy-v1",
+        "ALLPHA_TEXTGEN_PRICING_VERSION":"pricing-v1",
+        "ALLPHA_TEXTGEN_COST_UNIT":"USD",
+        "ALLPHA_TEXTGEN_INPUT_MICRO_COST_PER_TOKEN":"1",
+        "ALLPHA_TEXTGEN_OUTPUT_MICRO_COST_PER_TOKEN":"2",
+        "ALLPHA_TEXTGEN_MAX_COST_MICROUNITS":"1000",
+        "ALLPHA_TEXTGEN_MAX_PROMPT_BYTES":"16384",
+        "ALLPHA_TEXTGEN_MAX_OUTPUT_TOKENS":"1024",
+        "ALLPHA_TEXTGEN_MAX_LATENCY_MS":"30000",
+        "SUPABASE_URL":"https://db.invalid",
+        "SUPABASE_SERVICE_ROLE_KEY":"service-test",
+        "ALLPHA_TEXTGEN_POLICY_APPROVED":"false",
+    }
+    for key,value in values.items():
+        monkeypatch.setenv(key,value)
+    router=build_text_generation_router_from_environment()
+    assert router is not None
+    snapshot=router.route_snapshot_for("private")
+    assert snapshot["provider_id"]=="provider-test"
+    assert snapshot["model_id"]=="model-test"
+    assert snapshot["policy_id"]=="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
