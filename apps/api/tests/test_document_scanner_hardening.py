@@ -115,6 +115,20 @@ def test_clean_receipt_is_stable_and_bound_to_digest():
     assert "secret-key" not in json.dumps(provenance)
 
 
+@pytest.mark.parametrize(
+    "body",
+    [
+        # Duplicate top-level verdict could otherwise let parser choice determine trust.
+        b'{"contract_version":"allpha.document-scan.v1","verdict":"malicious","verdict":"clean","sha256":"' + DIGEST.encode() + b'","scanner":{"id":"scanner-1","engine_version":"1.4.6","signature_version":"2026-11-24"}}',
+        # Duplicate nested identity fields are equally ambiguous.
+        b'{"contract_version":"allpha.document-scan.v1","verdict":"clean","sha256":"' + DIGEST.encode() + b'","scanner":{"id":"scanner-evil","id":"scanner-1","engine_version":"1.4.6","signature_version":"2026-11-24"}}',
+    ],
+)
+def test_scanner_rejects_duplicate_json_keys_at_any_depth(body):
+    with pytest.raises(DocumentScannerUnavailable, match="contract"):
+        document_scanner._parse_response(body, DIGEST)
+
+
 def test_malicious_verdict_raises_malware():
     with pytest.raises(DocumentMalwareDetected):
         scan(scanner(lambda r: httpx.Response(200, json=receipt(verdict="malicious"))))
