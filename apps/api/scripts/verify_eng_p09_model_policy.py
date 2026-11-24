@@ -9,6 +9,7 @@ import uuid
 
 ROOT=Path(__file__).resolve().parents[3]
 MIGRATION=ROOT/"apps/api/supabase/migrations/20261124064458_eng_p09_model_policy_approval_metadata.sql"
+CAPABILITY_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124074500_eng_p09_model_capability_contract.sql"
 NAME="allpha-p09-policy-"+uuid.uuid4().hex[:8]
 OWNER="11111111-1111-4111-8111-111111111111"
 
@@ -31,6 +32,8 @@ def psql(sql:str,check:bool=True)->subprocess.CompletedProcess[str]:
 def main()->None:
     if not MIGRATION.is_file():
         raise RuntimeError(f"Missing P09 migration: {MIGRATION}")
+    if not CAPABILITY_MIGRATION.is_file():
+        raise RuntimeError(f"Missing P09 capability migration: {CAPABILITY_MIGRATION}")
     run(["docker","run","-d","--rm","--name",NAME,"-e","POSTGRES_PASSWORD=ci-only","postgres:17-alpine"])
     try:
         ready=False
@@ -90,7 +93,34 @@ grant select,insert,update,delete on public.ai_model_cost_configs to service_rol
 grant select,insert,update,delete on public.generation_output_moderation_policies to service_role;
 grant select,insert on public.agent_model_usage_metering to service_role;
 """)
+        # Model-cost capability was already part of the API contract, but the
+        # production table lacked the column. Seed the exact observed legacy
+        # Qwen text-generation row before running the forward backfill.
+        psql("""
+insert into public.ai_model_cost_configs(
+ provider_id,model_id,model_version,pricing_version,cost_unit,
+ input_micro_cost_per_token,output_micro_cost_per_token,max_cost_microunits,
+ status,effective_at
+) values(
+ 'nvidia-nim','qwen/qwen2.5-coder-32b-instruct','qwen/qwen2.5-coder-32b-instruct',
+ 'legacy-test-v1','USD',0,0,1000,'active',clock_timestamp()
+);
+""")
         psql(MIGRATION.read_text(encoding="utf-8"))
+        psql(CAPABILITY_MIGRATION.read_text(encoding="utf-8"))
+        psql("""
+do $do$
+begin
+ if not exists (
+  select 1 from public.ai_model_cost_configs
+  where provider_id='nvidia-nim'
+    and model_id='qwen/qwen2.5-coder-32b-instruct'
+    and capability='text_generation'
+ ) then
+  raise exception 'existing model capability was not backfilled';
+ end if;
+end $do$;
+""")
 
         psql(f"""
 insert into auth.users(id) values('{OWNER}');
