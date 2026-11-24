@@ -80,11 +80,19 @@ def test_embedding_adapter_maps_out_of_order_vectors_and_calculates_configured_c
     asyncio.run(scenario())
 
 
-@pytest.mark.parametrize("status", [408, 425, 429, 500, 503])
-def test_embedding_adapter_classifies_transient_http_status(status):
+@pytest.mark.parametrize(
+    ("status", "safe_to_retry"),
+    [(408, False), (425, False), (429, True), (500, False), (503, False)],
+)
+def test_embedding_adapter_classifies_transient_http_status_without_replaying_unknown_outcomes(status, safe_to_retry):
     async def scenario():
-        with pytest.raises(ModelRouterTransient):
-            await adapter(lambda request: httpx.Response(status)).embed(request(), model_id="model")
+        with pytest.raises(ModelRouterTransient) as error:
+            await adapter(lambda request: httpx.Response(status, headers={"Retry-After": "2"})).embed(
+                request(), model_id="model",
+            )
+        assert error.value.safe_to_retry is safe_to_retry
+        if safe_to_retry:
+            assert error.value.retry_after_ms == 2000
     asyncio.run(scenario())
 
 
@@ -174,4 +182,15 @@ def test_embedding_adapter_enforces_approved_input_byte_limit():
         with pytest.raises(ModelRouterRejected) as error:
             await limited.embed(request(), model_id="model")
         assert error.value.failure.code == "EMBEDDING_INPUT_LIMIT_EXCEEDED"
+    asyncio.run(scenario())
+
+
+
+def test_embedding_adapter_marks_pre_connection_failure_safe_to_retry():
+    async def scenario():
+        def handler(request):
+            raise httpx.ConnectError("connection was not established")
+        with pytest.raises(ModelRouterTransient) as error:
+            await adapter(handler).embed(request(), model_id="model")
+        assert error.value.safe_to_retry is True
     asyncio.run(scenario())
