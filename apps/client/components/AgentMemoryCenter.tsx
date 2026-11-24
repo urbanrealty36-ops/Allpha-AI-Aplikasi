@@ -178,6 +178,6 @@ export function AgentMemoryCenter({apiBase,agentId,getAccessToken,onBack}:Props)
    {events.slice(0,12).map(event=><View key={event.id} style={{borderTopWidth:1,borderTopColor:"#303B56",paddingTop:8,marginTop:8}}><Text style={{color:"#C7D0E0",fontSize:12}}>{event.event_type}</Text><Text style={{color:"#8190AA",fontSize:10,marginTop:3}}>{new Date(event.created_at).toLocaleString("id-ID")}</Text></View>)}
   </View>
   {!!error&&<Text accessibilityRole="alert" style={{color:"#FDA4AF",marginBottom:10}}>{error}</Text>}
-  {!!notice&&<Text accessibilityRole="status" style={{color:"#86EFAC",marginBottom:10}}>{notice}</Text>}
+  {!!notice&&<Text style={{color:"#86EFAC",marginBottom:10}}>{notice}</Text>}
  </ScrollView>;
 }
