@@ -258,3 +258,40 @@ def test_agent_runtime_store_rejects_stale_knowledge_source_or_chunk_version():
         "sensitivity": "internal", "content_sha256": "a" * 64,
     }]
     assert asyncio.run(store.validate_knowledge_context_refs("owner-1", "agent-1", refs)) is False
+
+def test_agent_runtime_store_resolves_secret_key_and_hardens_http_client(monkeypatch):
+    captured = {}
+
+    class Response:
+        status_code = 200
+        content = b"[]"
+
+        @staticmethod
+        def json():
+            return []
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            captured["options"] = kwargs
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def request(self, method, url, *, headers, params=None, json=None):
+            captured.update(method=method, url=url, headers=headers)
+            return Response()
+
+    monkeypatch.setenv("SUPABASE_URL", "https://project.supabase.co")
+    monkeypatch.delenv("SUPABASE_SERVICE_ROLE_KEY", raising=False)
+    monkeypatch.setenv("SUPABASE_SECRET_KEY", "canonical-server-secret")
+    monkeypatch.setattr("allpha_api.agent_runtime_store.httpx.AsyncClient", FakeClient)
+
+    store = AgentRuntimeStore.from_environment()
+    assert asyncio.run(store.request("GET", "agent_runtime_tasks")) == []
+    assert captured["options"]["trust_env"] is False
+    assert captured["options"]["follow_redirects"] is False
+    assert captured["headers"]["apikey"] == "canonical-server-secret"
+    assert captured["headers"]["Authorization"] == "Bearer canonical-server-secret"
