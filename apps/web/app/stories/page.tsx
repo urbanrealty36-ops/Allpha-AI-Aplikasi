@@ -137,6 +137,7 @@ export default function StoriesPage() {
         createdItem = mineResult.items?.find(item => item.id === storyId) ?? null;
         if (!createdItem) throw new Error("Draft Story yang dilanjutkan tidak ditemukan pada akun ini.");
       }
+      if (!storyId) throw new Error("Draft Story tidak memiliki ID konten kanonis.");
       if (file) {
         const key = uploadId || crypto.randomUUID();
         setUploadId(key);
