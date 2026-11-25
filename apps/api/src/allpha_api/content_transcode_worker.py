@@ -37,7 +37,9 @@ class TranscodeWorker:
    src=await self.client.get(url);src.raise_for_status();data=src.content
    if len(data)!=int(p.get("size_bytes") or 0) or hashlib.sha256(data).hexdigest()!=p["sha256"]:
     raise ValueError("MEDIA_SOURCE_HASH_MISMATCH")
-   await self.scan(data,str(p.get("filename") or mid),media_type)
+   scan_receipt=await self.scan(data,str(p.get("filename") or mid),media_type)
+   if not isinstance(scan_receipt,dict) or scan_receipt.get("sha256")!=p["sha256"]:
+    raise ValueError("MEDIA_SOURCE_SCAN_RECEIPT_INVALID")
    intent=build_signed_upload_intent(config=self.cloudinary,media_id=mid,media_type=media_type,callback_url=self.callback)
    resource=str(intent["resource_type"])
    public_id=str(intent["public_id"])
@@ -46,17 +48,35 @@ class TranscodeWorker:
    # Never send Supabase service-role headers to the third-party media provider.
    async with httpx.AsyncClient(trust_env=False, follow_redirects=False, timeout=httpx.Timeout(180,connect=10)) as provider_client:
     upload=await provider_client.post(str(intent["upload_url"]),data={k:v for k,v in form.items() if k!="file"},files={"file":form["file"]})
-   upload.raise_for_status();asset=upload.json()
+    if upload.status_code==409:
+     existing=await provider_client.get(
+      f"https://api.cloudinary.com/v1_1/{self.cloudinary.cloud_name}/resources/{resource}/authenticated",
+      params={"public_ids":[public_id]},auth=(self.cloudinary.api_key,self.cloudinary.api_secret),
+     )
+     existing.raise_for_status()
+     resources=existing.json().get("resources") or []
+     if not resources:raise ValueError("CLOUDINARY_EXISTING_ASSET_NOT_FOUND")
+     asset=resources[0]
+    else:
+     upload.raise_for_status()
+     asset=upload.json()
    if (
     asset.get("public_id")!=public_id or asset.get("resource_type")!=resource
     or asset.get("type")!="authenticated" or int(asset.get("bytes") or 0)!=len(data)
-    or not asset.get("asset_id") or not asset.get("batch_id")
+    or not asset.get("asset_id") or int(asset.get("version") or 0)<=0
+    or not asset.get("format")
    ):
     raise ValueError("CLOUDINARY_UPLOAD_RESPONSE_INVALID")
-   handoff=await self.rpc("handoff_content_provider_job",{
+   handoff=await self.rpc("handoff_cloudinary_content_provider_job",{
     "p_job_id":jid,"p_lease_token":token,"p_media_id":mid,
     "p_provider_asset_id":asset["asset_id"],"p_provider_public_id":public_id,
-    "p_provider_batch_id":asset.get("batch_id"),
+    "p_provider_batch_id":asset.get("batch_id"),"p_resource_type":asset["resource_type"],
+    "p_delivery_type":asset["type"],"p_version":int(asset["version"]),
+    "p_format":asset["format"],"p_width":asset.get("width"),"p_height":asset.get("height"),
+    "p_duration":asset.get("duration"),"p_bytes":int(asset.get("bytes") or 0),
+    "p_tags":asset.get("tags") or [],
+    "p_provider_metadata":{"format":asset.get("format"),"resource_type":resource,
+      "delivery_type":asset.get("type"),"scan_receipt":scan_receipt},
    })
    if not isinstance(handoff,dict) or handoff.get("outcome")!="handed_off":
     raise ValueError("MEDIA_PROVIDER_HANDOFF_LEASE_LOST")
