@@ -529,14 +529,14 @@ async def creator_analytics(user: dict[str, Any] = Depends(current_user)) -> dic
         )
         totals = {field: sum(item[field] for item in metrics.values()) for field in total_fields}
         return {
-            "items": items, "totals": totals, "subscriber_count": None,
+            "configured": True, "items": items, "totals": totals, "subscriber_count": None,
             "subscriber_metric_status": "not_available",
             "subscriber_metric_reason": "CREATOR_SUBSCRIPTION_SCHEMA_NOT_DEFINED",
             "cash_conversion_enabled": False, "withdrawals_enabled": False,
         }
     except HTTPException as exc:
         if exc.status_code == 404:
-            return {"items": [], "totals": {}, "subscriber_count": None,
+            return {"configured": False, "items": [], "totals": {}, "subscriber_count": None,
                     "subscriber_metric_status": "not_available",
                     "subscriber_metric_reason": "CINEMA_ANALYTICS_SCHEMA_NOT_CONFIGURED",
                     "cash_conversion_enabled": False, "withdrawals_enabled": False}

@@ -1,4 +1,5 @@
 import uuid
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from allpha_api import cinema_lifecycle_api
 from allpha_api.auth import current_user
@@ -156,5 +157,23 @@ def test_creator_analytics_returns_empty_totals_without_querying_unowned_activit
         assert response.status_code == 200
         assert response.json()["items"] == []
         assert response.json()["totals"]["views"] == 0
+    finally:
+        app.dependency_overrides.pop(current_user, None)
+
+
+def test_creator_analytics_marks_missing_schema_unconfigured_instead_of_reporting_zero(monkeypatch):
+    async def fake_db(method, table, *, params=None, payload=None, prefer=None):
+        if table == "cinema_titles":
+            return [{"id": TITLE, "title": "Owner Film", "status": "published"}]
+        raise HTTPException(status_code=404, detail="relation not found")
+    monkeypatch.setattr(cinema_lifecycle_api, "_db", fake_db)
+    client = _client()
+    try:
+        response = client.get("/v1/cinema/creator/analytics")
+        assert response.status_code == 200
+        result = response.json()
+        assert result["configured"] is False
+        assert result["subscriber_metric_reason"] == "CINEMA_ANALYTICS_SCHEMA_NOT_CONFIGURED"
+        assert result["totals"] == {}
     finally:
         app.dependency_overrides.pop(current_user, None)

@@ -36,7 +36,7 @@ type CinemaCredit = { id: string; contributor_type: string; role: string; attrib
 type CinemaVersion = { id: string; version: number; created_at: string };
 type CinemaAsset = { id: string; media_id: string; asset_role: string; display_name: string; media?: { filename?: string; media_type?: string; status?: string; preview_url?: string } };
 type CinemaProductionResponse = { title_id: string; version: number; status: string; document: Record<string, unknown> };
-type CreatorAnalytics = { items: Array<{title_id:string;title:string;status:string;views:number;watched_seconds:number;qualified_views:number;qualified_seconds:number;approved_earning_credits:number;pending_earning_credits:number}>; totals: {views:number;watched_seconds:number;qualified_views:number;qualified_seconds:number;approved_earning_credits:number;pending_earning_credits:number}; subscriber_count:number|null; subscriber_metric_status:string; subscriber_metric_reason?:string; cash_conversion_enabled:boolean; withdrawals_enabled:boolean };
+type CreatorAnalytics = { configured:boolean; items: Array<{title_id:string;title:string;status:string;views:number;watched_seconds:number;qualified_views:number;qualified_seconds:number;approved_earning_credits:number;pending_earning_credits:number}>; totals: {views:number;watched_seconds:number;qualified_views:number;qualified_seconds:number;approved_earning_credits:number;pending_earning_credits:number}; subscriber_count:number|null; subscriber_metric_status:string; subscriber_metric_reason?:string; cash_conversion_enabled:boolean; withdrawals_enabled:boolean };
 type CinemaReadiness = { status: "ready" | "not_ready"; can_create_generation_job: boolean; checks: Record<string, string>; message: string };
 const EMPTY_CINEMA_PRODUCTION = {
   schema_version: 1,
@@ -830,7 +830,7 @@ export default function AiCinemaCreatorWorkspace() {
           <div><h3 className="font-bold">Creator Performance</h3><p className="mt-1 text-xs text-slate-600">Data dihitung dari playback yang lolos fraud review dan earning policy tersimpan.</p></div>
           <button type="button" onClick={()=>void loadCreatorAnalytics()} disabled={analyticsLoading} className="rounded-lg border-2 border-slate-900 px-3 py-1 text-xs font-bold disabled:opacity-50">Perbarui</button>
         </div>
-        {analyticsLoading&&!creatorAnalytics?<p className="mt-3 text-xs text-slate-600">Memuat analitik...</p>:creatorAnalytics?<>
+        {analyticsLoading&&!creatorAnalytics?<p className="mt-3 text-xs text-slate-600">Memuat analitik...</p>:creatorAnalytics?.configured?<>
           <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
             <div className="rounded-xl bg-slate-50 p-3"><strong className="block text-xl">{creatorAnalytics.totals.views}</strong><span className="text-xs text-slate-600">Verified views</span></div>
             <div className="rounded-xl bg-slate-50 p-3"><strong className="block text-xl">{Math.floor(creatorAnalytics.totals.watched_seconds/3600)}h</strong><span className="text-xs text-slate-600">Watch time</span></div>
@@ -839,7 +839,7 @@ export default function AiCinemaCreatorWorkspace() {
           </div>
           <p className="mt-3 text-xs text-slate-600">Pending policy: {creatorAnalytics.totals.pending_earning_credits} credits · Subscribers: belum tersedia karena belum ada kontrak subscription per Creator. Credits bukan nilai uang dan belum dapat dicairkan.</p>
           <div className="mt-3 space-y-2">{creatorAnalytics.items.map(item=><div key={item.title_id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-2 text-xs"><span className="font-semibold">{item.title}</span><span>{item.views} views · {item.qualified_views} qualified · {item.approved_earning_credits} credits</span></div>)}</div>
-        </>:<p className="mt-3 text-xs text-amber-800">Analitik belum tersedia dari backend. Tidak ada angka simulasi yang ditampilkan.</p>}
+        </>:<p className="mt-3 text-xs text-amber-800">{creatorAnalytics?.subscriber_metric_reason==="CINEMA_ANALYTICS_SCHEMA_NOT_CONFIGURED"?"Schema analitik Cinema belum tersedia pada database.":"Analitik belum tersedia dari backend."} Tidak ada angka simulasi yang ditampilkan.</p>}
       </section>
       <section className="mb-6 space-y-3 rounded-2xl border-2 border-slate-900 bg-violet-50 p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
