@@ -103,6 +103,13 @@ type PersistedNativeCinemaUpload = {
   fingerprint: string;
 };
 
+function base64Utf8(value: string): string {
+  const binary = encodeURIComponent(value).replace(/%([0-9A-F]{2})/g, (_, hex: string) =>
+    String.fromCharCode(parseInt(hex, 16)),
+  );
+  return base64Ascii(binary);
+}
+
 function base64Ascii(value: string): string {
   const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
   let output = "";
@@ -148,7 +155,7 @@ export async function uploadNativeFileWithTus(
   if (offset < 0) {
     await SecureStore.deleteItemAsync(urlKey);
     const metadata = Object.entries(init.upload_metadata)
-      .map(([key, value]) => key + " " + base64Ascii(value)).join(",");
+      .map(([key, value]) => key + " " + base64Utf8(value)).join(",");
     const created = await expoFetch(init.tus_endpoint, {
       method: "POST",
       headers: { ...headers, "Upload-Length": String(file.size), "Upload-Metadata": metadata },
