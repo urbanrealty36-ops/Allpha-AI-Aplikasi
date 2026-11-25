@@ -182,7 +182,7 @@ def test_production_router_requires_owner_agent_skill_attribution_before_provide
 
     router = make_router(adapter, preflight=verify)
     with pytest.raises(TextGenerationRouterRejected, match="trusted owner, Agent and Skill"):
-        asyncio.run(router.generate(request_with_billing_context()))
+        asyncio.run(router.generate(request()))
     assert adapter.calls == 0
 
 
