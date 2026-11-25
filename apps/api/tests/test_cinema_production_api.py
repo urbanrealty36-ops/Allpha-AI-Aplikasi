@@ -47,7 +47,11 @@ def test_cinema_production_document_saves_only_linked_ready_assets(monkeypatch):
             }]
         raise AssertionError((method, table, params, payload))
 
+    async def media_owners(_title):
+        return {OWNER}
+
     monkeypatch.setattr(cinema_api, "_title_access", title_access)
+    monkeypatch.setattr(cinema_api, "_title_media_owner_ids", media_owners)
     monkeypatch.setattr(cinema_api, "_db", fake_db)
     client = _client(monkeypatch)
     try:
