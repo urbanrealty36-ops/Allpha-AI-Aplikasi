@@ -107,7 +107,7 @@ async def _server_db(method: str, table: str, *, params: dict[str, str] | None =
     if prefer:
         headers["Prefer"] = prefer
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(12, connect=3)) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(12, connect=3), follow_redirects=False, trust_env=False) as client:
             response = await client.request(method, f"{base}/rest/v1/{table}", headers=headers, params=params, json=body)
     except httpx.HTTPError as exc:
         raise HTTPException(503, detail={"code": "CONTENT_DATABASE_UNAVAILABLE", "message": "Data konten sementara tidak tersedia."}) from exc
@@ -163,7 +163,7 @@ async def _storage(method: str, path: str, *, data: bytes | None = None, media_t
         # owner/content/type/size/hash tuple in content_media.
         headers["x-upsert"] = "true"
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(timeout_seconds, connect=5)) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(timeout_seconds, connect=5), follow_redirects=False, trust_env=False) as client:
             response = await client.request(method, f"{base}/storage/v1/object/{quote(path, safe='/')}", headers=headers, content=data)
     except httpx.HTTPError as exc:
         raise HTTPException(503, detail={"code": "CONTENT_STORAGE_UNAVAILABLE", "message": "Penyimpanan media sementara tidak tersedia."}) from exc
@@ -255,7 +255,7 @@ async def _create_resumable_upload_token(storage_path: str) -> tuple[str, str]:
         "Content-Type": "application/json",
     }
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(15, connect=5)) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(15, connect=5), follow_redirects=False, trust_env=False) as client:
             response = await client.post(signed_path, headers=headers, json={"upsert": False})
     except httpx.HTTPError as exc:
         raise HTTPException(503, detail={
