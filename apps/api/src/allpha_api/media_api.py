@@ -36,6 +36,20 @@ MEDIA_DOMAIN_PURPOSES = {
     "messaging": {"chat_attachment"},
     "community": {"community_attachment"},
 }
+
+MEDIA_RESPONSE_FIELDS = (
+    "id", "content_id", "domain", "purpose", "resource_id", "filename", "media_type",
+    "size_bytes", "sha256", "status", "scan_status", "storage_provider",
+    "provider_resource_type", "provider_delivery_type", "provider_format", "provider_version",
+    "provider_width", "provider_height", "provider_duration", "provider_bytes",
+    "provider_delete_state", "upload_expires_at", "upload_completed_at", "provider_deleted_at",
+    "provider_callback_verified_at", "derivatives", "created_at", "processed_at", "updated_at",
+)
+
+
+def media_item_response(item: dict[str, Any]) -> dict[str, Any]:
+    """Return an owner-safe media projection; never expose provider IDs, paths or scanner receipts."""
+    return {field: item[field] for field in MEDIA_RESPONSE_FIELDS if field in item}
 MEDIA_LIMITS = {"image/jpeg":10*1024*1024,"image/png":10*1024*1024,"image/webp":10*1024*1024,"video/mp4":50*1024*1024,"video/webm":50*1024*1024,"audio/mpeg":50*1024*1024,"audio/mp4":50*1024*1024,"audio/aac":50*1024*1024,"audio/ogg":50*1024*1024,"audio/wav":50*1024*1024,"audio/webm":50*1024*1024,"text/vtt":10*1024*1024,"application/x-subrip":10*1024*1024}
 def _config():
     base=os.getenv("SUPABASE_URL","").rstrip("/")
@@ -128,7 +142,7 @@ async def create_upload_intent(payload: UploadIntent, request: Request, user: di
         "p_idempotency_key":str(media_id)})
     if not isinstance(result,dict) or not isinstance(result.get("media"),dict):
         raise HTTPException(503,detail={"code":"MEDIA_RESERVATION_UNCONFIRMED","message":"Reservasi media belum terkonfirmasi."})
-    return {"item":result["media"],"upload":intent,"expires_in_seconds":600}
+    return {"item":media_item_response(result["media"]),"upload":intent,"expires_in_seconds":600}
 
 @router.post("/complete")
 async def complete_upload(payload: UploadCompletion,user:dict[str,Any]=Depends(current_user)):
@@ -136,7 +150,7 @@ async def complete_upload(payload: UploadCompletion,user:dict[str,Any]=Depends(c
     if item.get("storage_provider")!="cloudinary":
         raise HTTPException(409,detail={"code":"MEDIA_PROVIDER_MISMATCH","message":"Media bukan asset Cloudinary."})
     if item.get("status") in {"uploaded","processing","ready"}:
-        return {"item":item,"idempotent_replay":True}
+        return {"item":media_item_response(item),"idempotent_replay":True}
     if item.get("status")!="uploading":
         raise HTTPException(409,detail={"code":"MEDIA_STATE_INVALID","message":"Status media tidak dapat dikonfirmasi."})
     cfg=CloudinaryConfig.from_environment()
@@ -160,7 +174,7 @@ async def complete_upload(payload: UploadCompletion,user:dict[str,Any]=Depends(c
         "p_provider_metadata":{"resource_type":asset.get("resource_type"),"type":asset.get("type"),"format":asset.get("format")}})
     if not isinstance(result,dict) or not isinstance(result.get("media"),dict):
         raise HTTPException(409,detail={"code":"MEDIA_COMPLETION_UNCONFIRMED","message":"Konfirmasi asset belum tersimpan."})
-    return {"item":result["media"],"idempotent_replay":bool(result.get("idempotent_replay"))}
+    return {"item":media_item_response(result["media"]),"idempotent_replay":bool(result.get("idempotent_replay"))}
 
 @router.post("/cloudinary/callback", status_code=202)
 async def cloudinary_callback(
@@ -268,7 +282,7 @@ async def delete_media(media_id: uuid.UUID, user: dict[str, Any] = Depends(curre
     outcome = result.get("outcome")
     if outcome in {"queued", "already_queued", "already_deleted"}:
         return {
-            "item": result.get("media") or item,
+            "item": media_item_response(result.get("media") or item),
             "outcome": outcome,
             "idempotent_replay": outcome != "queued",
         }
@@ -297,13 +311,13 @@ async def get_media(media_id:uuid.UUID,user:dict[str,Any]=Depends(current_user))
     await _require_cloudinary_media_schema()
     base,key=_config()
     async with httpx.AsyncClient(timeout=12,trust_env=False,follow_redirects=False) as client:
-        response=await client.get(f"{base}/rest/v1/content_media",params={"select":"id,content_id,owner_id,filename,media_type,size_bytes,sha256,status,scan_status,storage_provider,storage_path,provider_public_id,provider_resource_type,provider_delivery_type,provider_format,provider_version,provider_width,provider_height,provider_duration,provider_bytes,provider_delete_state,derivatives,created_at,processed_at,provider_asset_id","id":f"eq.{media_id}","owner_id":f"eq.{user['id']}","limit":"1"},headers={"apikey":key,"Authorization":f"Bearer {key}"})
+        response=await client.get(f"{base}/rest/v1/content_media",params={"select":"id,content_id,domain,purpose,resource_id,filename,media_type,size_bytes,sha256,status,scan_status,storage_provider,provider_resource_type,provider_delivery_type,provider_format,provider_version,provider_width,provider_height,provider_duration,provider_bytes,provider_delete_state,upload_expires_at,upload_completed_at,provider_deleted_at,provider_callback_verified_at,derivatives,created_at,processed_at,updated_at","id":f"eq.{media_id}","owner_id":f"eq.{user['id']}","limit":"1"},headers={"apikey":key,"Authorization":f"Bearer {key}"})
     if response.status_code>=300:
         raise HTTPException(503,detail={"code":"MEDIA_DB_UNAVAILABLE","message":"Media status unavailable."})
     rows=response.json()
     if not rows:
         raise HTTPException(404,detail={"code":"MEDIA_NOT_FOUND","message":"Media not found."})
-    item=rows[0]
+    item=media_item_response(rows[0])
     delivery=None
     if item.get("storage_provider")=="cloudinary" and item.get("status")=="ready":
         try:
