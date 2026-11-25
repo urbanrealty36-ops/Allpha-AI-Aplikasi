@@ -28,6 +28,23 @@ def validate_eager_derivative_contract(media_type: str, eager: Any) -> None:
   raise ValueError("PROVIDER_MEDIA_TYPE_UNSUPPORTED")
 
 
+def provider_derivative_identity(index: int, mime: str) -> tuple[str, str]:
+ """Return a deterministic private-storage name for an allowlisted derivative MIME."""
+ if index < 0:
+  raise ValueError("PROVIDER_DERIVATIVE_INDEX_INVALID")
+ suffix_by_mime = {
+  "video/mp4": "mp4",
+  "audio/mpeg": "mp3",
+  "audio/mp4": "m4a",
+  "image/jpeg": "jpg",
+ }
+ suffix = suffix_by_mime.get(mime)
+ if suffix is None:
+  raise ValueError("PROVIDER_DERIVATIVE_MIME_INVALID")
+ kind = "moderation_poster" if mime == "image/jpeg" else f"rendition_{index + 1}"
+ return kind, suffix
+
+
 async def download_provider_derivative(client: httpx.AsyncClient, url: str) -> tuple[bytes, str]:
  async with client.stream("GET",url) as response:
   response.raise_for_status()
@@ -98,9 +115,8 @@ class CallbackWorker:
      if parsed.scheme!="https" or parsed.hostname!="res.cloudinary.com" or not parsed.path.startswith(f"/{self.cloud}/video/authenticated/"):
       raise ValueError("PROVIDER_DERIVATIVE_URL_REJECTED")
      binary,mime=await download_provider_derivative(provider,url)
+     kind,suffix=provider_derivative_identity(index,mime)
      await self.scan(binary,f"{kind}.{suffix}",mime)
-     suffix="mp4" if mime=="video/mp4" else "mp3" if mime=="audio/mpeg" else "m4a" if mime=="audio/mp4" else "jpg" if mime=="image/jpeg" else "bin"
-     kind="moderation_poster" if mime=="image/jpeg" else f"rendition_{index+1}"
      path=f"{media['storage_path']}.derived/{kind}.{suffix}"
      storage=f"{self.base}/storage/v1/object/{quote(media['bucket_id'],safe='')}/{quote(path,safe='/')}"
      uploaded=await self.client.post(storage,content=binary,headers={"Content-Type":mime,"x-upsert":"true"})
