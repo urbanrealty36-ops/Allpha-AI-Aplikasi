@@ -326,6 +326,7 @@ def test_text_generation_fails_over_after_explicit_pre_execution_rate_limit():
     assert fallback.calls == 1
     assert verified == ["provider-a", "provider-b"]
     assert len(credit_ledger.reserved) == 1
+    assert len(credit_ledger.pending) == 1
     assert len(credit_ledger.settled) == 1
     assert credit_ledger.released == []
 
