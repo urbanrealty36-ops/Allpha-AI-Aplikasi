@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import AiCinemaView, { AiMovieItem } from "../../components/reference-ui/AiCinemaView";
 import AiCinemaPlaybackPanel from "../../components/ai-cinema/AiCinemaPlaybackPanel";
+import AiCinemaSubscriptionCenter from "../../components/ai-cinema/AiCinemaSubscriptionCenter";
 
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
@@ -72,5 +73,6 @@ export default function AiCinemaPage() {
   return <>
     <AiCinemaView userCredits={null} catalogItems={items} catalogState={state} productionMode onOpenCreatorStudio={openCreatorStudio} />
     <AiCinemaPlaybackPanel titles={items.map(item => ({ id: item.id, title: item.title }))} />
+    <AiCinemaSubscriptionCenter apiBase={apiBase} />
   </>;
 }
