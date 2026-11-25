@@ -368,7 +368,12 @@ async def get_media(media_id:uuid.UUID,user:dict[str,Any]=Depends(current_user))
             if not isinstance(derivative,dict) or not derivative.get("storage_path"):continue
             derivative_url=await _signed_supabase_storage_url(
                 str(raw_item.get("bucket_id") or ""),str(derivative["storage_path"]))
-            derivative_deliveries.append({**derivative,"delivery_url":derivative_url})
+            derivative_deliveries.append({
+                "kind":derivative.get("kind"),"mime_type":derivative.get("mime_type"),
+                "size_bytes":derivative.get("size_bytes"),"width":derivative.get("width"),
+                "height":derivative.get("height"),"duration":derivative.get("duration"),
+                "format":derivative.get("format"),"delivery_url":derivative_url,
+            })
     else:
         derivative_deliveries=[]
     return {"item":item,"delivery":{"url":delivery,"derivatives":derivative_deliveries,"expires_in_seconds":300} if delivery else None}
