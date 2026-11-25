@@ -77,7 +77,11 @@ async def _signed_supabase_storage_url(bucket_id: str, storage_path: str, expire
     signed = response.json().get("signedURL") or response.json().get("signedUrl")
     if not isinstance(signed, str) or not signed:
         raise HTTPException(503, detail={"code": "MEDIA_DELIVERY_UNAVAILABLE", "message": "Storage tidak mengembalikan URL media sementara."})
-    return signed if signed.startswith("http") else base + signed
+    if signed.startswith("http"):
+        return signed
+    if signed.startswith("/storage/v1/"):
+        return base + signed
+    return base + "/storage/v1" + (signed if signed.startswith("/") else "/" + signed)
 
 
 async def _require_cloudinary_media_schema() -> None:
