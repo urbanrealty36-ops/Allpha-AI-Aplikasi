@@ -657,6 +657,7 @@ declare
   v_missing_columns text[];
   v_missing_tables text[];
   v_missing_rpcs text[];
+  v_missing_constraints text[];
 begin
   select array_agg(req.table_name||'.'||req.column_name order by req.table_name,req.column_name)
   into v_missing_columns
@@ -716,14 +717,35 @@ begin
   ) as req(signature)
   where to_regprocedure(req.signature) is null;
 
+  select array_agg(req.constraint_name order by req.constraint_name)
+  into v_missing_constraints
+  from (values
+    ('content_media_bucket_id_check','cloudinary'),
+    ('content_media_media_type_check','application/x-subrip'),
+    ('content_media_status_check','deleted'),
+    ('content_lifecycle_jobs_job_type_check','provider_cleanup'),
+    ('content_lifecycle_jobs_status_check','awaiting_provider')
+  ) as req(constraint_name,required_fragment)
+  where not exists(
+    select 1 from pg_constraint con
+    where con.conrelid in (
+      'public.content_media'::regclass,
+      'public.content_lifecycle_jobs'::regclass
+    )
+    and con.conname=req.constraint_name
+    and position(req.required_fragment in pg_get_constraintdef(con.oid))>0
+  );
+
   return jsonb_build_object(
     'contract_version',1,
     'ready',coalesce(cardinality(v_missing_columns),0)=0
       and coalesce(cardinality(v_missing_tables),0)=0
-      and coalesce(cardinality(v_missing_rpcs),0)=0,
+      and coalesce(cardinality(v_missing_rpcs),0)=0
+      and coalesce(cardinality(v_missing_constraints),0)=0,
     'missing_columns',coalesce(to_jsonb(v_missing_columns),'[]'::jsonb),
     'missing_tables',coalesce(to_jsonb(v_missing_tables),'[]'::jsonb),
-    'missing_rpcs',coalesce(to_jsonb(v_missing_rpcs),'[]'::jsonb)
+    'missing_rpcs',coalesce(to_jsonb(v_missing_rpcs),'[]'::jsonb),
+    'missing_constraints',coalesce(to_jsonb(v_missing_constraints),'[]'::jsonb)
   );
 end;
 $function$;
