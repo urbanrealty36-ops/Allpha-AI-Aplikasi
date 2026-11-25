@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
-import { uploadContentMediaWithTus } from "../../lib/resumable-media-upload";
+import { uploadContentMediaWithCloudinary } from "../../lib/resumable-media-upload";
 
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 type CreatedContent = { id: string; status: string; moderation_status: string };
@@ -103,7 +103,7 @@ export default function CreatePage() {
       if (file) {
         const key = uploadId || crypto.randomUUID();
         setUploadId(key);
-        await uploadContentMediaWithTus(request, created.id, file, key, setUploadProgress);
+        await uploadContentMediaWithCloudinary(request, created.id, file, key, setUploadProgress);
       }
       const published = await request("/v1/content/" + encodeURIComponent(created.id) + "/publish", { method: "POST" }) as ContentResponse;
       setBody(""); setFile(null); setDraftId(""); setUploadId(""); setUploadProgress(0);
