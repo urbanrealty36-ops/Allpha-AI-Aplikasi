@@ -98,8 +98,23 @@ class CallbackWorker:
     except Exception:log.exception("provider callback poll failed");n=0
     if n==0:await asyncio.sleep(3)
   finally:await self.client.aclose()
+def enabled():
+ raw=os.getenv("ALLPHA_CONTENT_PROVIDER_CALLBACK_WORKER_ENABLED","false").strip().lower()
+ if raw not in {"true","false"}:raise SystemExit("ALLPHA_CONTENT_PROVIDER_CALLBACK_WORKER_ENABLED must be true or false")
+ if raw!="true":return False
+ if os.getenv("ALLPHA_CLAMAV_ENABLED","false").strip().lower()!="true":
+  raise SystemExit("Provider callback worker requires ALLPHA_CLAMAV_ENABLED=true")
+ try:local_scanner_identity_pins()
+ except RuntimeError as exc:raise SystemExit("Provider callback worker requires pinned ClamAV engine/signature identity") from exc
+ missing=[name for name in ("SUPABASE_URL","CLOUDINARY_CLOUD_NAME","CLAMAV_HOST") if not os.getenv(name)]
+ if not (os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SECRET_KEY")):missing.append("SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SECRET_KEY")
+ if missing:raise SystemExit("Provider callback worker configuration missing: "+", ".join(missing))
+ return True
 def main():
  logging.basicConfig(level=os.getenv("LOG_LEVEL","INFO"))
+ if not enabled():
+  log.info("Provider callback worker is disabled")
+  return
  worker=CallbackWorker();loop=asyncio.new_event_loop();asyncio.set_event_loop(loop)
  for sig in (signal.SIGINT,signal.SIGTERM):loop.add_signal_handler(sig,lambda:setattr(worker,"stopping",True))
  try:loop.run_until_complete(worker.run())
