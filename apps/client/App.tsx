@@ -14,7 +14,7 @@ import { CanonicalNativeWorldRenderer } from "./components/spatial/CanonicalNati
 import { SpatialNavigationScreen } from "./components/spatial/SpatialNavigationScreen";
 import { SpatialThemeCatalogScreen } from "./components/spatial/SpatialThemeCatalogScreen";
 import { ContentAppealsPanel } from "./components/ContentAppealsPanel";
-import { AiCinemaCreatorWorkspace, uploadNativeFileWithTus, type NativeResumableUploadInit } from "./components/AiCinemaCreatorWorkspace";
+import { AiCinemaCreatorWorkspace, uploadNativeFileWithCloudinary } from "./components/AiCinemaCreatorWorkspace";
 import { File as ExpoFile } from "expo-file-system";
 import { NotificationsInbox } from "./components/NotificationsInbox";
 import { BillingCenter } from "./components/BillingCenter";
@@ -984,25 +984,15 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
         setStoryDraftId(contentId);
       }
       if (storyFile) {
-        const uploadKey = storyUploadId || createClientUuid();
-        setStoryUploadId(uploadKey);
-        if (!supabaseKey) throw new Error("Kunci publik Supabase belum dikonfigurasi untuk upload resumable.");
+        const mediaId = storyUploadId || createClientUuid();
+        setStoryUploadId(mediaId);
         const file = new ExpoFile(storyFile.uri);
-        if (!Number.isSafeInteger(file.size) || file.size <= 0) throw new Error("Ukuran file media tidak dapat dibaca untuk upload resumable.");
-        const init = await apiRequest("/v1/content/" + encodeURIComponent(contentId) + "/media/resumable", {
-          method: "POST",
-          headers: { "Idempotency-Key": uploadKey },
-          body: JSON.stringify({ filename: storyFile.name, media_type: storyFile.mimeType || "", size_bytes: file.size }),
-        }) as NativeResumableUploadInit;
-        if (!init.already_uploaded) {
-          try {
-            await uploadNativeFileWithTus(file, init, supabaseKey, init.item.id, setStoryUploadProgress, "allpha:story:tus");
-          } catch (cause) {
-            if (!(cause instanceof Error) || cause.message !== "MEDIA_OBJECT_ALREADY_EXISTS") throw cause;
-          }
-          await apiRequest("/v1/content/" + encodeURIComponent(contentId) + "/media/" + encodeURIComponent(init.item.id) + "/complete", { method: "POST" });
-        }
-        await SecureStore.deleteItemAsync("allpha:story:tus:" + init.item.id);
+        if (!Number.isSafeInteger(file.size) || file.size <= 0) throw new Error("Ukuran file media tidak dapat dibaca.");
+        if (!storyFile.mimeType) throw new Error("Tipe MIME file Story tidak dapat ditentukan.");
+        await uploadNativeFileWithCloudinary(
+          file, contentId, mediaId, storyFile.name, storyFile.mimeType, apiRequest, setStoryUploadProgress,
+        );
+        await SecureStore.deleteItemAsync("allpha:story:tus:" + mediaId);
       }
       const result = await apiRequest("/v1/content/" + encodeURIComponent(contentId) + "/publish", { method: "POST" }) as { message?: string };
       setStoryBody(""); setStoryFile(null); setStoryDraftId(""); setStoryUploadId(""); setStoryUploadProgress(0);
@@ -1164,25 +1154,15 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
         });
       }
       if (contentFile) {
-        const uploadKey = contentUploadId || createClientUuid();
-        setContentUploadId(uploadKey);
-        if (!supabaseKey) throw new Error("Kunci publik Supabase belum dikonfigurasi untuk upload resumable.");
+        const mediaId = contentUploadId || createClientUuid();
+        setContentUploadId(mediaId);
         const file = new ExpoFile(contentFile.uri);
-        if (!Number.isSafeInteger(file.size) || file.size <= 0) throw new Error("Ukuran file media tidak dapat dibaca untuk upload resumable.");
-        const init = await apiRequest("/v1/content/" + encodeURIComponent(contentId) + "/media/resumable", {
-          method: "POST",
-          headers: { "Idempotency-Key": uploadKey },
-          body: JSON.stringify({ filename: contentFile.name, media_type: contentFile.mimeType || "", size_bytes: file.size }),
-        }) as NativeResumableUploadInit;
-        if (!init.already_uploaded) {
-          try {
-            await uploadNativeFileWithTus(file, init, supabaseKey, init.item.id, setContentUploadProgress, "allpha:content:tus");
-          } catch (cause) {
-            if (!(cause instanceof Error) || cause.message !== "MEDIA_OBJECT_ALREADY_EXISTS") throw cause;
-          }
-          await apiRequest("/v1/content/" + encodeURIComponent(contentId) + "/media/" + encodeURIComponent(init.item.id) + "/complete", { method: "POST" });
-        }
-        await SecureStore.deleteItemAsync("allpha:content:tus:" + init.item.id);
+        if (!Number.isSafeInteger(file.size) || file.size <= 0) throw new Error("Ukuran file media tidak dapat dibaca.");
+        if (!contentFile.mimeType) throw new Error("Tipe MIME file konten tidak dapat ditentukan.");
+        await uploadNativeFileWithCloudinary(
+          file, contentId, mediaId, contentFile.name, contentFile.mimeType, apiRequest, setContentUploadProgress,
+        );
+        await SecureStore.deleteItemAsync("allpha:content:tus:" + mediaId);
       }
       const result = await apiRequest("/v1/content/mine") as { items?: NativeContentItem[] };
       setContentItems(result.items ?? []);
