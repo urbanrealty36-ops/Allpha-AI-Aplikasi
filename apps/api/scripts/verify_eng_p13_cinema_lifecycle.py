@@ -383,7 +383,7 @@ reset role;
 do $do$
 begin
  if not exists(select 1 from public.content_media where id='{CLOUDINARY_DELETE_MEDIA}'
-  and status='deleting' and provider_delete_state='deleted' and provider_deleted_at is not null) then
+  and status='deleted' and provider_delete_state='deleted' and provider_deleted_at is not null) then
   raise exception 'Cloudinary media deletion did not persist its terminal tombstone';
  end if;
  if not exists(select 1 from public.content_lifecycle_jobs where media_id='{CLOUDINARY_DELETE_MEDIA}'
