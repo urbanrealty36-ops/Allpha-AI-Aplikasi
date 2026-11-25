@@ -1,7 +1,8 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { getBrowserSupabase, getBrowserSupabasePublishableKey } from "@/lib/supabase";
+import { getBrowserSupabase } from "@/lib/supabase";
+import { uploadContentMedia } from "../../lib/resumable-media-upload";
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
@@ -73,24 +74,6 @@ async function authorizedRequest<T>(path: string, init: RequestInit = {}): Promi
 }
 
 
-type CloudinaryUploadIntent = {
-  item: { id: string; status: string };
-  upload: {
-    upload_url: string; resource_type: string; delivery_type: string;
-    public_id: string; expires_at: number;
-    params: Record<string, string | number | boolean>;
-  };
-};
-
-type ResumableUploadInit = {
-  item: CreatorMedia;
-  already_uploaded: boolean;
-  tus_endpoint?: string;
-  upload_token?: string;
-  upload_metadata?: Record<string, string>;
-  chunk_size_bytes?: number;
-};
-
 type PersistedCinemaUpload = {
   contentId: string;
   mediaId: string;
@@ -102,138 +85,6 @@ type PersistedCinemaUpload = {
 async function sha256File(file: File): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
   return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
-}
-
-function encodeTusMetadata(value: string): string {
-  return btoa(unescape(encodeURIComponent(value)));
-}
-
-async function uploadFileWithTus(
-  file: File,
-  init: ResumableUploadInit,
-  apiKey: string,
-  mediaId: string,
-  onProgress: (percent: number) => void,
-): Promise<void> {
-  if (!init.tus_endpoint || !init.upload_token || !init.upload_metadata) {
-    throw new Error("Kontrak upload resumable dari server tidak lengkap.");
-  }
-  const urlKey = "allpha:cinema:tus:" + mediaId;
-  let uploadUrl = window.localStorage.getItem(urlKey);
-  const headers = {
-    "Tus-Resumable": "1.0.0",
-    apikey: apiKey,
-    "x-signature": init.upload_token,
-  };
-  const readOffset = async (target: string): Promise<number> => {
-    const response = await fetch(target, { method: "HEAD", headers });
-    if (response.status === 404 || response.status === 410) return -1;
-    if (!response.ok) throw new Error("Sesi resumable Storage tidak dapat dilanjutkan.");
-    const offset = Number(response.headers.get("Upload-Offset"));
-    if (!Number.isSafeInteger(offset) || offset < 0 || offset > file.size) {
-      throw new Error("Offset upload resumable dari Storage tidak valid.");
-    }
-    return offset;
-  };
-
-  let offset = uploadUrl ? await readOffset(uploadUrl) : -1;
-  if (offset < 0) {
-    window.localStorage.removeItem(urlKey);
-    const metadata = Object.entries(init.upload_metadata)
-      .map(([key, value]) => key + " " + encodeTusMetadata(value))
-      .join(",");
-    const created = await fetch(init.tus_endpoint, {
-      method: "POST",
-      headers: {
-        ...headers,
-        "Upload-Length": String(file.size),
-        "Upload-Metadata": metadata,
-      },
-    });
-    if (created.status === 409) {
-      // The object may have completed just before the client lost its response.
-      throw new Error("MEDIA_OBJECT_ALREADY_EXISTS");
-    }
-    if (created.status !== 201) throw new Error("Storage menolak pembuatan sesi upload resumable.");
-    const location = created.headers.get("Location");
-    if (!location) throw new Error("Storage tidak mengembalikan URL sesi resumable.");
-    uploadUrl = new URL(location, init.tus_endpoint).toString();
-    window.localStorage.setItem(urlKey, uploadUrl);
-    offset = 0;
-  }
-
-  onProgress(Math.min(100, Math.floor((offset / file.size) * 100)));
-  const chunkSize = init.chunk_size_bytes || 6 * 1024 * 1024;
-  while (offset < file.size) {
-    const chunk = file.slice(offset, Math.min(file.size, offset + chunkSize));
-    const response = await fetch(uploadUrl!, {
-      method: "PATCH",
-      headers: {
-        ...headers,
-        "Upload-Offset": String(offset),
-        "Content-Type": "application/offset+octet-stream",
-      },
-      body: chunk,
-    });
-    if (response.status === 409) {
-      const refreshed = await readOffset(uploadUrl!);
-      if (refreshed < 0) throw new Error("Sesi upload resumable telah kedaluwarsa; coba lanjutkan kembali.");
-      offset = refreshed;
-      continue;
-    }
-    if (response.status !== 204) throw new Error("Chunk video gagal dikirim; sesi tersimpan untuk dilanjutkan.");
-    const nextOffset = Number(response.headers.get("Upload-Offset"));
-    offset = Number.isSafeInteger(nextOffset) && nextOffset > offset ? nextOffset : offset + chunk.size;
-    onProgress(Math.min(100, Math.floor((offset / file.size) * 100)));
-  }
-  const finalOffset = await readOffset(uploadUrl!);
-  if (finalOffset !== file.size) throw new Error("Storage belum mengonfirmasi seluruh byte upload.");
-  onProgress(100);
-}
-
-async function uploadFileWithCloudinary(
-  file: File,
-  intent: CloudinaryUploadIntent,
-  onProgress: (percent: number) => void,
-): Promise<void> {
-  if (!intent.upload?.upload_url || !intent.upload.params || !intent.item?.id) {
-    throw new Error("Kontrak upload Cloudinary dari FastAPI tidak lengkap.");
-  }
-  if (["processing", "ready"].includes(intent.item.status)) { onProgress(95); return; }
-  if (intent.upload.expires_at <= Math.floor(Date.now() / 1000)) {
-    throw new Error("Intent upload Cloudinary sudah kedaluwarsa. Silakan mulai ulang upload.");
-  }
-  const form = new FormData();
-  form.append("file", file);
-  for (const [key, value] of Object.entries(intent.upload.params)) form.append(key, String(value));
-  const result = await new Promise<{ status: number; body: string }>((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", intent.upload.upload_url);
-    xhr.timeout = 180000;
-    xhr.upload.onprogress = event => {
-      if (event.lengthComputable && event.total > 0) onProgress(Math.min(90, Math.floor(event.loaded / event.total * 90)));
-    };
-    xhr.onload = () => resolve({ status: xhr.status, body: xhr.responseText || "" });
-    xhr.onerror = () => reject(new Error("Koneksi ke Cloudinary terputus. Upload dapat dicoba kembali."));
-    xhr.ontimeout = () => reject(new Error("Upload Cloudinary melewati batas waktu."));
-    xhr.send(form);
-  });
-  if (result.status >= 200 && result.status < 300) {
-    let asset: Record<string, unknown>;
-    try { asset = JSON.parse(result.body) as Record<string, unknown>; }
-    catch { throw new Error("Respons upload Cloudinary tidak valid."); }
-    if (asset.public_id !== intent.upload.public_id || asset.resource_type !== intent.upload.resource_type
-      || asset.type !== "authenticated" || Number(asset.bytes) !== file.size) {
-      throw new Error("Identitas asset Cloudinary tidak sesuai dengan upload intent.");
-    }
-  } else {
-    let message = "";
-    try { message = String((JSON.parse(result.body) as { error?: { message?: string } }).error?.message || ""); }
-    catch { /* retain HTTP status */ }
-    const duplicate = result.status === 409 || /already exists|already uploaded/i.test(message);
-    if (!duplicate) throw new Error(message || ("Cloudinary menolak upload (HTTP " + result.status + ")."));
-  }
-  onProgress(95);
 }
 
 export default function AiCinemaCreatorWorkspace() {
@@ -772,45 +623,7 @@ export default function AiCinemaCreatorWorkspace() {
         const next: PersistedCinemaUpload = { contentId, mediaId, filename: file.name, size: file.size, sha256: digest };
         window.localStorage.setItem(sessionKey, JSON.stringify(next));
       }
-      const cloudinaryEnabled = process.env.NEXT_PUBLIC_ALLPHA_CLOUDINARY_MEDIA_ENABLED === "true" && !subtitle;
-      if (cloudinaryEnabled) {
-        const intent = await authorizedRequest<CloudinaryUploadIntent>("/v1/media/upload-intents", {
-          method: "POST",
-          headers: { "Idempotency-Key": mediaId },
-          body: JSON.stringify({
-            content_id: contentId, domain: "content", purpose: "attachment",
-            filename: file.name, media_type: mediaType, size_bytes: file.size, sha256: digest,
-          }),
-        });
-        if (intent.item?.id !== mediaId) throw new Error("Identitas media dari FastAPI tidak sesuai.");
-        await uploadFileWithCloudinary(file, intent, setUploadProgress);
-        await authorizedRequest("/v1/media/complete", {
-          method: "POST", body: JSON.stringify({ media_id: mediaId }),
-        });
-      } else {
-        const init = await authorizedRequest<ResumableUploadInit>(
-          "/v1/content/" + encodeURIComponent(contentId) + "/media/resumable",
-          {
-            method: "POST",
-            headers: { "Idempotency-Key": mediaId },
-            body: JSON.stringify({ filename: file.name, media_type: mediaType, size_bytes: file.size, sha256: digest }),
-          },
-        );
-        if (!init.already_uploaded) {
-          const supabase = getBrowserSupabase();
-          const publishableKey = getBrowserSupabasePublishableKey();
-          if (!supabase || !publishableKey) throw new Error("Autentikasi Storage belum tersedia.");
-          try {
-            await uploadFileWithTus(file, init, publishableKey, mediaId, setUploadProgress);
-          } catch (cause) {
-            if (!(cause instanceof Error) || cause.message !== "MEDIA_OBJECT_ALREADY_EXISTS") throw cause;
-          }
-          await authorizedRequest(
-            "/v1/content/" + encodeURIComponent(contentId) + "/media/" + encodeURIComponent(mediaId) + "/complete",
-            { method: "POST" },
-          );
-        }
-      }
+      await uploadContentMedia(authorizedRequest, contentId, file, mediaId, setUploadProgress);
       window.localStorage.removeItem(sessionKey);
       window.localStorage.removeItem("allpha:cinema:tus:" + mediaId);
       if (kind === "feature") setFeatureFilmFile(null);
