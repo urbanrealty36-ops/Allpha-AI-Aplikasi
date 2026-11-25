@@ -12,7 +12,12 @@ from allpha_api.auth import current_user
 router = APIRouter(prefix="/v1/media", tags=["media"])
 class UploadIntent(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    content_id: uuid.UUID
+    content_id: uuid.UUID | None = None
+    domain: str = Field(default="content", min_length=1, max_length=32)
+    purpose: str = Field(default="attachment", min_length=1, max_length=40)
+    resource_id: uuid.UUID | None = None
+    tenant_id: uuid.UUID | None = None
+    session_id: uuid.UUID | None = None
     filename: str = Field(min_length=1, max_length=120)
     media_type: str = Field(min_length=1, max_length=80)
     size_bytes: int = Field(gt=0, le=50 * 1024 * 1024)
@@ -20,6 +25,20 @@ class UploadIntent(BaseModel):
 class UploadCompletion(BaseModel):
     model_config = ConfigDict(extra="forbid")
     media_id: uuid.UUID
+MEDIA_DOMAIN_PURPOSES = {
+    "content": {"attachment", "post_attachment"},
+    "profile": {"avatar", "cover"},
+    "feed": {"post_attachment"},
+    "reels": {"reel"},
+    "stories": {"story"},
+    "cinema": {"cinema_poster", "cinema_asset"},
+    "live": {"live_recording", "live_replay"},
+    "agent": {"agent_artifact"},
+    "messaging": {"chat_attachment"},
+    "community": {"community_attachment"},
+    "marketplace": {"marketplace_attachment"},
+    "other": {"other"},
+}
 MEDIA_LIMITS = {"image/jpeg":10*1024*1024,"image/png":10*1024*1024,"image/webp":10*1024*1024,"video/mp4":50*1024*1024,"video/webm":50*1024*1024,"audio/mpeg":50*1024*1024,"audio/mp4":50*1024*1024,"audio/aac":50*1024*1024,"audio/ogg":50*1024*1024,"audio/wav":50*1024*1024,"audio/webm":50*1024*1024,"text/vtt":10*1024*1024,"application/x-subrip":10*1024*1024}
 def _config():
     base=os.getenv("SUPABASE_URL","").rstrip("/")
@@ -70,9 +89,16 @@ async def create_upload_intent(payload: UploadIntent, request: Request, user: di
     token = getattr(request.state, "supabase_access_token", None)
     if not token:
         raise HTTPException(401, detail={"code":"AUTH_CONTEXT_MISSING","message":"Sesi terverifikasi tidak tersedia."})
-    rows = await user_db_request("GET","content_items",token,params={"select":"id,status","id":f"eq.{payload.content_id}","owner_id":f"eq.{user['id']}","limit":"1"})
-    if not rows or rows[0].get("status") not in {"draft","failed"}:
-        raise HTTPException(404, detail={"code":"MEDIA_RESOURCE_NOT_FOUND","message":"Draft konten tidak tersedia."})
+    if payload.domain not in MEDIA_DOMAIN_PURPOSES or payload.purpose not in MEDIA_DOMAIN_PURPOSES[payload.domain]:
+        raise HTTPException(422, detail={"code":"MEDIA_DOMAIN_PURPOSE_INVALID","message":"Domain atau purpose media tidak valid."})
+    if payload.domain == "content":
+        if payload.content_id is None or payload.resource_id is not None:
+            raise HTTPException(422, detail={"code":"MEDIA_RESOURCE_REQUIRED","message":"content_id wajib untuk domain content."})
+        rows = await user_db_request("GET","content_items",token,params={"select":"id,status","id":f"eq.{payload.content_id}","owner_id":f"eq.{user['id']}","limit":"1"})
+        if not rows or rows[0].get("status") not in {"draft","failed"}:
+            raise HTTPException(404, detail={"code":"MEDIA_RESOURCE_NOT_FOUND","message":"Draft konten tidak tersedia."})
+    elif payload.content_id is not None or payload.resource_id is None:
+        raise HTTPException(422, detail={"code":"MEDIA_RESOURCE_REQUIRED","message":"resource_id wajib dan content_id harus kosong untuk domain ini."})
     try:
         cfg = CloudinaryConfig.from_environment(require_callback=True)
         intent = build_signed_upload_intent(config=cfg,media_id=str(media_id),media_type=media_type,ttl_seconds=600)
@@ -80,8 +106,9 @@ async def create_upload_intent(payload: UploadIntent, request: Request, user: di
         raise HTTPException(503,detail={"code":"CLOUDINARY_NOT_READY","message":"Upload Cloudinary belum siap."}) from exc
     filename = re.sub(r"[^A-Za-z0-9._-]+","-",payload.filename.split("/")[-1])[:120]
     result = await service_db_request("reserve_cloudinary_media_upload",body={
-        "p_media_id":str(media_id),"p_content_id":str(payload.content_id),"p_owner_id":str(user["id"]),
-        "p_domain":"content","p_purpose":"attachment","p_resource_id":None,"p_tenant_id":None,"p_session_id":None,
+        "p_media_id":str(media_id),"p_content_id":str(payload.content_id) if payload.content_id else None,"p_owner_id":str(user["id"]),
+        "p_domain":payload.domain,"p_purpose":payload.purpose,"p_resource_id":str(payload.resource_id) if payload.resource_id else None,
+        "p_tenant_id":str(payload.tenant_id) if payload.tenant_id else None,"p_session_id":str(payload.session_id) if payload.session_id else None,
         "p_filename":filename,"p_media_type":media_type,"p_size_bytes":payload.size_bytes,"p_sha256":payload.sha256,
         "p_public_id":intent["public_id"],"p_resource_type":intent["resource_type"],"p_delivery_type":"authenticated",
         "p_upload_expires_at":datetime.fromtimestamp(int(intent["expires_at"]),tz=timezone.utc).isoformat(),
