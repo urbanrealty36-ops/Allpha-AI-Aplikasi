@@ -254,7 +254,7 @@ def test_runtime_preflight_blocks_provider_call_when_active_tariff_is_missing():
 
     router = make_router(adapter, preflight=deny_unverified_tariff)
     with pytest.raises(TextGenerationRouterUnavailable, match="active model-cost configuration"):
-        asyncio.run(router.generate(request()))
+        asyncio.run(router.generate(request_with_billing_context()))
     assert adapter.calls == 0
 
 
