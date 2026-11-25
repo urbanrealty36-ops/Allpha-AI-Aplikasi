@@ -297,8 +297,8 @@ def _media_signature_valid(media_type: str, data: bytes) -> bool:
         "audio/ogg": lambda b: b.startswith(b"OggS"),
         "audio/wav": lambda b: len(b) >= 12 and b[:4] == b"RIFF" and b[8:12] == b"WAVE",
         "audio/webm": lambda b: b.startswith(bytes.fromhex("1a45dfa3")),
-        "text/vtt": lambda b: b.lstrip(b"\\xef\\xbb\\xbf \\t\\r\\n").startswith(b"WEBVTT"),
-        "application/x-subrip": lambda b: re.match(rb"^\\s*\\d+\\s*\\r?\\n\\d{2}:\\d{2}:\\d{2}[,.]\\d{3}\\s+-->\\s+\\d{2}:\\d{2}:\\d{2}[,.]\\d{3}", b) is not None,
+        "text/vtt": lambda b: b.lstrip(b"\xef\xbb\xbf \t\r\n").startswith(b"WEBVTT"),
+        "application/x-subrip": lambda b: re.match(rb"^\s*\d+\s*\r?\n\d{2}:\d{2}:\d{2}[,.]\d{3}\s+-->\s+\d{2}:\d{2}:\d{2}[,.]\d{3}", b) is not None,
     }
     checker = signatures.get(media_type)
     return bool(checker and checker(data))
@@ -553,8 +553,8 @@ async def upload_media(content_id: uuid.UUID, request: Request, file: UploadFile
         "audio/ogg": lambda b: b.startswith(b"OggS"),
         "audio/wav": lambda b: len(b) >= 12 and b[:4] == b"RIFF" and b[8:12] == b"WAVE",
         "audio/webm": lambda b: b.startswith(bytes.fromhex("1a45dfa3")),
-        "text/vtt": lambda b: b.lstrip(b"\\xef\\xbb\\xbf \\t\\r\\n").startswith(b"WEBVTT"),
-        "application/x-subrip": lambda b: re.match(rb"^\\s*\\d+\\s*\\r?\\n\\d{2}:\\d{2}:\\d{2}[,.]\\d{3}\\s+-->\\s+\\d{2}:\\d{2}:\\d{2}[,.]\\d{3}", b) is not None,
+        "text/vtt": lambda b: b.lstrip(b"\xef\xbb\xbf \t\r\n").startswith(b"WEBVTT"),
+        "application/x-subrip": lambda b: re.match(rb"^\s*\d+\s*\r?\n\d{2}:\d{2}:\d{2}[,.]\d{3}\s+-->\s+\d{2}:\d{2}:\d{2}[,.]\d{3}", b) is not None,
     }
     if not signatures[media_type](data):
         raise HTTPException(422, detail={"code": "MEDIA_SIGNATURE_INVALID", "message": "Isi file tidak sesuai dengan format media yang dipilih."})

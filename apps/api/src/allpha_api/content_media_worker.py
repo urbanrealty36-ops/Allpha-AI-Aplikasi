@@ -1,4 +1,4 @@
-"""Isolated image media processor. Requires a reachable ClamAV daemon; fails closed otherwise."""
+"""Isolated image and subtitle media processor. Requires a reachable ClamAV daemon; fails closed otherwise."""
 from __future__ import annotations
 
 import asyncio
@@ -29,10 +29,10 @@ def validate_subtitle_bytes(data: bytes, media_type: str) -> dict[str, Any]:
         text = data.decode("utf-8-sig")
     except UnicodeDecodeError as exc:
         raise ValueError("SUBTITLE_UTF8_INVALID") from exc
-    if "\\x00" in text or re.search(r"<\\s*(script|iframe|object|embed)\\b", text, re.IGNORECASE):
+    if "\x00" in text or re.search(r"<\s*(script|iframe|object|embed)\b", text, re.IGNORECASE):
         raise ValueError("SUBTITLE_ACTIVE_CONTENT_REJECTED")
-    normalized = text.replace("\\r\\n", "\\n").replace("\\r", "\\n")
-    time_pattern = re.compile(r"(?:(\\d{2}):)?(\\d{2}):(\\d{2})[,.](\\d{3})")
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+    time_pattern = re.compile(r"(?:(\d{2}):)?(\d{2}):(\d{2})[,.](\d{3})")
 
     def parse_time(value: str) -> int:
         match = time_pattern.fullmatch(value.strip())
@@ -65,7 +65,7 @@ def validate_subtitle_bytes(data: bytes, media_type: str) -> dict[str, Any]:
         subtitle_format = "webvtt"
         cue_count = len(timing_lines)
     elif media_type == "application/x-subrip":
-        blocks = [block for block in re.split(r"\\n\\s*\\n", normalized.strip()) if block.strip()]
+        blocks = [block for block in re.split(r"\n\s*\n", normalized.strip()) if block.strip()]
         cue_count = 0
         for block in blocks:
             lines = [line.strip() for line in block.splitlines() if line.strip()]
@@ -224,7 +224,7 @@ class MediaWorker:
                 try:
                     count = await self.process_batch()
                 except Exception:
-                    log.exception("image worker poll failed")
+                    log.exception("media worker poll failed")
                     count = 0
                 if count == 0:
                     await asyncio.sleep(self.poll_seconds)

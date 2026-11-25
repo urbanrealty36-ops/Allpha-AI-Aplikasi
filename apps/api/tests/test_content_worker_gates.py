@@ -88,7 +88,7 @@ def test_content_transcode_worker_enables_with_complete_config(monkeypatch):
 
 def test_webvtt_subtitle_validation_accepts_valid_cues_and_returns_digest():
     from allpha_api.content_media_worker import validate_subtitle_bytes
-    data = b"WEBVTT\\n\\n00:00:00.000 --> 00:00:02.000\\nHello\\n"
+    data = b"WEBVTT\n\n00:00:00.000 --> 00:00:02.000\nHello\n"
     receipt = validate_subtitle_bytes(data, "text/vtt")
     assert receipt["format"] == "webvtt"
     assert receipt["cue_count"] == 1
@@ -97,7 +97,7 @@ def test_webvtt_subtitle_validation_accepts_valid_cues_and_returns_digest():
 
 def test_subrip_subtitle_validation_accepts_valid_cues():
     from allpha_api.content_media_worker import validate_subtitle_bytes
-    data = b"1\\n00:00:00,000 --> 00:00:02,000\\nHello\\n"
+    data = b"1\n00:00:00,000 --> 00:00:02,000\nHello\n"
     receipt = validate_subtitle_bytes(data, "application/x-subrip")
     assert receipt["format"] == "subrip"
     assert receipt["cue_count"] == 1
@@ -105,9 +105,9 @@ def test_subrip_subtitle_validation_accepts_valid_cues():
 
 @pytest.mark.parametrize("data,media_type,error", [
     (b"not a subtitle", "text/vtt", "WEBVTT_HEADER_INVALID"),
-    (b"WEBVTT\\n\\n00:00:02.000 --> 00:00:01.000\\nBad\\n", "text/vtt", "SUBTITLE_TIMING_ORDER_INVALID"),
-    (b"1\\n00:00:00,000 --> 00:00:02,000\\n<script>alert(1)</script>", "application/x-subrip", "SUBTITLE_ACTIVE_CONTENT_REJECTED"),
-    (b"\\xff", "text/vtt", "SUBTITLE_UTF8_INVALID"),
+    (b"WEBVTT\n\n00:00:02.000 --> 00:00:01.000\nBad\n", "text/vtt", "SUBTITLE_TIMING_ORDER_INVALID"),
+    (b"1\n00:00:00,000 --> 00:00:02,000\n<script>alert(1)</script>", "application/x-subrip", "SUBTITLE_ACTIVE_CONTENT_REJECTED"),
+    (b"\xff", "text/vtt", "SUBTITLE_UTF8_INVALID"),
 ])
 def test_subtitle_validation_rejects_malformed_or_active_content(data, media_type, error):
     from allpha_api.content_media_worker import validate_subtitle_bytes
