@@ -34,11 +34,40 @@ def psql(sql: str, check: bool = True) -> subprocess.CompletedProcess[str]:
     )
 
 
-def expect_denied(sql: str, expected: str) -> None:
-    result = psql(sql, check=False)
-    output = result.stdout + result.stderr
-    if result.returncode == 0 or expected not in output:
-        raise RuntimeError(f"Expected {expected!r}; got rc={result.returncode}: {output}")
+def wait_for_postgres() -> None:
+    """Wait for the final post-init server, not the entrypoint's temporary init server."""
+    for _ in range(90):
+        logs = run(["docker", "logs", CONTAINER], check=False)
+        output = logs.stdout + logs.stderr
+        initialized = "PostgreSQL init process complete; ready for start up." in output
+        if initialized:
+            ready = run(
+                ["docker", "exec", CONTAINER, "pg_isready", "-U", "postgres", "-d", "postgres"],
+                check=False,
+            )
+            if ready.returncode == 0:
+                first = run(
+                    ["docker", "exec", CONTAINER, "psql", "-X", "-A", "-t", "-U", "postgres", "-d", "postgres", "-c", "select pg_postmaster_start_time()"],
+                    check=False,
+                )
+                time.sleep(1)
+                second = run(
+                    ["docker", "exec", CONTAINER, "psql", "-X", "-A", "-t", "-U", "postgres", "-d", "postgres", "-c", "select pg_postmaster_start_time()"],
+                    check=False,
+                )
+                if (
+                    first.returncode == 0
+                    and second.returncode == 0
+                    and first.stdout.strip()
+                    and first.stdout.strip() == second.stdout.strip()
+                ):
+                    return
+        time.sleep(1)
+    logs = run(["docker", "logs", CONTAINER], check=False)
+    raise RuntimeError(
+        "PostgreSQL 17 final post-init server did not remain ready.\\n"
+        + logs.stdout + logs.stderr
+    )
 
 
 def main() -> None:
@@ -46,17 +75,7 @@ def main() -> None:
         raise RuntimeError(f"Missing source-only migration: {MIGRATION}")
     run(["docker", "run", "-d", "--rm", "--name", CONTAINER, "-e", "POSTGRES_PASSWORD=ci-only", "postgres:17-alpine"])
     try:
-        ready = False
-        for _ in range(60):
-            probe = run(["docker", "exec", CONTAINER, "psql", "-X", "-A", "-t", "-U", "postgres", "-d", "postgres", "-c", "select 1"], check=False)
-            if probe.returncode == 0:
-                stable = run(["docker", "exec", CONTAINER, "psql", "-X", "-A", "-t", "-U", "postgres", "-d", "postgres", "-c", "select 1"], check=False)
-                if stable.returncode == 0:
-                    ready = True
-                    break
-            time.sleep(1)
-        if not ready:
-            raise RuntimeError("PostgreSQL 17 did not reach stable SQL readiness")
+        wait_for_postgres()
 
         psql("""
 create extension if not exists pgcrypto;
