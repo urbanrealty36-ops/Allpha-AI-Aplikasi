@@ -149,6 +149,8 @@ def test_supabase_metering_sink_persists_owner_and_skill_context():
         assert received["source_id"] == "skill-1"
         assert received["source_version"] == 3
         assert received["usage_units"] == 6
+        assert received["input_tokens"] == 2
+        assert received["output_tokens"] == 4
         assert received["payload_fingerprint"] == evidence.evidence_sha256
 
     asyncio.run(run())

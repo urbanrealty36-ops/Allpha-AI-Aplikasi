@@ -213,6 +213,8 @@ class SupabaseTextGenerationMeteringSink:
             "model_version": evidence.model_version,
             "usage_units": evidence.usage_units,
             "usage_unit": evidence.usage_unit,
+            "input_tokens": evidence.input_tokens,
+            "output_tokens": evidence.output_tokens,
             "cost_microunits": evidence.cost_microunits,
             "cost_unit": evidence.cost_unit,
             "pricing_version": evidence.pricing_version,

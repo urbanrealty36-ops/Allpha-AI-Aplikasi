@@ -12,6 +12,7 @@ MIGRATION=ROOT/"apps/api/supabase/migrations/20261124064458_eng_p09_model_policy
 CAPABILITY_SCOPE_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124082219_eng_p09_model_cost_capability_scope.sql"
 CAPABILITY_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124080255_eng_p09_model_capability_contract.sql"
 METERING_CAPABILITY_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124081303_eng_p09_usage_metering_capability.sql"
+TOKEN_DETAIL_MIGRATION=ROOT/"apps/api/supabase/source-only-migrations/20261126110000_eng_p09_usage_token_details.sql"
 NAME="allpha-p09-policy-"+uuid.uuid4().hex[:8]
 OWNER="11111111-1111-4111-8111-111111111111"
 
@@ -40,6 +41,8 @@ def main()->None:
         raise RuntimeError(f"Missing P09 capability migration: {CAPABILITY_MIGRATION}")
     if not METERING_CAPABILITY_MIGRATION.is_file():
         raise RuntimeError(f"Missing P09 metering-capability migration: {METERING_CAPABILITY_MIGRATION}")
+    if not TOKEN_DETAIL_MIGRATION.is_file():
+        raise RuntimeError(f"Missing P09 token-detail migration: {TOKEN_DETAIL_MIGRATION}")
     run(["docker","run","-d","--rm","--name",NAME,"-e","POSTGRES_PASSWORD=ci-only","postgres:17-alpine"])
     try:
         ready=False
@@ -118,6 +121,7 @@ insert into public.ai_model_cost_configs(
         psql(CAPABILITY_SCOPE_MIGRATION.read_text(encoding="utf-8"))
         psql(CAPABILITY_MIGRATION.read_text(encoding="utf-8"))
         psql(METERING_CAPABILITY_MIGRATION.read_text(encoding="utf-8"))
+        psql(TOKEN_DETAIL_MIGRATION.read_text(encoding="utf-8"))
         psql("""
 do $do$
 begin
@@ -211,16 +215,18 @@ insert into public.generation_output_moderation_policies(
         psql("""
 insert into public.agent_model_usage_metering(
  idempotency_key,task_id,trace_id,owner_id,billing_account_id,agent_id,source_id,source_version,sensitivity,capability,
- provider_id,model_id,model_version,usage_units,usage_unit,cost_microunits,cost_unit,
+ provider_id,model_id,model_version,usage_units,usage_unit,input_tokens,output_tokens,cost_microunits,cost_unit,
  pricing_version,completed_at,payload_fingerprint
 ) values
- ('key-1','task-1','trace-1','owner-1','payer-1','agent-1','skill-1',1,'internal','text_generation','provider-x','model-x','v1',10,'tokens',20,'USD','price-v1',clock_timestamp(),repeat('a',64)),
- ('key-2','task-2','trace-2','owner-1','payer-1','agent-1','skill-1',1,'internal','embedding','provider-x','model-x','v1',12,'input_tokens',30,'EUR','price-v2',clock_timestamp(),repeat('b',64));
+ ('key-1','task-1','trace-1','owner-1','payer-1','agent-1','skill-1',1,'internal','text_generation','provider-x','model-x','v1',10,'tokens',6,4,20,'USD','price-v1',clock_timestamp(),repeat('a',64)),
+ ('key-2','task-2','trace-2','owner-1','payer-1','agent-1','skill-1',1,'internal','embedding','provider-x','model-x','v1',12,'input_tokens',12,0,30,'EUR','price-v2',clock_timestamp(),repeat('b',64));
 do $do$
 declare v jsonb;
 begin
  v:=public.get_agent_model_usage_summary(clock_timestamp()-interval '1 day',clock_timestamp()+interval '1 second');
  if (v->'totals'->>'runs')::integer<>2 then raise exception 'usage summary total run count incorrect'; end if;
+ if (v->'totals'->>'input_tokens')::bigint<>18 then raise exception 'usage summary input-token total incorrect'; end if;
+ if (v->'totals'->>'output_tokens')::bigint<>4 then raise exception 'usage summary output-token total incorrect'; end if;
  if jsonb_array_length(v->'by_provider_model')<>2 then raise exception 'usage summary incorrectly mixed currencies/pricing versions'; end if;
  if jsonb_array_length(v->'by_capability')<>2 then raise exception 'usage summary did not separate model capabilities'; end if;
 end $do$;
@@ -233,7 +239,7 @@ select public.record_agent_model_usage_metering('{
  "owner_id":"owner-1","billing_account_id":"payer-1","agent_id":"agent-1","source_id":"source-1",
  "source_version":1,"sensitivity":"internal","capability":"embedding","provider_id":"provider-x",
  "model_id":"model-x","model_version":"v1","usage_units":4,"usage_unit":"input_tokens",
- "cost_microunits":8,"cost_unit":"USD","pricing_version":"price-v1",
+ "input_tokens":4,"output_tokens":0,"cost_microunits":8,"cost_unit":"USD","pricing_version":"price-v1",
  "completed_at":"2026-11-24T00:00:00+00:00","payload_fingerprint":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
 }'::jsonb);
 select public.record_agent_model_usage_metering('{
@@ -253,13 +259,53 @@ select public.record_agent_model_usage_metering('{
  "owner_id":"owner-1","billing_account_id":"payer-1","agent_id":"agent-1","source_id":"source-1",
  "source_version":1,"sensitivity":"internal","capability":"embedding","provider_id":"provider-x",
  "model_id":"model-x","model_version":"v1","usage_units":4,"usage_unit":"input_tokens",
- "cost_microunits":9,"cost_unit":"USD","pricing_version":"price-v1",
+ "input_tokens":4,"output_tokens":0,"cost_microunits":9,"cost_unit":"USD","pricing_version":"price-v1",
  "completed_at":"2026-11-24T00:00:00+00:00","payload_fingerprint":"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
 }'::jsonb);
 reset role;
 """,check=False)
         if conflict.returncode==0:
             raise RuntimeError("metering RPC accepted conflicting reuse of an idempotency key")
+
+        psql("""
+set role service_role;
+select public.record_agent_model_usage_metering(jsonb_build_object(
+ 'idempotency_key','rpc-textgen-1','task_id','textgen-task-1','trace_id','textgen-trace-1',
+ 'owner_id','owner-1','billing_account_id','payer-1','agent_id','agent-1','source_id','skill-1',
+ 'source_version',1,'sensitivity','internal','capability','text_generation',
+ 'provider_id','provider-x','model_id','model-x','model_version','v1',
+ 'usage_units',1,'usage_unit','request','input_tokens',7,'output_tokens',3,
+ 'cost_microunits',50,'cost_unit','USD','pricing_version','price-v1',
+ 'completed_at',clock_timestamp()::text,'payload_fingerprint',repeat('e',64)
+));
+reset role;
+do $do$
+declare v jsonb;
+begin
+ if not exists(select 1 from public.agent_model_usage_metering
+   where idempotency_key='rpc-textgen-1' and input_tokens=7 and output_tokens=3) then
+  raise exception 'text-generation token detail was not persisted';
+ end if;
+ v:=public.get_agent_model_usage_summary(clock_timestamp()-interval '1 day',clock_timestamp()+interval '1 second');
+ if (v->'totals'->>'input_tokens')::bigint<>25 then raise exception 'summary input-token total after RPC incorrect'; end if;
+ if (v->'totals'->>'output_tokens')::bigint<>7 then raise exception 'summary output-token total after RPC incorrect'; end if;
+end $do$;
+""")
+        missing_tokens=psql("""
+set role service_role;
+select public.record_agent_model_usage_metering(jsonb_build_object(
+ 'idempotency_key','rpc-textgen-missing-tokens','task_id','textgen-task-2','trace_id','textgen-trace-2',
+ 'owner_id','owner-1','billing_account_id','payer-1','agent_id','agent-1','source_id','skill-1',
+ 'source_version',1,'sensitivity','internal','capability','text_generation',
+ 'provider_id','provider-x','model_id','model-x','model_version','v1',
+ 'usage_units',1,'usage_unit','request','cost_microunits',10,'cost_unit','USD',
+ 'pricing_version','price-v1','completed_at',clock_timestamp()::text,'payload_fingerprint',repeat('f',64)
+));
+reset role;
+""",check=False)
+        if missing_tokens.returncode==0:
+            raise RuntimeError("text-generation metering accepted missing input/output token counts")
+
         psql(f"""
 do $do$
 begin
@@ -272,7 +318,7 @@ begin
  if not has_function_privilege('service_role','public.record_agent_model_usage_metering(jsonb)','EXECUTE') then raise exception 'service_role cannot write model usage metering'; end if;
 end $do$;
 """)
-        print("PASS: ENG-P09 PostgreSQL 17 model tariff/policy separation, immutable approval evidence, draft fail-closed, single active manual moderation policy, unit-safe usage summary and service-only grants.")
+        print("PASS: ENG-P09 PostgreSQL 17 model tariff/policy separation, immutable approval evidence, token-detail persistence, unit-safe usage summary, idempotency and service-only grants.")
     finally:
         run(["docker","rm","--force",NAME],check=False)
 
