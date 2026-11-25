@@ -103,3 +103,58 @@ def test_watchlist_get_is_owner_scoped_and_hides_unavailable_titles(monkeypatch)
         assert [item["title_id"] for item in response.json()["items"]] == [TITLE]
     finally:
         app.dependency_overrides.pop(current_user, None)
+
+
+def test_creator_analytics_aggregates_verified_views_and_policy_approved_earnings(monkeypatch):
+    async def fake_db(method, table, *, params=None, payload=None, prefer=None):
+        if table == "cinema_titles":
+            assert params["owner_id"] == "eq." + OWNER
+            return [{"id": TITLE, "title": "Owner Film", "status": "published"}]
+        if table == "cinema_playback_sessions":
+            assert params["fraud_status"] == "eq.cleared"
+            return [
+                {"id": "view-1", "title_id": TITLE, "watched_seconds": 120, "fraud_status": "cleared"},
+                {"id": "view-2", "title_id": TITLE, "watched_seconds": 60, "fraud_status": "cleared"},
+            ]
+        if table == "cinema_qualified_watches":
+            assert params["status"] == "eq.qualified"
+            return [{"id": "qualified-1", "title_id": TITLE, "qualified_seconds": 90}]
+        if table == "cinema_creator_earnings":
+            assert params["owner_user_id"] == "eq." + OWNER
+            return [
+                {"id": "earning-1", "title_id": TITLE, "earning_credits": 25, "status": "approved"},
+                {"id": "earning-2", "title_id": TITLE, "earning_credits": 15, "status": "pending_policy"},
+                {"id": "earning-3", "title_id": TITLE, "earning_credits": 100, "status": "reversed"},
+            ]
+        raise AssertionError((method, table, params))
+    monkeypatch.setattr(cinema_lifecycle_api, "_db", fake_db)
+    client = _client()
+    try:
+        response = client.get("/v1/cinema/creator/analytics")
+        assert response.status_code == 200
+        result = response.json()
+        assert result["totals"]["views"] == 2
+        assert result["totals"]["watched_seconds"] == 180
+        assert result["totals"]["qualified_views"] == 1
+        assert result["totals"]["approved_earning_credits"] == 25
+        assert result["totals"]["pending_earning_credits"] == 15
+        assert result["subscriber_count"] is None
+        assert result["cash_conversion_enabled"] is False
+    finally:
+        app.dependency_overrides.pop(current_user, None)
+
+
+def test_creator_analytics_returns_empty_totals_without_querying_unowned_activity(monkeypatch):
+    async def fake_db(method, table, *, params=None, payload=None, prefer=None):
+        assert method == "GET" and table == "cinema_titles"
+        assert params["owner_id"] == "eq." + OWNER
+        return []
+    monkeypatch.setattr(cinema_lifecycle_api, "_db", fake_db)
+    client = _client()
+    try:
+        response = client.get("/v1/cinema/creator/analytics")
+        assert response.status_code == 200
+        assert response.json()["items"] == []
+        assert response.json()["totals"]["views"] == 0
+    finally:
+        app.dependency_overrides.pop(current_user, None)

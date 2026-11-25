@@ -461,6 +461,88 @@ async def my_cinema_subscription(user: dict[str, Any] = Depends(current_user)) -
         return {"items": [], "configured": False, "reason": "CINEMA_SUBSCRIPTION_NOT_CONFIGURED"}
 
 
+@router.get("/creator/analytics")
+async def creator_analytics(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    """Aggregate creator-owned Cinema performance from verified persisted events.
+
+    Only fraud-cleared playback sessions count as views. Earning credits are split
+    by approved/pending status and are never represented as cash. Creator-level
+    subscribers remain unavailable until a canonical creator-subscription schema exists.
+    """
+    owner_id = str(user["id"])
+    try:
+        titles = await _db("GET", "cinema_titles", params={
+            "select": "id,title,status,published_at",
+            "owner_id": "eq." + owner_id, "order": "updated_at.desc", "limit": "500",
+        }) or []
+        title_ids = [str(item["id"]) for item in titles if item.get("id")]
+        sessions: list[dict[str, Any]] = []
+        qualified: list[dict[str, Any]] = []
+        earnings: list[dict[str, Any]] = []
+        if title_ids:
+            title_filter = "in.(" + ",".join(title_ids) + ")"
+            sessions = await _db("GET", "cinema_playback_sessions", params={
+                "select": "id,title_id,watched_seconds,fraud_status,status,started_at",
+                "title_id": title_filter, "fraud_status": "eq.cleared",
+                "order": "started_at.desc", "limit": "5000",
+            }) or []
+            qualified = await _db("GET", "cinema_qualified_watches", params={
+                "select": "id,title_id,qualified_seconds,status",
+                "title_id": title_filter, "status": "eq.qualified", "limit": "5000",
+            }) or []
+            earnings = await _db("GET", "cinema_creator_earnings", params={
+                "select": "id,title_id,earning_credits,status,created_at,settled_at",
+                "owner_user_id": "eq." + owner_id, "title_id": title_filter,
+                "order": "created_at.desc", "limit": "5000",
+            }) or []
+        metrics = {
+            title_id: {"views": 0, "watched_seconds": 0, "qualified_views": 0,
+                       "qualified_seconds": 0, "approved_earning_credits": 0,
+                       "pending_earning_credits": 0}
+            for title_id in title_ids
+        }
+        for row in sessions:
+            item = metrics.get(str(row.get("title_id")))
+            if item is not None:
+                item["views"] += 1
+                item["watched_seconds"] += max(0, int(row.get("watched_seconds") or 0))
+        for row in qualified:
+            item = metrics.get(str(row.get("title_id")))
+            if item is not None:
+                item["qualified_views"] += 1
+                item["qualified_seconds"] += max(0, int(row.get("qualified_seconds") or 0))
+        for row in earnings:
+            item = metrics.get(str(row.get("title_id")))
+            if item is None:
+                continue
+            credits = max(0, int(row.get("earning_credits") or 0))
+            if row.get("status") in {"approved", "settled"}:
+                item["approved_earning_credits"] += credits
+            elif row.get("status") == "pending_policy":
+                item["pending_earning_credits"] += credits
+        items = [{"title_id": str(title["id"]), "title": title.get("title") or "",
+                  "status": title.get("status") or "", **metrics[str(title["id"])]}
+                 for title in titles if str(title.get("id")) in metrics]
+        total_fields = (
+            "views", "watched_seconds", "qualified_views", "qualified_seconds",
+            "approved_earning_credits", "pending_earning_credits",
+        )
+        totals = {field: sum(item[field] for item in metrics.values()) for field in total_fields}
+        return {
+            "items": items, "totals": totals, "subscriber_count": None,
+            "subscriber_metric_status": "not_available",
+            "subscriber_metric_reason": "CREATOR_SUBSCRIPTION_SCHEMA_NOT_DEFINED",
+            "cash_conversion_enabled": False, "withdrawals_enabled": False,
+        }
+    except HTTPException as exc:
+        if exc.status_code == 404:
+            return {"items": [], "totals": {}, "subscriber_count": None,
+                    "subscriber_metric_status": "not_available",
+                    "subscriber_metric_reason": "CINEMA_ANALYTICS_SCHEMA_NOT_CONFIGURED",
+                    "cash_conversion_enabled": False, "withdrawals_enabled": False}
+        raise
+
+
 @router.get("/creator/earnings")
 async def creator_earnings(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     try:

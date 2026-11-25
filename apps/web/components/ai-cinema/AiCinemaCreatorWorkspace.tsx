@@ -36,6 +36,7 @@ type CinemaCredit = { id: string; contributor_type: string; role: string; attrib
 type CinemaVersion = { id: string; version: number; created_at: string };
 type CinemaAsset = { id: string; media_id: string; asset_role: string; display_name: string; media?: { filename?: string; media_type?: string; status?: string; preview_url?: string } };
 type CinemaProductionResponse = { title_id: string; version: number; status: string; document: Record<string, unknown> };
+type CreatorAnalytics = { items: Array<{title_id:string;title:string;status:string;views:number;watched_seconds:number;qualified_views:number;qualified_seconds:number;approved_earning_credits:number;pending_earning_credits:number}>; totals: {views:number;watched_seconds:number;qualified_views:number;qualified_seconds:number;approved_earning_credits:number;pending_earning_credits:number}; subscriber_count:number|null; subscriber_metric_status:string; subscriber_metric_reason?:string; cash_conversion_enabled:boolean; withdrawals_enabled:boolean };
 type CinemaReadiness = { status: "ready" | "not_ready"; can_create_generation_job: boolean; checks: Record<string, string>; message: string };
 const EMPTY_CINEMA_PRODUCTION = {
   schema_version: 1,
@@ -183,6 +184,8 @@ async function uploadFileWithTus(
 
 export default function AiCinemaCreatorWorkspace() {
   const [titles, setTitles] = useState<DraftTitle[]>([]);
+  const [creatorAnalytics, setCreatorAnalytics] = useState<CreatorAnalytics | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [capabilityStatus, setCapabilityStatus] = useState<CreatorStatus | null>(null);
   const [productionReadiness, setProductionReadiness] = useState<CinemaReadiness | null>(null);
   const [readinessLoading, setReadinessLoading] = useState(false);
@@ -343,6 +346,19 @@ export default function AiCinemaCreatorWorkspace() {
     setGenerationArtifactText("");
     setGenerationQuote(null);
   }, [selectedTitleId]);
+
+  const loadCreatorAnalytics = useCallback(async () => {
+    setAnalyticsLoading(true);
+    try {
+      const result = await authorizedRequest<CreatorAnalytics>("/v1/cinema/creator/analytics");
+      setCreatorAnalytics(result);
+    } catch (cause) {
+      setCreatorAnalytics(null);
+      setError(cause instanceof Error ? cause.message : "Analitik Creator Studio belum dapat dimuat.");
+    } finally { setAnalyticsLoading(false); }
+  }, []);
+
+  useEffect(() => { void loadCreatorAnalytics(); }, [loadCreatorAnalytics]);
 
   const loadCreatorGovernance = useCallback(async () => {
     try {
@@ -809,6 +825,22 @@ export default function AiCinemaCreatorWorkspace() {
       </div>}
       {error && <p role="alert" className="mb-4 rounded-xl border border-2 border-slate-900 bg-rose-50 p-3 text-sm text-rose-800">{error}</p>}
       {notice && <p role="status" className="mb-4 rounded-xl border border-2 border-slate-900 bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</p>}
+      <section className="mb-6 rounded-2xl border-2 border-slate-900 bg-white p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div><h3 className="font-bold">Creator Performance</h3><p className="mt-1 text-xs text-slate-600">Data dihitung dari playback yang lolos fraud review dan earning policy tersimpan.</p></div>
+          <button type="button" onClick={()=>void loadCreatorAnalytics()} disabled={analyticsLoading} className="rounded-lg border-2 border-slate-900 px-3 py-1 text-xs font-bold disabled:opacity-50">Perbarui</button>
+        </div>
+        {analyticsLoading&&!creatorAnalytics?<p className="mt-3 text-xs text-slate-600">Memuat analitik...</p>:creatorAnalytics?<>
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="rounded-xl bg-slate-50 p-3"><strong className="block text-xl">{creatorAnalytics.totals.views}</strong><span className="text-xs text-slate-600">Verified views</span></div>
+            <div className="rounded-xl bg-slate-50 p-3"><strong className="block text-xl">{Math.floor(creatorAnalytics.totals.watched_seconds/3600)}h</strong><span className="text-xs text-slate-600">Watch time</span></div>
+            <div className="rounded-xl bg-slate-50 p-3"><strong className="block text-xl">{creatorAnalytics.totals.qualified_views}</strong><span className="text-xs text-slate-600">Qualified watches</span></div>
+            <div className="rounded-xl bg-slate-50 p-3"><strong className="block text-xl">{creatorAnalytics.totals.approved_earning_credits}</strong><span className="text-xs text-slate-600">Approved credits</span></div>
+          </div>
+          <p className="mt-3 text-xs text-slate-600">Pending policy: {creatorAnalytics.totals.pending_earning_credits} credits · Subscribers: belum tersedia karena belum ada kontrak subscription per Creator. Credits bukan nilai uang dan belum dapat dicairkan.</p>
+          <div className="mt-3 space-y-2">{creatorAnalytics.items.map(item=><div key={item.title_id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-2 text-xs"><span className="font-semibold">{item.title}</span><span>{item.views} views · {item.qualified_views} qualified · {item.approved_earning_credits} credits</span></div>)}</div>
+        </>:<p className="mt-3 text-xs text-amber-800">Analitik belum tersedia dari backend. Tidak ada angka simulasi yang ditampilkan.</p>}
+      </section>
       <section className="mb-6 space-y-3 rounded-2xl border-2 border-slate-900 bg-violet-50 p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div><p className="text-xs font-black uppercase tracking-[.18em] text-violet-800">AI Cinema · Agent Runtime</p><h3 className="mt-1 text-lg font-black text-slate-950">AI Script & Story Development</h3><p className="mt-1 text-xs text-slate-700">Generate sinopsis, screenplay brief atau outline episode melalui Generation Jobs, Model Router, Memory policy dan AI Credit ledger. Output hanya dapat digunakan setelah moderation approved.</p></div>
