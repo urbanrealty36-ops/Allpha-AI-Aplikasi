@@ -7,7 +7,6 @@ import httpx
 from allpha_api.cloudinary_provider import CloudinaryConfig, build_signed_private_download_url, eager_transformations
 from allpha_api.media_scanner import require_media_scanner_configuration, scan_media_bytes_async
 log=logging.getLogger("allpha.provider_callback_worker")
-MAX_PROVIDER_DERIVATIVE_BYTES = 100 * 1024 * 1024
 MAX_PROVIDER_MEDIA_BYTES = 50 * 1024 * 1024
 
 
@@ -55,30 +54,6 @@ def provider_derivative_identity(index: int, mime: str, media_type: str = "video
  else:
   kind = "moderation_poster" if mime == "image/jpeg" else f"rendition_{index + 1}"
  return kind, suffix
-
-
-async def download_provider_derivative(client: httpx.AsyncClient, url: str) -> tuple[bytes, str]:
- async with client.stream("GET",url) as response:
-  response.raise_for_status()
-  mime=response.headers.get("content-type","").split(";")[0].lower()
-  if not (mime.startswith("video/") or mime.startswith("audio/") or mime=="image/jpeg"):
-   raise ValueError("PROVIDER_DERIVATIVE_MIME_INVALID")
-  raw_length=response.headers.get("content-length")
-  if raw_length:
-   try:
-    if int(raw_length)>MAX_PROVIDER_DERIVATIVE_BYTES:
-     raise ValueError("PROVIDER_DERIVATIVE_TOO_LARGE")
-   except ValueError as exc:
-    if str(exc)=="PROVIDER_DERIVATIVE_TOO_LARGE": raise
-    raise ValueError("PROVIDER_DERIVATIVE_LENGTH_INVALID") from exc
-  body=bytearray()
-  async for chunk in response.aiter_bytes():
-   if len(body)+len(chunk)>MAX_PROVIDER_DERIVATIVE_BYTES:
-    raise ValueError("PROVIDER_DERIVATIVE_TOO_LARGE")
-   body.extend(chunk)
-  if not body:
-   raise ValueError("PROVIDER_DERIVATIVE_EMPTY")
-  return bytes(body),mime
 
 
 async def download_cloudinary_original(
