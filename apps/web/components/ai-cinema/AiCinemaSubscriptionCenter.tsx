@@ -46,7 +46,7 @@ function formatAmount(amountMinor: number, currency: string): string {
   try {
     const digits = new Intl.NumberFormat("en-US", {
       style: "currency", currency: normalized,
-    }).resolvedOptions().maximumFractionDigits;
+    }).resolvedOptions().maximumFractionDigits ?? 2;
     return new Intl.NumberFormat("id-ID", {
       style: "currency", currency: normalized,
     }).format(amountMinor / (10 ** digits));
