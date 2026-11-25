@@ -305,7 +305,8 @@ begin
 end
 $do$;
 reset role;
-psql(f"""
+""")
+        psql(f"""
 do $do$
 declare v_media_id uuid:='{CLOUDINARY_IMAGE_MEDIA}';
 begin
