@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from allpha_api.auth import current_user, user_db_request
 from allpha_api.operator_security import require_operator_scope, write_operator_audit
+from allpha_api.cloudinary_provider import verify_cloudinary_webhook
 
 router = APIRouter(prefix="/v1/content", tags=["content"])
 TEXT_LIMIT = 10_000
@@ -1021,10 +1022,7 @@ async def review_content_appeal(
 @router.post("/internal/providers/cloudinary/eager-callback", include_in_schema=False)
 async def cloudinary_eager_callback(request: Request) -> dict[str, Any]:
     """Verify and durably enqueue provider callback; never download large media in the webhook request."""
-    import hashlib
-    import hmac
     import json
-    import time
 
     secret = os.getenv("CLOUDINARY_WEBHOOK_API_SECRET") or os.getenv("CLOUDINARY_API_SECRET", "")
     cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME", "")
@@ -1035,16 +1033,12 @@ async def cloudinary_eager_callback(request: Request) -> dict[str, Any]:
         raise HTTPException(413, detail={"code": "MEDIA_CALLBACK_TOO_LARGE", "message": "Payload callback terlalu besar."})
     if not secret or not cloud_name or not signature or not timestamp:
         raise HTTPException(503, detail={"code": "MEDIA_PROVIDER_NOT_CONFIGURED", "message": "Callback media provider belum dikonfigurasi."})
-    try:
-        issued_at = int(timestamp)
-    except ValueError as exc:
-        raise HTTPException(401, detail={"code": "MEDIA_CALLBACK_SIGNATURE_INVALID", "message": "Callback provider tidak valid."}) from exc
-    if abs(int(time.time()) - issued_at) > 7200:
+    verification = verify_cloudinary_webhook(
+        raw_body=raw, timestamp=timestamp, signature=signature, secret=secret,
+    )
+    if verification == "expired":
         raise HTTPException(401, detail={"code": "MEDIA_CALLBACK_EXPIRED", "message": "Callback provider sudah kedaluwarsa."})
-    signed = raw + timestamp.encode("ascii") + secret.encode("utf-8")
-    valid = any(hmac.compare_digest(hashlib.new(algorithm, signed).hexdigest(), signature.lower())
-                for algorithm in ("sha1", "sha256"))
-    if not valid:
+    if verification != "valid":
         raise HTTPException(401, detail={"code": "MEDIA_CALLBACK_SIGNATURE_INVALID", "message": "Tanda tangan callback provider tidak cocok."})
     try:
         payload = json.loads(raw)

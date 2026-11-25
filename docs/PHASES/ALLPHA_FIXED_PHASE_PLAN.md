@@ -1788,3 +1788,13 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 - **Focused tests:** added disabled-by-default, one-batch graceful-stop and invalid-consumer-isolation tests. CI pending.
 - **Activation:** the shared Railway worker now has server-side Railway reference variables for `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` and `ALLPHA_CLOUDINARY_CALLBACK_URL`, sourced from the API service; no secret values were copied or exposed. Railway worker deployment `803b2c7f-5d8e-4df0-be7d-70c840979108` completed SUCCESS on the host commit. No media consumer is enabled because the complete remote scanner endpoint/API credential/host allowlist/identity is still absent from the worker. Never enable processing without scanner readiness.
 - **Status:** host and scanner adapter are implemented and deployed; Allpha Smoke is green. ENG-P13 remains in_progress; no Cloudinary upload, callback or delivery lifecycle is production-verified.
+
+
+## 40.93 — Centralize Cloudinary signatures and private delivery (2026-11-25)
+
+- **Implementation:** added one server-only Cloudinary provider module for resource-type mapping, signed authenticated multipart upload intents, bounded eager transformation profiles, time-limited authenticated download URLs, upload/API signatures and webhook HMAC freshness verification.
+- **Integration:** existing video/audio transcode worker and provider cleanup worker now use the shared signature implementation; FastAPI eager callback verification uses the same constant-time webhook verifier. Provider secrets remain server-only.
+- **Security:** uploads use delivery type authenticated; raw subtitle assets do not claim an eager callback that Cloudinary will not send. Download URLs are scoped to the Allpha public-ID prefix, resource type and a 60–900 second expiry.
+- **Provider plan:** current media caps remain image <=10 MB and video/audio <=50 MB. Cloudinary requires chunked upload only above 100 MB; the current product caps stay below that threshold, so signed multipart upload is the supported path without assuming a paid feature. Short-lived private downloads use Cloudinary's authenticated download API; token-based CDN access is a premium feature and is not assumed.
+- **Focused tests:** deterministic signature, authenticated upload params, raw resource behavior, private download expiry, webhook freshness/replay body integrity and invalid identity/TTL. CI pending.
+- **Status:** provider adapter is implemented in source; no direct upload intent route, generic asset schema migration, Cloudinary upload or delivery journey is production-verified yet.

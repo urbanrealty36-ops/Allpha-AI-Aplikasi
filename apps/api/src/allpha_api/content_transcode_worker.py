@@ -5,6 +5,7 @@ from urllib.parse import quote
 import httpx
 
 from allpha_api.media_scanner import require_media_scanner_configuration, scan_media_bytes_async
+from allpha_api.cloudinary_provider import CloudinaryConfig, build_signed_upload_intent
 
 log=logging.getLogger("allpha.content_transcode_worker")
 
@@ -12,10 +13,11 @@ class TranscodeWorker:
  def __init__(self):
   self.base=os.environ["SUPABASE_URL"].rstrip("/")
   self.key=os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ["SUPABASE_SECRET_KEY"]
-  self.cloud=os.environ["CLOUDINARY_CLOUD_NAME"]
-  self.api_key=os.environ["CLOUDINARY_API_KEY"]
-  self.secret=os.environ["CLOUDINARY_API_SECRET"]
-  self.callback=os.environ["ALLPHA_CLOUDINARY_CALLBACK_URL"]
+  self.cloudinary=CloudinaryConfig.from_environment(require_callback=True)
+  self.cloud=self.cloudinary.cloud_name
+  self.api_key=self.cloudinary.api_key
+  self.secret=self.cloudinary.api_secret
+  self.callback=self.cloudinary.callback_url
   self.scanner_mode=require_media_scanner_configuration()
   self.worker_id=f"content-transcode-{uuid.uuid4()}"
   self.client=httpx.AsyncClient(trust_env=False, follow_redirects=False, timeout=httpx.Timeout(180,connect=10),headers={"apikey":self.key,"Authorization":f"Bearer {self.key}"})
@@ -37,20 +39,14 @@ class TranscodeWorker:
    if hashlib.sha256(data).hexdigest()!=p["sha256"]:raise ValueError("MEDIA_SOURCE_HASH_MISMATCH")
    await self.scan(data,str(p.get("filename") or mid),media_type)
    media_type=str(p["media_type"])
-   resource="video" # Cloudinary uses video resource_type for audio assets too.
-   public_id=f"allpha/{mid}"
-   timestamp=int(time.time())
-   if media_type.startswith("video/"):
-    eager="c_limit,w_1280,vc_h264,f_mp4|c_limit,w_640,vc_h264,f_mp4|so_0,w_640,h_360,c_fill,f_jpg"
-   else:
-    eager="ac_mp3,br_128k,f_mp3|ac_aac,br_128k,f_m4a"
-   params={"timestamp":str(timestamp),"public_id":public_id,"eager":eager,"eager_async":"true","eager_notification_url":self.callback,"type":"authenticated","overwrite":"true"}
-   serialized="&".join(f"{k}={params[k]}" for k in sorted(params))
-   signature=hashlib.sha1((serialized+self.secret).encode()).hexdigest()
-   form={**params,"api_key":self.api_key,"signature":signature,"file":("original.bin",data,media_type)}
+   intent=build_signed_upload_intent(config=self.cloudinary,media_id=mid,media_type=media_type,callback_url=self.callback)
+   resource=str(intent["resource_type"])
+   public_id=str(intent["public_id"])
+   params=dict(intent["params"])
+   form={**params,"file":("original.bin",data,media_type)}
    # Never send Supabase service-role headers to the third-party media provider.
    async with httpx.AsyncClient(trust_env=False, follow_redirects=False, timeout=httpx.Timeout(180,connect=10)) as provider_client:
-    upload=await provider_client.post(f"https://api.cloudinary.com/v1_1/{self.cloud}/{resource}/upload",data={k:v for k,v in form.items() if k!="file"},files={"file":form["file"]})
+    upload=await provider_client.post(str(intent["upload_url"]),data={k:v for k,v in form.items() if k!="file"},files={"file":form["file"]})
    upload.raise_for_status();asset=upload.json()
    if asset.get("public_id")!=public_id or not asset.get("asset_id") or not asset.get("batch_id"):
     raise ValueError("CLOUDINARY_UPLOAD_RESPONSE_INVALID")

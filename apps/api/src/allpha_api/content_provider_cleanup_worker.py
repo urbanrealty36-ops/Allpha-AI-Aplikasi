@@ -1,7 +1,8 @@
 """Deletes authenticated Cloudinary intermediates after canonical derivatives are persisted in private Supabase Storage."""
 from __future__ import annotations
-import asyncio,hashlib,logging,os,signal,time,uuid
+import asyncio,logging,os,signal,time,uuid
 import httpx
+from allpha_api.cloudinary_provider import sign_api_params
 log=logging.getLogger("allpha.cloudinary_cleanup")
 
 class CleanupWorker:
@@ -17,8 +18,7 @@ class CleanupWorker:
  async def delete_asset(self,public_id):
   timestamp=int(time.time())
   params={"invalidate":"true","public_id":public_id,"timestamp":str(timestamp),"type":"authenticated"}
-  serialized="&".join(f"{k}={params[k]}" for k in sorted(params))
-  signature=hashlib.sha1((serialized+self.secret).encode()).hexdigest()
+  signature=sign_api_params(params,self.secret)
   form={**params,"api_key":self.api_key,"signature":signature}
   async with httpx.AsyncClient(trust_env=False, follow_redirects=False, timeout=httpx.Timeout(30,connect=5)) as provider:
    response=await provider.post(f"https://api.cloudinary.com/v1_1/{self.cloud}/video/destroy",data=form)
