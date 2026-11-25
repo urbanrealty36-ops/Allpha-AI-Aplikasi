@@ -387,6 +387,22 @@ export default function AiCinemaCreatorWorkspace() {
     finally{setSaving(false);}
   }
 
+  async function removeCreatorCredit(creditId: string) {
+    if (!selectedTitleId) return;
+    setSaving(true); setError(""); setNotice("");
+    try {
+      await authorizedRequest(
+        `/v1/cinema/creator/titles/${encodeURIComponent(selectedTitleId)}/credits/${encodeURIComponent(creditId)}`,
+        { method: "DELETE" },
+      );
+      setNotice("Kredit dihapus dari metadata film dan katalog Viewer.");
+      await loadCreatorGovernance();
+      await loadTitles();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Kredit film gagal dihapus.");
+    } finally { setSaving(false); }
+  }
+
   async function addCreatorCredit(event:FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if(!selectedTitleId)return;
@@ -976,7 +992,7 @@ export default function AiCinemaCreatorWorkspace() {
             <label className="block text-xs text-slate-700">Label atribusi<input value={creditLabel} onChange={e=>setCreditLabel(e.target.value)} maxLength={160} className="mt-1 w-full rounded-xl border-2 border-slate-900 bg-slate-50 p-3 text-sm text-slate-900"/></label>
             <button disabled={saving||!selectedTitleId||(creditType==="agent"&&!creditAgentId.trim())} className="rounded-xl bg-violet-400 px-4 py-2 text-sm font-black text-slate-950 disabled:opacity-50">Simpan creator credit</button>
           </form>
-          <div className="mt-3 space-y-1">{credits.map(item=><p key={item.id} className="rounded-lg bg-slate-50 p-2 text-xs">{item.attribution_label} · {item.role} · {item.contributor_type}</p>)}{credits.length===0&&<p className="text-xs text-slate-600">Belum ada kredit kreator.</p>}</div>
+          <div className="mt-3 space-y-1">{credits.map(item=><div key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 p-2 text-xs"><span>{item.attribution_label} · {item.role} · {item.contributor_type}</span>{item.id&&<button type="button" disabled={saving} onClick={()=>void removeCreatorCredit(item.id)} className="rounded-md border border-slate-300 px-2 py-1 font-semibold text-rose-700 disabled:opacity-40">Hapus</button>}</div>)}{credits.length===0&&<p className="text-xs text-slate-600">Belum ada kredit kreator.</p>}</div>
           <div className="mt-4 border-t border-slate-900 pt-3">
             <button type="button" disabled={saving||!selectedTitleId} onClick={()=>void snapshotVersion()} className="rounded-xl border border-cyan-300/40 px-4 py-2 text-sm font-bold text-sky-800 disabled:opacity-50">Simpan snapshot versi film</button>
             <div className="mt-2 space-y-1">{versions.map(item=><p key={item.id} className="text-xs text-slate-600">Versi {item.version} · {new Date(item.created_at).toLocaleString("id-ID")}</p>)}{versions.length===0&&<p className="text-xs text-slate-600">Belum ada snapshot versi.</p>}</div>

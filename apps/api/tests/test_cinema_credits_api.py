@@ -88,3 +88,29 @@ def test_creator_agent_credit_requires_active_agent_owned_by_film_owner(monkeypa
         assert response.json()["credit"]["contributor_user_id"] is None
     finally:
         app.dependency_overrides.pop(current_user, None)
+
+
+def test_creator_credit_delete_updates_canonical_title_json_with_version_guard(monkeypatch):
+    credit_id = str(uuid.uuid4())
+    credit = {"id": credit_id, "contributor_type": "human", "role": "actor", "attribution_label": "Lead"}
+    captured = {}
+    async def title_access(*args, **kwargs):
+        return {"id": TITLE, "owner_id": OWNER, "status": "draft", "version": 5, "title": "Test Film"}
+    async def fake_db(method, table, *, params=None, payload=None, prefer=None):
+        if method == "GET" and table == "cinema_titles":
+            return [{"id": TITLE, "owner_id": OWNER, "status": "draft", "version": 5, "credits": [credit]}]
+        if method == "PATCH" and table == "cinema_titles":
+            captured["payload"] = payload
+            return [{"id": TITLE, "version": payload["version"], "credits": payload["credits"]}]
+        raise AssertionError((method, table, params, payload))
+    monkeypatch.setattr(cinema_lifecycle_api, "_cinema_title_access", title_access)
+    monkeypatch.setattr(cinema_lifecycle_api, "_db", fake_db)
+    client = _client()
+    try:
+        response = client.delete(f"/v1/cinema/creator/titles/{TITLE}/credits/{credit_id}")
+        assert response.status_code == 200
+        assert response.json()["deleted_id"] == credit_id
+        assert captured["payload"]["credits"] == []
+        assert captured["payload"]["version"] == 6
+    finally:
+        app.dependency_overrides.pop(current_user, None)

@@ -586,6 +586,31 @@ async def create_creator_credit(title_id: uuid.UUID,payload: CreatorCreditCreate
     return {"credit": credit, "version": saved[0]["version"]}
 
 
+@router.delete("/creator/titles/{title_id}/credits/{credit_id}")
+async def delete_creator_credit(title_id: uuid.UUID, credit_id: uuid.UUID,
+                                user: dict[str,Any]=Depends(current_user))->dict[str,Any]:
+    title = await _cinema_title_access(title_id, str(user["id"]), {"manage_credits"})
+    owner_id = str(title["owner_id"])
+    if title.get("status") not in {"draft", "rejected"}:
+        raise HTTPException(409, detail={"code": "CINEMA_CREDITS_LOCKED", "message": "Kredit film hanya dapat diubah pada draft atau judul yang dikembalikan."})
+    row, credits = await _load_title_credits(title_id, owner_id)
+    if not any(str(item.get("id")) == str(credit_id) for item in credits):
+        raise HTTPException(404, detail={"code": "CINEMA_CREDIT_NOT_FOUND", "message": "Kredit kontributor tidak ditemukan."})
+    updated = [item for item in credits if str(item.get("id")) != str(credit_id)]
+    version = int(row.get("version") or 1)
+    saved = await _db("PATCH", "cinema_titles", params={
+        "id": "eq." + str(title_id), "owner_id": "eq." + owner_id,
+        "version": "eq." + str(version), "status": "in.(draft,rejected)",
+        "select": "id,version,credits,updated_at",
+    }, payload={
+        "credits": updated, "version": version + 1,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }, prefer="return=representation")
+    if not saved:
+        raise HTTPException(409, detail={"code": "CINEMA_CREDITS_VERSION_CONFLICT", "message": "Versi metadata kredit berubah; muat ulang Creator Studio."})
+    return {"deleted_id": str(credit_id), "version": saved[0]["version"]}
+
+
 @router.get("/creator/titles/{title_id}/collaborators")
 async def list_cinema_collaborators(title_id: uuid.UUID,user: dict[str,Any]=Depends(current_user))->dict[str,Any]:
     owner_id=str(user["id"])
