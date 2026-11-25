@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 from urllib.parse import parse_qs, urlsplit
 
@@ -10,6 +11,7 @@ from allpha_api.cloudinary_provider import (
     CloudinaryConfigurationError,
     CloudinaryProviderError,
     build_signed_private_download_url,
+    build_signed_authenticated_delivery_url,
     fetch_cloudinary_resource,
     build_signed_upload_intent,
     resource_type_for_media_type,
@@ -90,6 +92,32 @@ def test_cloudinary_private_download_url_has_expiry_and_authenticated_type():
         {k: v for k, v in params.items() if k not in {"api_key", "signature"}},
         "api-secret",
     )
+
+
+
+def test_cloudinary_authenticated_derivative_delivery_signs_exact_path():
+    public_id = "allpha/12345678-1234-4234-9234-123456789abc"
+    transformation = "c_fill,w_320,h_320,g_auto,f_jpg,q_auto"
+    version = 1_800_000_000
+    signed_path = f"{transformation}/v{version}/{public_id}.jpg"
+    digest = hashlib.sha1((signed_path + "api-secret").encode("utf-8")).digest()
+    signature = base64.urlsafe_b64encode(digest).decode("ascii")[:8]
+    url = build_signed_authenticated_delivery_url(
+        config=_config(), public_id=public_id, resource_type="image",
+        format="jpg", transformation=transformation, version=version,
+    )
+    assert url == (
+        "https://res.cloudinary.com/allpha-test/image/authenticated/"
+        f"s--{signature}--/{signed_path}"
+    )
+
+
+def test_cloudinary_authenticated_derivative_rejects_untrusted_transform():
+    with pytest.raises(ValueError, match="TRANSFORMATION"):
+        build_signed_authenticated_delivery_url(
+            config=_config(), public_id="allpha/asset", resource_type="image",
+            format="jpg", transformation="https://attacker.example/x",
+        )
 
 
 def test_cloudinary_webhook_requires_fresh_timestamp_and_exact_raw_body():
