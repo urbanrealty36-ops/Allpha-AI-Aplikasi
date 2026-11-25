@@ -768,6 +768,10 @@ begin
   into v_missing_rpcs
   from (values
     ('public.claim_content_lifecycle_jobs(text,integer,integer,text)'),
+    ('public.fail_content_lifecycle_job(uuid,uuid,text)'),
+    ('public.complete_content_provider_cleanup_job(uuid,uuid)'),
+    ('public.complete_content_provider_job(uuid,uuid,text,text,text,text,text,jsonb,text)'),
+    ('public.enqueue_content_provider_callback(text,uuid,uuid,text,jsonb)'),
     ('public.complete_content_subtitle_job(uuid,uuid,uuid,jsonb,integer)'),
     ('public.reserve_cloudinary_media_upload(uuid,uuid,uuid,text,text,uuid,uuid,uuid,text,text,bigint,text,text,text,text,timestamptz,text)'),
     ('public.complete_cloudinary_content_media_upload(uuid,uuid,text,text,text,text,text,bigint,text,integer,integer,numeric,bigint,text[],jsonb)'),
