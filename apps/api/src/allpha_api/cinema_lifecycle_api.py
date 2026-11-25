@@ -563,6 +563,8 @@ async def create_creator_credit(title_id: uuid.UUID,payload: CreatorCreditCreate
         contributor_user_id = None
         contributor_agent_id = agent_id
     row, credits = await _load_title_credits(title_id, owner_id)
+    if len(credits) >= 100:
+        raise HTTPException(422, detail={"code": "CINEMA_CREDIT_LIMIT_REACHED", "message": "Maksimal 100 kredit pemeran/kru per film."})
     credit = {
         "id": str(uuid.uuid4()), "title_id": str(title_id),
         "contributor_type": payload.contributor_type,
