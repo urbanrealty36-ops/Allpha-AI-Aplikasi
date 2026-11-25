@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from allpha_api import content_media_worker, content_transcode_worker
+from allpha_api import (content_media_worker, content_transcode_worker, content_provider_callback_worker, content_provider_cleanup_worker, content_scheduler_worker, content_retention_worker)
 
 
 def _set_scanner_pins(monkeypatch):
@@ -126,6 +126,7 @@ def test_content_media_workers_disable_ambient_proxy_and_redirects():
         "content_provider_callback_worker.py",
         "content_provider_cleanup_worker.py",
         "content_retention_worker.py",
+        "content_scheduler_worker.py",
     )
     for filename in worker_files:
         tree = ast.parse((package_dir / filename).read_text(encoding="utf-8"))
@@ -142,3 +143,17 @@ def test_content_media_workers_disable_ambient_proxy_and_redirects():
             assert isinstance(options["trust_env"], ast.Constant) and options["trust_env"].value is False
             assert "follow_redirects" in options, f"{filename} must disable authenticated redirects"
             assert isinstance(options["follow_redirects"], ast.Constant) and options["follow_redirects"].value is False
+
+
+def test_content_auxiliary_workers_are_disabled_by_default(monkeypatch):
+    for name in (
+        "ALLPHA_CONTENT_PROVIDER_CALLBACK_WORKER_ENABLED",
+        "ALLPHA_CONTENT_PROVIDER_CLEANUP_WORKER_ENABLED",
+        "ALLPHA_CONTENT_SCHEDULER_WORKER_ENABLED",
+        "ALLPHA_CONTENT_RETENTION_WORKER_ENABLED",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    assert content_provider_callback_worker.enabled() is False
+    assert content_provider_cleanup_worker.enabled() is False
+    assert content_scheduler_worker.enabled() is False
+    assert content_retention_worker.enabled() is False
