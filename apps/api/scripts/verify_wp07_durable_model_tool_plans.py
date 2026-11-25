@@ -34,6 +34,13 @@ def psql(sql: str, check: bool = True) -> subprocess.CompletedProcess[str]:
     )
 
 
+def expect_denied(sql: str, expected: str) -> None:
+    result = psql(sql, check=False)
+    output = result.stdout + result.stderr
+    if result.returncode == 0 or expected not in output:
+        raise RuntimeError(f"Expected {expected!r}; got rc={result.returncode}: {output}")
+
+
 def wait_for_postgres() -> None:
     """Wait for the final post-init server, not the entrypoint's temporary init server."""
     for _ in range(90):
