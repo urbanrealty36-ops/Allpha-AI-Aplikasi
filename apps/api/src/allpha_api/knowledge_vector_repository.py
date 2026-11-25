@@ -45,7 +45,7 @@ class SupabaseKnowledgeVectorRepository:
     ) -> "SupabaseKnowledgeVectorRepository":
         return cls(
             supabase_url=os.getenv("SUPABASE_URL", "").strip(),
-            service_role_key=os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip(),
+            service_role_key=(os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip() or os.getenv("SUPABASE_SECRET_KEY", "").strip()),
             generation_id=os.getenv("ALLPHA_KNOWLEDGE_VECTOR_GENERATION_ID", "").strip(),
             transport=transport,
         )
