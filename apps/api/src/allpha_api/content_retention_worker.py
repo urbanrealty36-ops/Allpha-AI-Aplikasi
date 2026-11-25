@@ -93,8 +93,19 @@ class RetentionWorker:
     except Exception:log.exception("retention worker poll failed");n=0
     if n==0:await asyncio.sleep(max(30,int(os.getenv("CONTENT_RETENTION_POLL_SECONDS","300"))))
   finally:await self.client.aclose()
+def enabled():
+ raw=os.getenv("ALLPHA_CONTENT_RETENTION_WORKER_ENABLED","false").strip().lower()
+ if raw not in {"true","false"}:raise SystemExit("ALLPHA_CONTENT_RETENTION_WORKER_ENABLED must be true or false")
+ if raw!="true":return False
+ missing=[name for name in ("SUPABASE_URL",) if not os.getenv(name)]
+ if not (os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SECRET_KEY")):missing.append("SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SECRET_KEY")
+ if missing:raise SystemExit("Content retention worker configuration missing: "+", ".join(missing))
+ return True
 def main():
  logging.basicConfig(level=os.getenv("LOG_LEVEL","INFO"))
+ if not enabled():
+  log.info("Content retention worker is disabled")
+  return
  worker=RetentionWorker();loop=asyncio.new_event_loop();asyncio.set_event_loop(loop)
  for sig in (signal.SIGINT,signal.SIGTERM):loop.add_signal_handler(sig,lambda:setattr(worker,"stopping",True))
  try:loop.run_until_complete(worker.run())
