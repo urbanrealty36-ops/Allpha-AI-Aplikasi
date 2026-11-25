@@ -138,6 +138,24 @@ app.add_middleware(
 async def request_context(request: Request, call_next):
     request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
     request.state.request_id = request_id
+
+    # Spatial/3D Universe is intentionally unavailable to every principal,
+    # including anonymous users and platform operators, while the domain is
+    # under development. Enforce this at the API boundary, not only in UI.
+    path = request.url.path.rstrip("/") or "/"
+    if path.startswith("/v1/spatial/") or path == "/v1/spatial" or path.startswith("/v1/admin/spatial/") or path == "/v1/admin/spatial":
+        return JSONResponse(
+            status_code=404,
+            content={
+                "error": {
+                    "code": "SPATIAL_UNDER_DEVELOPMENT",
+                    "message": "3D Universe sedang dalam tahap pengembangan dan belum dapat diakses.",
+                    "request_id": request_id,
+                }
+            },
+            headers={"X-Request-ID": request_id, "Cache-Control": "no-store"},
+        )
+
     response = await call_next(request)
     response.headers["X-Request-ID"] = request_id
     return response
