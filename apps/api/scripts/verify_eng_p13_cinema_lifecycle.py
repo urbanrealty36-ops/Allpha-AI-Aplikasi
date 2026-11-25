@@ -25,7 +25,7 @@ HEARTBEAT_EVENT = "88888888-8888-4888-8888-888888888888"
 FINISH_EVENT = "99999999-9999-4999-8999-999999999998"
 SUBTITLE_MEDIA = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 INVALID_SUBTITLE_MEDIA = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
-SUBTITLE_BYTES = b"WEBVTT\\n\\n00:00:00.000 --> 00:00:02.000\\nHello\\n"
+SUBTITLE_BYTES = b"WEBVTT" + bytes([10,10]) + b"00:00:00.000 --> 00:00:02.000" + bytes([10]) + b"Hello" + bytes([10])
 SUBTITLE_SHA = hashlib.sha256(SUBTITLE_BYTES).hexdigest()
 TOKEN_HASH = "a" * 64
 
