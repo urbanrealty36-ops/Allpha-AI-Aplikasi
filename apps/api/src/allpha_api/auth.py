@@ -287,7 +287,8 @@ async def service_db_request(function_name: str, *, body: dict[str, Any]) -> Any
         is_interest_rpc = function_name.startswith(("set_my_interest_preference_for_actor", "delete_my_interest_for_actor", "find_interest_discovery_candidates"))
         is_media_rpc = function_name.startswith((
             "reserve_cloudinary_media_upload", "complete_cloudinary_content_media_upload",
-            "complete_cloudinary_content_provider_job", "request_cloudinary_content_media_delete",
+            "complete_cloudinary_content_provider_job", "handoff_cloudinary_content_provider_job",
+            "request_cloudinary_content_media_delete",
             "complete_cloudinary_media_delete_job", "fail_cloudinary_media_delete_job",
             "enqueue_content_provider_callback", "cloudinary_media_schema_readiness",
         ))
