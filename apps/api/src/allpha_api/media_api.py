@@ -4,7 +4,7 @@ import os, uuid, re, hashlib, json
 from datetime import datetime, timezone
 from pydantic import BaseModel, ConfigDict, Field
 from allpha_api.auth import user_db_request, service_db_request
-from allpha_api.cloudinary_provider import CloudinaryConfig, CloudinaryConfigurationError, build_signed_upload_intent, verify_cloudinary_webhook, build_signed_private_download_url
+from allpha_api.cloudinary_provider import CloudinaryConfig, CloudinaryConfigurationError, build_signed_upload_intent, verify_cloudinary_webhook, build_signed_private_download_url, build_signed_authenticated_delivery_url
 from typing import Any
 import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
@@ -27,6 +27,34 @@ def _config():
     if not base or not key:
         raise HTTPException(503,detail={"code":"MEDIA_DB_NOT_CONFIGURED","message":"Media database is not configured."})
     return base,key
+
+
+async def _owned(media_id: uuid.UUID, owner_id: str) -> dict[str, Any]:
+    """Load one media row through the service boundary with an explicit owner fence."""
+    base, key = _config()
+    params = {
+        "select": "id,owner_id,status,storage_provider,provider_public_id,provider_resource_type,provider_asset_id,provider_batch_id,provider_version,provider_format,size_bytes,sha256",
+        "id": f"eq.{media_id}",
+        "owner_id": f"eq.{owner_id}",
+        "limit": "1",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=12, trust_env=False, follow_redirects=False) as client:
+            response = await client.get(
+                f"{base}/rest/v1/content_media",
+                params=params,
+                headers={"apikey": key, "Authorization": f"Bearer {key}"},
+            )
+        if response.status_code >= 300:
+            raise HTTPException(503, detail={"code": "MEDIA_DB_UNAVAILABLE", "message": "Media registry tidak tersedia."})
+        rows = response.json()
+    except HTTPException:
+        raise
+    except (httpx.HTTPError, ValueError, TypeError) as exc:
+        raise HTTPException(503, detail={"code": "MEDIA_DB_UNAVAILABLE", "message": "Media registry tidak tersedia."}) from exc
+    if not isinstance(rows, list) or not rows:
+        raise HTTPException(404, detail={"code": "MEDIA_NOT_FOUND", "message": "Media tidak ditemukan."})
+    return rows[0]
 
 @router.post("/upload-intents", status_code=201)
 async def create_upload_intent(payload: UploadIntent, request: Request, user: dict[str, Any] = Depends(current_user), idempotency_key: str | None = Header(default=None, alias="Idempotency-Key")):
@@ -175,6 +203,20 @@ async def get_media(media_id:uuid.UUID,user:dict[str,Any]=Depends(current_user))
             cfg=CloudinaryConfig.from_environment()
             delivery=build_signed_private_download_url(config=cfg,public_id=str(item["provider_public_id"]),
                 resource_type=str(item["provider_resource_type"]),format=str(item["provider_format"]),expires_in=300)
-        except (CloudinaryConfigurationError,ValueError,KeyError):
+            derivative_deliveries=[]
+            for derivative in item.get("derivatives") or []:
+                if not isinstance(derivative,dict) or derivative.get("provider")!="cloudinary":
+                    continue
+                derivative_url=build_signed_authenticated_delivery_url(
+                    config=cfg,public_id=str(item["provider_public_id"]),
+                    resource_type=str(item["provider_resource_type"]),
+                    format=str(derivative["format"]),
+                    transformation=str(derivative["transformation"]),
+                    version=int(derivative.get("version") or item["provider_version"]),
+                )
+                derivative_deliveries.append({**derivative,"delivery_url":derivative_url})
+        except (CloudinaryConfigurationError,ValueError,KeyError,TypeError):
             raise HTTPException(503,detail={"code":"MEDIA_DELIVERY_NOT_READY","message":"Private media delivery belum siap."})
-    return {"item":item,"delivery":{"url":delivery,"expires_in_seconds":300} if delivery else None}
+    else:
+        derivative_deliveries=[]
+    return {"item":item,"delivery":{"url":delivery,"derivatives":derivative_deliveries,"expires_in_seconds":300} if delivery else None}
