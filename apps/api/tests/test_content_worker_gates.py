@@ -232,3 +232,24 @@ def test_media_workers_accept_shared_remote_scanner_without_local_clamav(monkeyp
     assert content_media_worker.enabled() is True
     assert content_transcode_worker.enabled() is True
     assert content_provider_callback_worker.enabled() is True
+
+
+@pytest.mark.parametrize(("index", "mime", "expected"), [
+    (0, "video/mp4", ("rendition_1", "mp4")),
+    (1, "audio/mpeg", ("rendition_2", "mp3")),
+    (0, "audio/mp4", ("rendition_1", "m4a")),
+    (2, "image/jpeg", ("moderation_poster", "jpg")),
+])
+def test_provider_derivative_identity_is_resolved_before_scan(index, mime, expected):
+    from allpha_api.content_provider_callback_worker import provider_derivative_identity
+
+    assert provider_derivative_identity(index, mime) == expected
+
+
+def test_provider_derivative_identity_rejects_unsupported_mime_and_index():
+    from allpha_api.content_provider_callback_worker import provider_derivative_identity
+
+    with pytest.raises(ValueError, match="PROVIDER_DERIVATIVE_MIME_INVALID"):
+        provider_derivative_identity(0, "application/octet-stream")
+    with pytest.raises(ValueError, match="PROVIDER_DERIVATIVE_INDEX_INVALID"):
+        provider_derivative_identity(-1, "video/mp4")
