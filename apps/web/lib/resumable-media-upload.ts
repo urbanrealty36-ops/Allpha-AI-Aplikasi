@@ -143,6 +143,24 @@ export async function uploadContentMediaWithTus(
 }
 
 
+/**
+ * Canonical client entry point. Cloudinary rollout is opt-in and remains disabled
+ * until the production registry migration, scanner and worker readiness gates pass.
+ */
+export async function uploadContentMedia(
+  request: AuthenticatedMediaRequest,
+  contentId: string,
+  file: File,
+  idempotencyKey: string,
+  onProgress: (percent: number) => void,
+): Promise<{ id: string }> {
+  if (process.env.NEXT_PUBLIC_ALLPHA_CLOUDINARY_MEDIA_ENABLED === "true") {
+    return uploadContentMediaWithCloudinary(request, contentId, file, idempotencyKey, onProgress);
+  }
+  return uploadContentMediaWithTus(request, contentId, file, idempotencyKey, onProgress);
+}
+
+
 export type CloudinaryUploadIntent = {
   item: { id: string };
   upload: { upload_url: string; params: Record<string, string | number | boolean>; expires_at: number };
