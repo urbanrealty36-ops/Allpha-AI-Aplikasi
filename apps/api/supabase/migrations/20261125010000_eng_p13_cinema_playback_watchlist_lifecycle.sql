@@ -53,14 +53,9 @@ alter table public.cinema_playback_sessions enable row level security;
 alter table public.cinema_playback_session_events enable row level security;
 alter table public.cinema_watchlist_items enable row level security;
 revoke all on public.cinema_playback_sessions,public.cinema_playback_session_events,public.cinema_watchlist_items from public,anon,authenticated,service_role;
-grant select on public.cinema_playback_sessions,public.cinema_playback_session_events,public.cinema_watchlist_items to authenticated;
 grant all on public.cinema_playback_sessions,public.cinema_playback_session_events,public.cinema_watchlist_items to service_role;
-drop policy if exists cinema_playback_sessions_owner_read on public.cinema_playback_sessions;
-create policy cinema_playback_sessions_owner_read on public.cinema_playback_sessions for select to authenticated using (owner_user_id=(select auth.uid()));
-drop policy if exists cinema_playback_events_owner_read on public.cinema_playback_session_events;
-create policy cinema_playback_events_owner_read on public.cinema_playback_session_events for select to authenticated using (owner_user_id=(select auth.uid()));
-drop policy if exists cinema_watchlist_owner_read on public.cinema_watchlist_items;
-create policy cinema_watchlist_owner_read on public.cinema_watchlist_items for select to authenticated using (owner_user_id=(select auth.uid()));
+-- No client policies or grants are created: every read/write is mediated by authenticated FastAPI.
+-- RLS therefore denies direct anon/authenticated table access; service_role is used only server-side.
 
 create or replace function public.cinema_record_playback_heartbeat(
  p_session_id uuid,p_owner_user_id uuid,p_session_token_hash text,p_event_id uuid,p_position_seconds integer

@@ -252,7 +252,7 @@ async def start_playback_session(
         "select": "status,last_position_seconds,duration_seconds",
         "owner_user_id": "eq." + str(user["id"]),
         "episode_id": "eq." + str(episode_id),
-        "status": "in.(expired,revoked,completed)",
+        "status": "in.(active,expired,revoked,completed)",
         "order": "updated_at.desc", "limit": "1",
     })
     resume_position_seconds = 0
