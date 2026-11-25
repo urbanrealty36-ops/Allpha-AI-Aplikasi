@@ -1609,3 +1609,10 @@ This is an evidence refresh inside the existing fixed plan. It does not create a
 - **Regression coverage:** `d9eab93cdd3a0ebe03b0576639378a007ff608c6` asserts user-token PostgREST headers and egress options; `57c7831b680016f43e841d0d12d89ef2c0447226` asserts secret-key-only service RPC headers and egress options. CI execution is pending.
 - **Status:** source implementation and focused regression coverage are **implemented**; full API CI and live authenticated Knowledge retrieval are not yet verified. ENG-P07 remains `in_progress`.
 - **Next:** confirm the corrected CI run, continue P07 policy/retrieval and indexing lifecycle; do not enable hybrid/vector consumers without the ADR-approved profile and physical index generation.
+
+## 40.74 — ENG-P09 text-generation Model Router credential and egress hardening (2026-11-25)
+
+- **Implementation:** `507eb5efbb6f5e3a9b0e9c68da44303729533a06` updates the canonical text-generation adapter composition root and Supabase metering sink to resolve either `SUPABASE_SERVICE_ROLE_KEY` or `SUPABASE_SECRET_KEY`. The active tariff verifier and fallback-provider tariff verifiers now receive the same resolved server-only credential. Supabase metering/tariff/policy HTTP clients now disable ambient proxy discovery and automatic redirects; provider adapter egress was already isolated.
+- **Regression coverage:** `ef8e7fca788cb6bc9f6f8e3c5a4e76f8c282dc19` adds a secret-key-only text-generation router/metering factory test. CI execution is pending.
+- **Status:** source configuration and egress hardening are **implemented**; live provider/tariff/metering integration remains **not verified** because no provider credential/profile or active tariff evidence was used in this change. ENG-P09 remains `in_progress`.
+- **Next:** continue the ordered P07 policy/retrieval path and P08–P11 durable execution work; keep model generation disabled unless its full approved provider, model, tariff, budget and metering configuration validates.
