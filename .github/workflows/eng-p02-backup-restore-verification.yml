@@ -105,6 +105,28 @@ jobs:
           docker exec -u postgres "$SUPABASE_DB_CONTAINER" \
             createdb -U supabase_admin -O supabase_admin allpha_p02_restore_verification
 
+      - name: Configure pg_cron for the isolated restore database without executing scheduled jobs
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker exec -u postgres "$SUPABASE_DB_CONTAINER" \
+            psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c \
+            "ALTER SYSTEM SET cron.database_name = 'allpha_p02_restore_verification'; ALTER SYSTEM SET cron.launch_active_jobs = 'off';"
+          docker restart "$SUPABASE_DB_CONTAINER"
+          for attempt in $(seq 1 60); do
+            if docker exec -u postgres "$SUPABASE_DB_CONTAINER" pg_isready -U postgres -d postgres >/dev/null 2>&1; then
+              cron_config="$(docker exec -u postgres "$SUPABASE_DB_CONTAINER" psql -U postgres -d postgres -Atc \
+                "select current_setting('cron.database_name') || '|' || current_setting('cron.launch_active_jobs')")"
+              if [ "$cron_config" = "allpha_p02_restore_verification|off" ]; then
+                echo "Disposable pg_cron database configured; scheduled jobs remain disabled."
+                exit 0
+              fi
+            fi
+            sleep 2
+          done
+          echo "Disposable pg_cron configuration did not become ready." >&2
+          exit 1
+
       - name: Restore the full custom archive into the disposable database
         shell: bash
         run: |
