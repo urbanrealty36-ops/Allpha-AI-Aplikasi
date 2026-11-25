@@ -24,16 +24,17 @@ class AgentRuntimeStore:
     def __init__(self, *, supabase_url: str, service_key: str,
                  transport: httpx.AsyncBaseTransport | None = None):
         if not supabase_url.strip() or not service_key.strip():
-            raise ValueError("Supabase URL and service-role key are required")
+            raise ValueError("Supabase URL and server-side key are required")
         self._base_url = supabase_url.rstrip("/")
         self._key = service_key
         self._transport = transport
 
     @classmethod
     def from_environment(cls, *, transport: httpx.AsyncBaseTransport | None = None) -> "AgentRuntimeStore":
-        url, key = os.getenv("SUPABASE_URL", ""), os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+        url = os.getenv("SUPABASE_URL", "").strip()
+        key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip() or os.getenv("SUPABASE_SECRET_KEY", "").strip()
         if not url or not key:
-            raise ValueError("Runtime persistence requires server-side Supabase configuration")
+            raise ValueError("Runtime persistence requires SUPABASE_URL and a server-side Supabase key")
         return cls(supabase_url=url, service_key=key, transport=transport)
 
     async def request(self, method: str, path: str, *, params: dict[str, str] | None = None,
@@ -45,7 +46,12 @@ class AgentRuntimeStore:
         if prefer:
             headers["Prefer"] = prefer
         try:
-            async with httpx.AsyncClient(timeout=self._TIMEOUT, transport=self._transport) as client:
+            async with httpx.AsyncClient(
+                timeout=self._TIMEOUT,
+                transport=self._transport,
+                follow_redirects=False,
+                trust_env=False,
+            ) as client:
                 response = await client.request(
                     method, f"{self._base_url}/rest/v1/{path}",
                     headers=headers, params=params, json=body,
