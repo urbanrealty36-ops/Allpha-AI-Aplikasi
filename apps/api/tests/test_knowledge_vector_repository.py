@@ -147,3 +147,15 @@ def test_vector_repository_rejects_mismatched_upsert_receipt():
             )
 
     asyncio.run(scenario())
+
+def test_vector_repository_resolves_supabase_secret_key_from_environment(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.delenv("SUPABASE_SERVICE_ROLE_KEY", raising=False)
+    monkeypatch.setenv("SUPABASE_SECRET_KEY", "canonical-secret-key")
+    monkeypatch.setenv("ALLPHA_KNOWLEDGE_VECTOR_GENERATION_ID", GENERATION)
+
+    repo = SupabaseKnowledgeVectorRepository.from_environment()
+
+    assert repo._key == "canonical-secret-key"
+    assert repo._headers()["apikey"] == "canonical-secret-key"
+    assert repo._headers()["Authorization"] == "Bearer canonical-secret-key"
