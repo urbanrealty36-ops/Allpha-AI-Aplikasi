@@ -73,18 +73,19 @@ def test_content_version_history_is_owner_scoped_and_snapshotted_by_database():
     assert "on conflict (content_id, version) do nothing" in VERSION_MIGRATION
 
 
-def test_media_workers_share_pinned_clamav_instream_adapter():
+def test_media_workers_share_canonical_authenticated_scanner_adapter():
     transcode = (ROOT / "src" / "allpha_api" / "content_transcode_worker.py").read_text(encoding="utf-8")
     callback = (ROOT / "src" / "allpha_api" / "content_provider_callback_worker.py").read_text(encoding="utf-8")
     media = (ROOT / "src" / "allpha_api" / "content_media_worker.py").read_text(encoding="utf-8")
     scanner = (ROOT / "src" / "allpha_api" / "media_scanner.py").read_text(encoding="utf-8")
     for source in (transcode, callback, media):
         assert "from allpha_api.media_scanner import" in source
-        assert "scan_media_bytes(" in source
-    assert 'sock.sendall(b"zINSTREAM\\0")' in scanner
-    assert 'sock.sendall(b"zINSTREAM\\\\0")' not in scanner
-    assert 'ALLPHA_CLAMAV_ENABLED' in callback
-    assert 'local_scanner_identity_pins()' in callback
+        assert "scan_media_bytes_async" in source
+        assert "await self.scan(" in source
+    assert "RemoteDocumentScanner.from_environment()" in scanner
+    assert "scan_media_bytes(" in scanner
+    assert "ALLPHA_DOCUMENT_SCANNER_MODE" in scanner
+    assert "ALLPHA_CLAMAV_ENABLED" in scanner
 
 
 def test_retention_worker_fails_closed_until_destructive_purge_is_explicitly_enabled():
