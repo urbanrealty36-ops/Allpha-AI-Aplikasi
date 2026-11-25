@@ -508,22 +508,33 @@ async def _cinema_title_access(title_id: uuid.UUID, user_id: str, scopes: set[st
     raise HTTPException(403,detail={"code":"CINEMA_COLLABORATOR_PERMISSION_REQUIRED","message":"Izin collaborator untuk tindakan ini belum diberikan."})
 
 
+async def _load_title_credits(title_id: uuid.UUID, owner_id: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    rows = await _db("GET", "cinema_titles", params={
+        "select": "id,owner_id,status,version,credits",
+        "id": "eq." + str(title_id), "owner_id": "eq." + owner_id, "limit": "1",
+    })
+    if not rows:
+        raise HTTPException(404, detail={"code": "CINEMA_TITLE_NOT_FOUND", "message": "Judul Cinema tidak ditemukan."})
+    raw = rows[0].get("credits") or []
+    if not isinstance(raw, list) or any(not isinstance(item, dict) for item in raw):
+        raise HTTPException(503, detail={"code": "CINEMA_CREDITS_SCHEMA_INVALID", "message": "Metadata kredit film tidak valid."})
+    return rows[0], raw
+
+
 @router.get("/creator/titles/{title_id}/credits")
 async def list_creator_credits(title_id: uuid.UUID,user: dict[str,Any]=Depends(current_user))->dict[str,Any]:
-    await _cinema_title_access(title_id,str(user["id"]),{"manage_credits"})
-    rows=await _db("GET","cinema_creator_credits",params={
-        "select":"id,title_id,contributor_type,contributor_user_id,contributor_agent_id,role,attribution_label,disclosure,provenance,created_at",
-        "title_id":"eq."+str(title_id),"owner_id":"eq."+str(user["id"]),"order":"created_at.asc","limit":"200",
-    })
-    return {"items":rows or []}
+    title = await _cinema_title_access(title_id, str(user["id"]), {"manage_credits"})
+    row, credits = await _load_title_credits(title_id, str(title["owner_id"]))
+    return {"items": credits, "version": int(row.get("version") or 1)}
 
 
 @router.post("/creator/titles/{title_id}/credits",status_code=201)
 async def create_creator_credit(title_id: uuid.UUID,payload: CreatorCreditCreate,
                                 user: dict[str,Any]=Depends(current_user))->dict[str,Any]:
-    owner_id=str(user["id"])
-    title=await _cinema_title_access(title_id,owner_id,{"manage_credits"})
-    owner_id=str(title["owner_id"])
+    title = await _cinema_title_access(title_id, str(user["id"]), {"manage_credits"})
+    owner_id = str(title["owner_id"])
+    if title.get("status") not in {"draft", "rejected"}:
+        raise HTTPException(409, detail={"code": "CINEMA_CREDITS_LOCKED", "message": "Kredit film hanya dapat diubah pada draft atau judul yang dikembalikan."})
     if payload.contributor_type=="human":
         if payload.contributor_agent_id is not None:
             raise HTTPException(422,detail={"code":"CINEMA_CREDIT_CONTRIBUTOR_INVALID","message":"Kredit Human tidak boleh menunjuk AI Agent."})
@@ -536,6 +547,8 @@ async def create_creator_credit(title_id: uuid.UUID,payload: CreatorCreditCreate
             })
             if not grants:
                 raise HTTPException(403,detail={"code":"CINEMA_CREDIT_PERMISSION_REQUIRED","message":"Kontributor Human harus menerima undangan dengan izin pengelolaan kredit."})
+        contributor_user_id = contributor_id
+        contributor_agent_id = None
     else:
         if payload.contributor_agent_id is None or payload.contributor_user_id is not None:
             raise HTTPException(422,detail={"code":"CINEMA_CREDIT_CONTRIBUTOR_INVALID","message":"Kredit Agent harus menunjuk satu AI Agent."})
@@ -547,16 +560,30 @@ async def create_creator_credit(title_id: uuid.UUID,payload: CreatorCreditCreate
         })
         if not agents or not ownerships:
             raise HTTPException(403,detail={"code":"CINEMA_AGENT_CREDIT_PERMISSION_REQUIRED","message":"AI Agent kontributor harus aktif dan dimiliki oleh pemilik film."})
-    rows=await _db("POST","cinema_creator_credits",payload={
-        "title_id":str(title_id),"owner_id":owner_id,"contributor_type":payload.contributor_type,
-        "contributor_user_id":str(payload.contributor_user_id) if payload.contributor_user_id else None,
-        "contributor_agent_id":str(payload.contributor_agent_id) if payload.contributor_agent_id else None,
-        "role":payload.role.strip(),"attribution_label":payload.attribution_label.strip(),
-        "disclosure":payload.disclosure.strip(),"provenance":payload.provenance,
-    },prefer="return=representation")
-    if not rows:
-        raise HTTPException(503,detail={"code":"CINEMA_CREDIT_NOT_CONFIRMED","message":"Kredit kreator belum tersimpan."})
-    return {"credit":rows[0]}
+        contributor_user_id = None
+        contributor_agent_id = agent_id
+    row, credits = await _load_title_credits(title_id, owner_id)
+    credit = {
+        "id": str(uuid.uuid4()), "title_id": str(title_id),
+        "contributor_type": payload.contributor_type,
+        "contributor_user_id": contributor_user_id,
+        "contributor_agent_id": contributor_agent_id,
+        "role": payload.role.strip(), "attribution_label": payload.attribution_label.strip(),
+        "disclosure": payload.disclosure.strip(), "provenance": payload.provenance,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    updated = [*credits, credit]
+    saved = await _db("PATCH", "cinema_titles", params={
+        "id": "eq." + str(title_id), "owner_id": "eq." + owner_id,
+        "version": "eq." + str(row.get("version") or 1), "status": "in.(draft,rejected)",
+        "select": "id,version,credits,updated_at",
+    }, payload={
+        "credits": updated, "version": int(row.get("version") or 1) + 1,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }, prefer="return=representation")
+    if not saved:
+        raise HTTPException(409, detail={"code": "CINEMA_CREDITS_VERSION_CONFLICT", "message": "Versi metadata kredit berubah; muat ulang Creator Studio."})
+    return {"credit": credit, "version": saved[0]["version"]}
 
 
 @router.get("/creator/titles/{title_id}/collaborators")
