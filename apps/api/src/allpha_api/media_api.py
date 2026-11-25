@@ -32,12 +32,9 @@ MEDIA_DOMAIN_PURPOSES = {
     "reels": {"reel"},
     "stories": {"story"},
     "cinema": {"cinema_poster", "cinema_asset"},
-    "live": {"live_recording", "live_replay"},
     "agent": {"agent_artifact"},
     "messaging": {"chat_attachment"},
     "community": {"community_attachment"},
-    "marketplace": {"marketplace_attachment"},
-    "other": {"other"},
 }
 MEDIA_LIMITS = {"image/jpeg":10*1024*1024,"image/png":10*1024*1024,"image/webp":10*1024*1024,"video/mp4":50*1024*1024,"video/webm":50*1024*1024,"audio/mpeg":50*1024*1024,"audio/mp4":50*1024*1024,"audio/aac":50*1024*1024,"audio/ogg":50*1024*1024,"audio/wav":50*1024*1024,"audio/webm":50*1024*1024,"text/vtt":10*1024*1024,"application/x-subrip":10*1024*1024}
 def _config():
@@ -53,7 +50,7 @@ MEDIA_SCHEMA_REQUIRED_COLUMNS = (
     "provider_resource_type", "provider_delivery_type", "provider_version", "provider_format",
     "provider_width", "provider_height", "provider_duration", "provider_bytes", "provider_tags",
     "provider_metadata", "upload_expires_at", "upload_completed_at", "upload_idempotency_key",
-    "provider_deleted_at", "provider_delete_state", "scan_receipt",
+    "provider_deleted_at", "provider_delete_state", "scan_receipt", "updated_at",
 )
 
 
@@ -130,6 +127,8 @@ async def create_upload_intent(payload: UploadIntent, request: Request, user: di
             raise HTTPException(404, detail={"code":"MEDIA_RESOURCE_NOT_FOUND","message":"Draft konten tidak tersedia."})
     elif payload.content_id is not None or payload.resource_id is None:
         raise HTTPException(422, detail={"code":"MEDIA_RESOURCE_REQUIRED","message":"resource_id wajib dan content_id harus kosong untuk domain ini."})
+    if payload.tenant_id is not None or payload.session_id is not None:
+        raise HTTPException(422, detail={"code":"MEDIA_TENANT_SESSION_UNSUPPORTED","message":"Tenant dan session binding belum tersedia pada kontrak media ini."})
     try:
         cfg = CloudinaryConfig.from_environment(require_callback=True)
         intent = build_signed_upload_intent(config=cfg,media_id=str(media_id),media_type=media_type,ttl_seconds=600)
