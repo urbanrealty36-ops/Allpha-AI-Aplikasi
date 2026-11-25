@@ -1655,3 +1655,12 @@ This is an evidence refresh inside the existing fixed plan. It does not create a
 - **Commits:** `4f8393f097b8e0437a73a632e58efa1be4993ff5`, `5276dbd9dca3248c5f61bc28762e16c24b654085`, `263a09c567773d673e1481b4b63321fae7ce9ee4`, `7b3af0f2898a543a3eafaa57d0f49405271a7c3e`, `ce60a9da0ff3d0437b43b232571417d16eb0aca7`.
 - **Verification:** GitHub Actions run `45622387651` is still queued/in progress; API regression job has not started at this observation. Railway API and shared worker deployments for this HEAD are queued. No production verification is claimed yet.
 - **Phase status:** ENG-P13 remains `in_progress`. This is a focused security correction, not completion of media processing, worker activation, playback, or end-to-end media lifecycle.
+
+
+## 40.80 — ENG-P13 callback syntax and retention-worker egress correction (2026-11-25)
+
+- **Implementation:** removed the duplicate `follow_redirects` keyword from the Cloudinary callback worker HTTP client, which otherwise prevents Python module compilation. Added explicit `trust_env=False` and `follow_redirects=False` to the retention worker's authenticated Supabase HTTP client.
+- **Regression coverage:** extended `test_content_media_workers_disable_ambient_proxy_and_redirects` to include `content_retention_worker.py`; this keeps the policy enforced across all five media lifecycle workers.
+- **Commits:** `6e22ef1c24382b3763d1431bf1a0c4337abeff5b`, `1c3a0033cb99d16cb4a92b41df73e6b13b4a93c2`, `404a2644420cce549f6f250d1687ce65e9cda692`.
+- **Verification:** source edits committed to `main`; focused GitHub Actions and Railway deployment outcomes are pending observation. No worker activation, external provider processing, Storage derivative persistence, or production media lifecycle is claimed.
+- **Phase status:** ENG-P13 remains `in_progress`; this closes a real source correctness/security defect only.
