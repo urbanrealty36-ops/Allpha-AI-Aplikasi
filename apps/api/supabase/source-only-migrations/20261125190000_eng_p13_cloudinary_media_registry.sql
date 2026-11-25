@@ -64,7 +64,7 @@ alter table public.content_media add constraint content_media_media_type_check c
 ));
 alter table public.content_media drop constraint if exists content_media_status_check;
 alter table public.content_media add constraint content_media_status_check
-  check (status in ('uploading','uploaded','processing','ready','failed','deleting'));
+  check (status in ('uploading','uploaded','processing','ready','failed','deleting','deleted'));
 alter table public.content_media drop constraint if exists content_media_scan_status_check;
 alter table public.content_media add constraint content_media_scan_status_check
   check (scan_status in ('pending','clean','rejected','unavailable'));
