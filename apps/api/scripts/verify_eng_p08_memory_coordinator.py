@@ -11,6 +11,8 @@ ROOT=Path(__file__).resolve().parents[3]
 MIGRATION=ROOT/"apps/api/supabase/migrations/20261124055512_eng_p08_memory_coordinator_lifecycle.sql"
 PIN_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124060710_eng_p08_memory_owner_pin_expire.sql"
 BATCH_MIGRATION=ROOT/"apps/api/supabase/migrations/20261124100000_eng_p08_memory_retention_worker.sql"
+CONVERSATION_POLICY_MIGRATION=ROOT/"apps/api/supabase/migrations/20261125030000_eng_p08_conversation_memory_consent.sql"
+CONVERSATION_TRANSITION_MIGRATION=ROOT/"apps/api/supabase/migrations/20261125040000_eng_p08_conversation_policy_transition.sql"
 NAME="allpha-p08-memory-"+uuid.uuid4().hex[:8]
 OWNER="11111111-1111-4111-8111-111111111111"
 OTHER="99999999-9999-4999-8999-999999999999"
@@ -80,15 +82,19 @@ create table public.account_deletion_source_policies(
 grant usage on schema public,private,extensions to anon,authenticated,service_role;
 """)
   if not BATCH_MIGRATION.is_file():raise RuntimeError(f"Missing P08 retention migration: {BATCH_MIGRATION}")
-  psql(MIGRATION.read_text(encoding="utf-8"))
-  psql(PIN_MIGRATION.read_text(encoding="utf-8"))
-  psql(BATCH_MIGRATION.read_text(encoding="utf-8"))
+  for migration in (MIGRATION, PIN_MIGRATION, BATCH_MIGRATION, CONVERSATION_POLICY_MIGRATION, CONVERSATION_TRANSITION_MIGRATION):
+   if not migration.is_file():raise RuntimeError(f"Missing P08 migration: {migration}")
+   psql(migration.read_text(encoding="utf-8"))
   psql(f"""
 insert into auth.users(id) values('{OWNER}'),('{OTHER}');
 insert into public.ai_agents(id) values('{AGENT}');
 insert into public.agent_ownerships(agent_id,owner_user_id,ownership_role,status)
  values('{AGENT}','{OWNER}','owner','active');
 set role service_role;
+select public.agent_memory_transition('set_policy','{OWNER}','{AGENT}',null,
+ jsonb_build_object('memory_type','conversation','enabled',true,'consent_version','allpha.memory.v1',
+  'allowed_purposes',jsonb_build_array('agent_runtime_context'),
+  'allowed_sensitivities',jsonb_build_array('restricted'),'retention_days',7));
 select public.agent_memory_transition('set_policy','{OWNER}','{AGENT}',null,
  jsonb_build_object('memory_type','long_term','enabled',true,'consent_version','allpha.memory.v1',
   'allowed_purposes',jsonb_build_array('agent_generation_context','agent_runtime_context'),
@@ -109,6 +115,16 @@ select public.agent_memory_transition('create_proposal','{OWNER}','{AGENT}',null
   'retention_expires_at',(clock_timestamp()+interval '30 days')::text));
 reset role;
 """)
+  conversation_proposal=psql(f"""
+set role service_role;
+select public.agent_memory_transition('create_proposal','{OWNER}','{AGENT}',null,
+ jsonb_build_object('memory_type','conversation','purpose','agent_runtime_context','classification','restricted',
+  'content','Do not persist conversation messages','content_sha256',encode(extensions.digest('Do not persist conversation messages','sha256'),'hex'),
+  'source_ref',jsonb_build_object('kind','conversation-test'),'provenance',jsonb_build_object('capture_mode','conversation_context'),
+  'confidence',1.0,'retention_expires_at',(clock_timestamp()+interval '7 days')::text));
+""",check=False)
+  if conversation_proposal.returncode==0 or "MEMORY_CONVERSATION_STORED_IN_MESSAGING" not in conversation_proposal.stderr:
+   raise RuntimeError("Conversation content was not blocked from persistent Memory items")
   psql(f"""
 do $do$
 declare v_item uuid; v_policy uuid;
@@ -119,6 +135,14 @@ begin
   raise exception 'unchanged Memory policy caused version churn or changed retention was not versioned';
  end if;
  if (select status from public.agent_memory_items where id=v_item)<>'pending' then raise exception 'new Memory must require owner approval'; end if;
+ if not exists(select 1 from public.agent_memory_policies where owner_user_id='{OWNER}' and agent_id='{AGENT}'
+   and memory_type='conversation' and enabled and consent_version='allpha.memory.v1'
+   and allowed_sensitivities @> array['restricted']::text[] and retention_days=7) then
+  raise exception 'Conversation Memory consent policy was not persisted';
+ end if;
+ if exists(select 1 from public.agent_memory_items where owner_user_id='{OWNER}' and agent_id='{AGENT}' and memory_type='conversation') then
+  raise exception 'Conversation messages must not be copied into persistent Memory items';
+ end if;
  if not exists(select 1 from private.account_export_sources where source_key='agent_memory_items' and enabled) then raise exception 'Memory items missing from P03 export registry'; end if;
  if not exists(select 1 from public.account_deletion_source_policies where source_key='agent_memory_events' and active and deletion_action='preserve') then raise exception 'Memory event audit not preserved by P03'; end if;
 end $do$;
@@ -293,6 +317,18 @@ begin
 end $do$;
 set role service_role;
 select public.agent_memory_transition('set_policy','{OWNER}','{AGENT}',null,
+ jsonb_build_object('memory_type','conversation','enabled',false,'allowed_purposes',jsonb_build_array(),
+  'allowed_sensitivities',jsonb_build_array(),'retention_days',7));
+reset role;
+do $do$
+begin
+ if not exists(select 1 from public.agent_memory_policies where owner_user_id='{OWNER}' and agent_id='{AGENT}'
+  and memory_type='conversation' and not enabled and consent_revoked_at is not null and policy_version=2) then
+  raise exception 'Conversation Memory consent revocation was not persisted or versioned';
+ end if;
+end $do$;
+set role service_role;
+select public.agent_memory_transition('set_policy','{OWNER}','{AGENT}',null,
  jsonb_build_object('memory_type','episodic','enabled',true,'consent_version','allpha.memory.v1',
   'allowed_purposes',jsonb_build_array('agent_generation_context'),
   'allowed_sensitivities',jsonb_build_array('public'),'retention_days',30));
@@ -357,7 +393,7 @@ begin
  end if;
 end $do$;
 """)
-  print("PASS: ENG-P08 PostgreSQL 17 Memory consent, proposal approval, owner-scoped retrieval, correction, pin/unpin, immediate owner expiry, bounded system retention batches, deletion, retention expiry, least-privilege RPCs and P03 pseudonymous audit integration.")
+  print("PASS: ENG-P08 PostgreSQL 17 Conversation consent, Messaging-only storage, persistent-copy denial, consent revocation, Memory proposal approval, owner-scoped retrieval, correction, pin/unpin, immediate owner expiry, bounded system retention batches, deletion, retention expiry, least-privilege RPCs and P03 pseudonymous audit integration.")
  finally:
   run(["docker","rm","--force",NAME],check=False)
 

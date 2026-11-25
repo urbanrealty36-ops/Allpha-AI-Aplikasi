@@ -12,3 +12,8 @@ def test_conversation_is_a_policy_type_but_not_a_persistent_memory_item_type():
     sql = transition_migration.read_text(encoding="utf-8")
     assert "v_memory_type not in ('conversation','working','episodic','semantic','procedural','long_term')" in sql
     assert "MEMORY_CONVERSATION_STORED_IN_MESSAGING" in sql
+    verifier = Path(__file__).resolve().parents[1] / "scripts" / "verify_eng_p08_memory_coordinator.py"
+    script = verifier.read_text(encoding="utf-8")
+    assert "20261125030000_eng_p08_conversation_memory_consent.sql" in script
+    assert "20261125040000_eng_p08_conversation_policy_transition.sql" in script
+    assert "Conversation Memory consent revocation was not persisted" in script
