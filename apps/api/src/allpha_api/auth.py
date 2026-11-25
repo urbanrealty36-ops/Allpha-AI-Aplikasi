@@ -285,7 +285,17 @@ async def service_db_request(function_name: str, *, body: dict[str, Any]) -> Any
         is_account_lifecycle_rpc = function_name.startswith(("create_account_deletion_request_for_actor",))
         is_consent_rpc = function_name.startswith(("record_account_consent_event_for_actor",))
         is_interest_rpc = function_name.startswith(("set_my_interest_preference_for_actor", "delete_my_interest_for_actor", "find_interest_discovery_candidates"))
+        is_media_rpc = function_name.startswith((
+            "reserve_cloudinary_media_upload", "complete_cloudinary_content_media_upload",
+            "complete_cloudinary_content_provider_job", "request_cloudinary_content_media_delete",
+            "complete_cloudinary_media_delete_job", "fail_cloudinary_media_delete_job",
+            "enqueue_content_provider_callback",
+        ))
+        if is_media_rpc and sqlstate in ("PGRST202", "PGRST204", "42883"):
+            raise HTTPException(status_code=503, detail={"code": "MEDIA_SCHEMA_NOT_READY", "message": "Kontrak database Media Foundation belum tersedia."})
         if sqlstate == "42501":
+            if is_media_rpc:
+                raise HTTPException(status_code=403, detail={"code": "MEDIA_OPERATION_FORBIDDEN", "message": "Operasi media tidak diizinkan untuk resource ini."})
             if is_interest_rpc:
                 raise HTTPException(status_code=403, detail={"code": "INTEREST_WRITE_FORBIDDEN", "message": "Perubahan minat tidak diizinkan."})
             if is_consent_rpc:
@@ -296,6 +306,8 @@ async def service_db_request(function_name: str, *, body: dict[str, Any]) -> Any
                 raise HTTPException(status_code=409, detail={"code": "ACCOUNT_NOT_ACTIVE", "message": "Akun tidak berada pada status aktif untuk mengajukan penghapusan."})
             raise HTTPException(status_code=403, detail={"code": "ORGANIZATION_FORBIDDEN", "message": "Hak pengelolaan organisasi tidak tersedia."})
         if sqlstate in ("P0002", "23503"):
+            if is_media_rpc:
+                raise HTTPException(status_code=404, detail={"code": "MEDIA_RESOURCE_NOT_FOUND", "message": "Resource media tidak ditemukan."})
             if is_interest_rpc:
                 raise HTTPException(status_code=404, detail={"code": "INTEREST_ACTOR_NOT_FOUND", "message": "Akun pemilik minat tidak ditemukan."})
             if is_consent_rpc:
@@ -306,6 +318,8 @@ async def service_db_request(function_name: str, *, body: dict[str, Any]) -> Any
                 raise HTTPException(status_code=404, detail={"code": "ACCOUNT_NOT_FOUND", "message": "Akun tidak ditemukan."})
             raise HTTPException(status_code=404, detail={"code": "ORGANIZATION_MEMBER_NOT_FOUND", "message": "Anggota atau organisasi tidak ditemukan."})
         if sqlstate == "23505" or response.status_code == 409:
+            if is_media_rpc:
+                raise HTTPException(status_code=409, detail={"code": "MEDIA_IDEMPOTENCY_CONFLICT", "message": "Kunci idempotensi media bertentangan dengan reservasi sebelumnya."})
             if is_interest_rpc:
                 raise HTTPException(status_code=409, detail={"code": "INTEREST_CONFLICT", "message": "Preferensi minat bertentangan dengan data yang tersimpan."})
             if is_consent_rpc:
@@ -316,6 +330,8 @@ async def service_db_request(function_name: str, *, body: dict[str, Any]) -> Any
                 raise HTTPException(status_code=409, detail={"code": "ACCOUNT_DELETION_REQUEST_ALREADY_OPEN", "message": "Permintaan penghapusan akun yang belum selesai sudah ada."})
             raise HTTPException(status_code=409, detail={"code": "ORGANIZATION_MEMBER_CONFLICT", "message": "Keanggotaan organisasi sudah ada atau bertentangan."})
         if sqlstate == "22023" or response.status_code in (400, 422):
+            if is_media_rpc:
+                raise HTTPException(status_code=422, detail={"code": "MEDIA_INPUT_INVALID", "message": "Kontrak permintaan media tidak valid."})
             if is_interest_rpc:
                 raise HTTPException(status_code=422, detail={"code": "INTEREST_KEY_NOT_IN_CATALOG", "message": "Minat harus dipilih dari katalog resmi Allpha."})
             if is_consent_rpc:
