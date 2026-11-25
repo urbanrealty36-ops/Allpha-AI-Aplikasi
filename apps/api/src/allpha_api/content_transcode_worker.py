@@ -15,8 +15,6 @@ class TranscodeWorker:
   self.key=os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ["SUPABASE_SECRET_KEY"]
   self.cloudinary=CloudinaryConfig.from_environment(require_callback=True)
   self.cloud=self.cloudinary.cloud_name
-  self.api_key=self.cloudinary.api_key
-  self.secret=self.cloudinary.api_secret
   self.callback=self.cloudinary.callback_url
   self.scanner_mode=require_media_scanner_configuration()
   self.worker_id=f"content-transcode-{uuid.uuid4()}"

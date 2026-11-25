@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import hmac
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -54,7 +53,7 @@ def test_cloudinary_signed_upload_intent_is_authenticated_and_short_lived():
     assert intent["expires_at"] == 1_800_000_300
     params = intent["params"]
     assert params["type"] == "authenticated"
-    assert params["eager_async"] is True
+    assert params["eager_async"] == "true"
     assert params["eager_notification_url"] == _config().callback_url
     assert params["api_key"] == "api-key"
     assert params["signature"] == sign_api_params(
@@ -95,7 +94,7 @@ def test_cloudinary_webhook_requires_fresh_timestamp_and_exact_raw_body():
     body = b'{"notification_type":"eager","public_id":"allpha/asset"}'
     timestamp = "1800000000"
     secret = "webhook-secret"
-    signature = hmac.new(secret.encode(), body + timestamp.encode() + secret.encode(), hashlib.sha256).hexdigest()
+    signature = hashlib.sha256(body + timestamp.encode() + secret.encode()).hexdigest()
     assert verify_cloudinary_webhook(
         raw_body=body, timestamp=timestamp, signature=signature, secret=secret,
         now=1_800_000_001,

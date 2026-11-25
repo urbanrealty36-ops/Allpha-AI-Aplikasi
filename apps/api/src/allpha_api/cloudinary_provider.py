@@ -115,9 +115,9 @@ def build_signed_upload_intent(
         "timestamp": timestamp,
         "public_id": public_id,
         "type": "authenticated",
-        "overwrite": False,
-        "unique_filename": False,
-        "use_filename": False,
+        "overwrite": "false",
+        "unique_filename": "false",
+        "use_filename": "false",
     }
     eager = eager_transformations(media_type)
     target_callback = callback_url or config.callback_url
@@ -125,7 +125,7 @@ def build_signed_upload_intent(
         if not target_callback or not target_callback.startswith("https://"):
             raise CloudinaryConfigurationError("CLOUDINARY_HTTPS_CALLBACK_NOT_CONFIGURED")
         params["eager"] = eager
-        params["eager_async"] = True
+        params["eager_async"] = "true"
         params["eager_notification_url"] = target_callback
     signature = sign_api_params(params, config.api_secret)
     return {
