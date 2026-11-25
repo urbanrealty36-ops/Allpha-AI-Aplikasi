@@ -4,7 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import Link from "next/link";
 import { getBrowserSupabase } from "../../lib/supabase";
-import { uploadContentMediaWithCloudinary } from "../../lib/resumable-media-upload";
+import { uploadContentMedia } from "../../lib/resumable-media-upload";
 
 type Media = { id: string; filename: string; media_type: string; size_bytes: number; status: string; preview_url?: string | null };
 type Item = { id: string; body: string; content_type: string; visibility: string; status: string; moderation_status: string; version: number; created_at: string; updated_at: string; media?: Media[] };
@@ -94,7 +94,7 @@ export default function ContentStudioPage() {
       if (file) {
         const key = uploadId || crypto.randomUUID();
         setUploadId(key);
-        await uploadContentMediaWithCloudinary(request, id, file, key, setUploadProgress);
+        await uploadContentMedia(request, id, file, key, setUploadProgress);
       }
       setBody(""); setFile(null); setUploadId(""); setUploadProgress(0); setModal(null);
       setNotice(file ? "Draft tersimpan dan media berhasil diunggah." : "Draft konten berhasil disimpan.");
@@ -115,7 +115,7 @@ export default function ContentStudioPage() {
     try {
       const key = uploadId || crypto.randomUUID();
       setUploadId(key);
-      await uploadContentMediaWithCloudinary(request, selected, file, key, setUploadProgress);
+      await uploadContentMedia(request, selected, file, key, setUploadProgress);
       setFile(null); setUploadId(""); setUploadProgress(0); setNotice("Media berhasil diunggah ke draft.");
       await refresh(); await showPreview(selected);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Unggah gagal. Draft tetap tersimpan dan dapat dicoba lagi."); }
