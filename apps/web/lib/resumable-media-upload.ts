@@ -154,14 +154,15 @@ export async function uploadContentMedia(
   file: File,
   idempotencyKey: string,
   onProgress: (percent: number) => void,
+  mediaType = file.type,
 ): Promise<{ id: string }> {
-  const cloudinaryEligible = file.type.startsWith("image/")
-    || file.type.startsWith("video/")
-    || file.type.startsWith("audio/");
+  const cloudinaryEligible = mediaType.startsWith("image/")
+    || mediaType.startsWith("video/")
+    || mediaType.startsWith("audio/");
   if (process.env.NEXT_PUBLIC_ALLPHA_CLOUDINARY_MEDIA_ENABLED === "true" && cloudinaryEligible) {
-    return uploadContentMediaWithCloudinary(request, contentId, file, idempotencyKey, onProgress);
+    return uploadContentMediaWithCloudinary(request, contentId, file, idempotencyKey, onProgress, mediaType);
   }
-  return uploadContentMediaWithTus(request, contentId, file, idempotencyKey, onProgress);
+  return uploadContentMediaWithTus(request, contentId, file, idempotencyKey, onProgress, mediaType);
 }
 
 
