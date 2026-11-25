@@ -38,6 +38,23 @@ MEDIA_DOMAIN_PURPOSES = {
     "community": {"community_attachment"},
 }
 
+# Stable columns available before the Cloudinary registry migration. Legacy TUS media
+# must remain readable while the Cloudinary-only schema contract is gated.
+LEGACY_MEDIA_SELECT = (
+    "id,content_id,owner_id,bucket_id,storage_path,filename,media_type,size_bytes,"
+    "sha256,status,scan_status,processed_at,derivatives,created_at,"
+    "provider_asset_id,provider_public_id,provider_callback_verified_at"
+)
+CLOUDINARY_MEDIA_SELECT = (
+    "id,content_id,domain,purpose,resource_id,filename,media_type,size_bytes,sha256,"
+    "status,scan_status,storage_provider,bucket_id,storage_path,provider_public_id,"
+    "provider_asset_id,provider_resource_type,provider_delivery_type,provider_format,"
+    "provider_version,provider_width,provider_height,provider_duration,provider_bytes,"
+    "provider_delete_state,upload_expires_at,upload_completed_at,provider_deleted_at,"
+    "provider_callback_verified_at,derivatives,created_at,processed_at,updated_at"
+)
+
+
 MEDIA_RESPONSE_FIELDS = (
     "id", "content_id", "domain", "purpose", "resource_id", "filename", "media_type",
     "size_bytes", "sha256", "status", "scan_status", "storage_provider",
@@ -330,55 +347,118 @@ async def delete_media(media_id: uuid.UUID, user: dict[str, Any] = Depends(curre
 
 
 @router.get("/{media_id}")
-async def get_media(media_id:uuid.UUID,user:dict[str,Any]=Depends(current_user)):
-    await _require_cloudinary_media_schema()
-    base,key=_config()
-    async with httpx.AsyncClient(timeout=12,trust_env=False,follow_redirects=False) as client:
-        response=await client.get(f"{base}/rest/v1/content_media",params={"select":"id,content_id,domain,purpose,resource_id,filename,media_type,size_bytes,sha256,status,scan_status,storage_provider,bucket_id,storage_path,provider_public_id,provider_resource_type,provider_delivery_type,provider_format,provider_version,provider_width,provider_height,provider_duration,provider_bytes,provider_delete_state,upload_expires_at,upload_completed_at,provider_deleted_at,provider_callback_verified_at,derivatives,created_at,processed_at,updated_at","id":f"eq.{media_id}","owner_id":f"eq.{user['id']}","limit":"1"},headers={"apikey":key,"Authorization":f"Bearer {key}"})
-    if response.status_code>=300:
-        raise HTTPException(503,detail={"code":"MEDIA_DB_UNAVAILABLE","message":"Media status unavailable."})
-    rows=response.json()
-    if not rows:
-        raise HTTPException(404,detail={"code":"MEDIA_NOT_FOUND","message":"Media not found."})
-    raw_item=rows[0]
-    item=media_item_response(raw_item)
-    delivery=None
-    derivative_deliveries=[]
-    if raw_item.get("status")=="ready" and raw_item.get("scan_status")=="clean" and raw_item.get("storage_provider")=="cloudinary":
+async def get_media(media_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)):
+    """Return owner-scoped media status without coupling legacy TUS reads to Cloudinary rollout."""
+    base, key = _config()
+    params = {
+        "select": LEGACY_MEDIA_SELECT,
+        "id": f"eq.{media_id}",
+        "owner_id": f"eq.{user['id']}",
+        "limit": "1",
+    }
+    headers = {"apikey": key, "Authorization": f"Bearer {key}"}
+    try:
+        async with httpx.AsyncClient(timeout=12, trust_env=False, follow_redirects=False) as client:
+            response = await client.get(f"{base}/rest/v1/content_media", params=params, headers=headers)
+        if response.status_code >= 300:
+            raise HTTPException(503, detail={"code": "MEDIA_DB_UNAVAILABLE", "message": "Media status unavailable."})
+        rows = response.json()
+    except HTTPException:
+        raise
+    except (httpx.HTTPError, ValueError, TypeError) as exc:
+        raise HTTPException(503, detail={"code": "MEDIA_DB_UNAVAILABLE", "message": "Media status unavailable."}) from exc
+    if not isinstance(rows, list) or not rows:
+        raise HTTPException(404, detail={"code": "MEDIA_NOT_FOUND", "message": "Media not found."})
+
+    raw_item = rows[0]
+    # Provider identity is the discriminator already present in the live legacy
+    # schema. Only Cloudinary-owned rows require the expanded registry contract.
+    is_cloudinary = bool(raw_item.get("provider_asset_id") or raw_item.get("provider_public_id"))
+    if is_cloudinary:
+        await _require_cloudinary_media_schema()
+        params["select"] = CLOUDINARY_MEDIA_SELECT
         try:
-            cfg=CloudinaryConfig.from_environment()
-            delivery=build_signed_private_download_url(config=cfg,public_id=str(raw_item["provider_public_id"]),
-                resource_type=str(raw_item["provider_resource_type"]),format=str(raw_item["provider_format"]),expires_in=300)
+            async with httpx.AsyncClient(timeout=12, trust_env=False, follow_redirects=False) as client:
+                response = await client.get(f"{base}/rest/v1/content_media", params=params, headers=headers)
+            if response.status_code >= 300:
+                raise HTTPException(503, detail={"code": "MEDIA_DB_UNAVAILABLE", "message": "Media status unavailable."})
+            rows = response.json()
+        except HTTPException:
+            raise
+        except (httpx.HTTPError, ValueError, TypeError) as exc:
+            raise HTTPException(503, detail={"code": "MEDIA_DB_UNAVAILABLE", "message": "Media status unavailable."}) from exc
+        if not isinstance(rows, list) or not rows:
+            raise HTTPException(404, detail={"code": "MEDIA_NOT_FOUND", "message": "Media not found."})
+        raw_item = rows[0]
+
+    item = media_item_response(raw_item)
+    delivery = None
+    derivative_deliveries = []
+    status_ready = raw_item.get("status") == "ready" and raw_item.get("scan_status") == "clean"
+    provider = raw_item.get("storage_provider")
+    if status_ready and (provider == "cloudinary" or is_cloudinary):
+        try:
+            cfg = CloudinaryConfig.from_environment()
+            delivery = build_signed_private_download_url(
+                config=cfg,
+                public_id=str(raw_item["provider_public_id"]),
+                resource_type=str(raw_item["provider_resource_type"]),
+                format=str(raw_item["provider_format"]),
+                expires_in=300,
+            )
             for derivative in raw_item.get("derivatives") or []:
-                if not isinstance(derivative,dict) or derivative.get("provider")!="cloudinary":
+                if not isinstance(derivative, dict) or derivative.get("provider") != "cloudinary":
                     continue
-                derivative_url=build_signed_authenticated_delivery_url(
-                    config=cfg,public_id=str(raw_item["provider_public_id"]),
+                derivative_url = build_signed_authenticated_delivery_url(
+                    config=cfg,
+                    public_id=str(raw_item["provider_public_id"]),
                     resource_type=str(raw_item["provider_resource_type"]),
                     format=str(derivative["format"]),
                     transformation=str(derivative["transformation"]),
                     version=int(derivative.get("version") or raw_item["provider_version"]),
                 )
                 derivative_deliveries.append({
-                    "kind":derivative.get("kind"),"mime_type":derivative.get("mime_type"),
-                    "size_bytes":derivative.get("size_bytes"),"width":derivative.get("width"),
-                    "height":derivative.get("height"),"duration":derivative.get("duration"),
-                    "format":derivative.get("format"),"delivery_url":derivative_url,
+                    "kind": derivative.get("kind"),
+                    "mime_type": derivative.get("mime_type"),
+                    "size_bytes": derivative.get("size_bytes"),
+                    "width": derivative.get("width"),
+                    "height": derivative.get("height"),
+                    "duration": derivative.get("duration"),
+                    "format": derivative.get("format"),
+                    "delivery_url": derivative_url,
                 })
-        except (CloudinaryConfigurationError,ValueError,KeyError,TypeError):
-            raise HTTPException(503,detail={"code":"MEDIA_DELIVERY_NOT_READY","message":"Private media delivery belum siap."})
-    elif raw_item.get("status")=="ready" and raw_item.get("scan_status")=="clean" and raw_item.get("storage_provider")=="supabase":
-        delivery=await _signed_supabase_storage_url(str(raw_item.get("bucket_id") or ""),str(raw_item.get("storage_path") or ""))
+        except (CloudinaryConfigurationError, ValueError, KeyError, TypeError) as exc:
+            raise HTTPException(
+                503,
+                detail={"code": "MEDIA_DELIVERY_NOT_READY", "message": "Private media delivery belum siap."},
+            ) from exc
+    elif status_ready and provider in {None, "supabase"}:
+        delivery = await _signed_supabase_storage_url(
+            str(raw_item.get("bucket_id") or ""),
+            str(raw_item.get("storage_path") or ""),
+        )
         for derivative in raw_item.get("derivatives") or []:
-            if not isinstance(derivative,dict) or not derivative.get("storage_path"):continue
-            derivative_url=await _signed_supabase_storage_url(
-                str(raw_item.get("bucket_id") or ""),str(derivative["storage_path"]))
+            if not isinstance(derivative, dict) or not derivative.get("storage_path"):
+                continue
+            derivative_url = await _signed_supabase_storage_url(
+                str(raw_item.get("bucket_id") or ""),
+                str(derivative["storage_path"]),
+            )
             derivative_deliveries.append({
-                "kind":derivative.get("kind"),"mime_type":derivative.get("mime_type"),
-                "size_bytes":derivative.get("size_bytes"),"width":derivative.get("width"),
-                "height":derivative.get("height"),"duration":derivative.get("duration"),
-                "format":derivative.get("format"),"delivery_url":derivative_url,
+                "kind": derivative.get("kind"),
+                "mime_type": derivative.get("mime_type"),
+                "size_bytes": derivative.get("size_bytes"),
+                "width": derivative.get("width"),
+                "height": derivative.get("height"),
+                "duration": derivative.get("duration"),
+                "format": derivative.get("format"),
+                "delivery_url": derivative_url,
             })
-    else:
-        derivative_deliveries=[]
-    return {"item":item,"delivery":{"url":delivery,"derivatives":derivative_deliveries,"expires_in_seconds":300} if delivery else None}
+    elif status_ready:
+        raise HTTPException(503, detail={"code": "MEDIA_PROVIDER_UNSUPPORTED", "message": "Provider media belum didukung."})
+
+    return {
+        "item": item,
+        "delivery": {"url": delivery, "derivatives": derivative_deliveries, "expires_in_seconds": 300}
+        if delivery else None,
+    }

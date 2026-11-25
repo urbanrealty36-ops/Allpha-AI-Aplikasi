@@ -24,8 +24,6 @@ async def test_legacy_supabase_media_delivery_returns_signed_original_and_deriva
     row = {
         "id": str(media_id),
         "content_id": "4e8f6e9a-35f2-4ed9-8e51-6e4db1a5e0e1",
-        "domain": "content",
-        "purpose": "attachment",
         "owner_id": owner_id,
         "filename": "original photo.jpg",
         "media_type": "image/jpeg",
@@ -33,7 +31,6 @@ async def test_legacy_supabase_media_delivery_returns_signed_original_and_deriva
         "sha256": "a" * 64,
         "status": "ready",
         "scan_status": "clean",
-        "storage_provider": "supabase",
         "bucket_id": "content-media",
         "storage_path": "owner/original photo.jpg",
         "derivatives": [{
@@ -57,16 +54,13 @@ async def test_legacy_supabase_media_delivery_returns_signed_original_and_deriva
         async def get(self, url, **kwargs):
             requested.append(url)
             assert url == f"{base}/rest/v1/content_media"
+            assert kwargs["params"]["select"] == media_api.LEGACY_MEDIA_SELECT
             return _Response(200, [row])
 
         async def post(self, url, **kwargs):
             requested.append(url)
             return _Response(200, {"signedURL": "/object/sign/content-media/signed-object?token=short-lived"})
 
-    async def _schema_ready():
-        return None
-
-    monkeypatch.setattr(media_api, "_require_cloudinary_media_schema", _schema_ready)
     monkeypatch.setattr(media_api, "_config", lambda: (base, "server-only-key"))
     monkeypatch.setattr(media_api.httpx, "AsyncClient", _Client)
 
