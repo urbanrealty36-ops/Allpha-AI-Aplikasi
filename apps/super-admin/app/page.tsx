@@ -364,6 +364,11 @@ export default function OperationsPage() {
       setAudit([]);
       setGrants([]);
       setCapabilities([]);
+      setOperatorMedia([]);
+      setOperatorMediaJobs([]);
+      setOperatorMediaSelected(null);
+      setOperatorMediaSelectedJobs([]);
+      setOperatorMediaError("");
       return;
     }
     let cancelled = false;
