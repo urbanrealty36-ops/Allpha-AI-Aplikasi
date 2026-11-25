@@ -164,32 +164,35 @@ def test_provider_derivative_contract_requires_playback_renditions_and_poster():
     from allpha_api.content_provider_callback_worker import validate_eager_derivative_contract
 
     validate_eager_derivative_contract("video/mp4", [
-        {"format": "mp4", "status": "success"},
-        {"format": "mp4", "status": "success"},
-        {"format": "jpg", "status": "success"},
+        {"transformation": "c_limit,w_1280,vc_h264,f_mp4", "format": "mp4", "status": "success"},
+        {"transformation": "c_limit,w_640,vc_h264,f_mp4", "format": "mp4", "status": "success"},
+        {"transformation": "so_0,w_640,h_360,c_fill,f_jpg", "format": "jpg", "status": "success"},
     ])
     validate_eager_derivative_contract("audio/mpeg", [
-        {"format": "mp3", "status": "success"},
-        {"format": "m4a", "status": "success"},
+        {"transformation": "ac_mp3,br_128k,f_mp3", "format": "mp3", "status": "success"},
+        {"transformation": "ac_aac,br_128k,f_m4a", "format": "m4a", "status": "success"},
     ])
     with pytest.raises(ValueError, match="PROVIDER_VIDEO_RENDITION_CONTRACT_INVALID"):
         validate_eager_derivative_contract("video/mp4", [
-            {"format": "mp4", "status": "success"},
-            {"format": "mp4", "status": "success"},
-            {"format": "mp4", "status": "success"},
+            {"transformation": "c_limit,w_1280,vc_h264,f_mp4", "format": "mp4", "status": "success"},
+            {"transformation": "c_limit,w_640,vc_h264,f_mp4", "format": "mp4", "status": "success"},
+            {"transformation": "so_0,w_640,h_360,c_fill,f_jpg", "format": "mp4", "status": "success"},
         ])
     with pytest.raises(ValueError, match="PROVIDER_EAGER_DERIVATIVES_INCOMPLETE"):
         validate_eager_derivative_contract("audio/mpeg", [
-            {"format": "mp3", "status": "success"},
-            {"format": "m4a", "status": "failed"},
+            {"transformation": "ac_mp3,br_128k,f_mp3", "format": "mp3", "status": "success"},
+            {"transformation": "ac_aac,br_128k,f_m4a", "format": "m4a", "status": "failed"},
         ])
 
 
 def test_provider_derivative_download_is_stream_bounded():
     source = (Path(__file__).parents[1] / "src" / "allpha_api" / "content_provider_callback_worker.py").read_text(encoding="utf-8")
-    assert "MAX_PROVIDER_DERIVATIVE_BYTES = 100 * 1024 * 1024" in source
+    # Cloudinary derivatives stay provider-hosted; only the private original is
+    # streamed for malware scanning, with a strict 50 MiB bound.
+    assert "MAX_PROVIDER_MEDIA_BYTES = 50 * 1024 * 1024" in source
     assert "async for chunk in response.aiter_bytes()" in source
-    assert "PROVIDER_DERIVATIVE_TOO_LARGE" in source
+    assert "PROVIDER_ORIGINAL_TOO_LARGE" in source
+    assert "PROVIDER_DERIVATIVE_TOO_LARGE" not in source
 
 
 def test_content_worker_callback_url_and_cloud_name_are_canonical(monkeypatch):
@@ -266,11 +269,11 @@ def test_image_eager_contract_requires_two_jpeg_derivatives():
     from allpha_api.content_provider_callback_worker import validate_eager_derivative_contract
 
     validate_eager_derivative_contract("image/jpeg", [
-        {"format": "jpg", "status": "success"},
-        {"format": "jpg", "status": "success"},
+        {"transformation": "c_limit,w_1600,f_jpg,q_auto", "format": "jpg", "status": "success"},
+        {"transformation": "c_fill,w_320,h_320,g_auto,f_jpg,q_auto", "format": "jpg", "status": "success"},
     ])
     with pytest.raises(ValueError, match="PROVIDER_IMAGE_RENDITION_CONTRACT_INVALID"):
-        validate_eager_derivative_contract("image/jpeg", [{"format": "jpg", "status": "success"}])
+        validate_eager_derivative_contract("image/jpeg", [{"transformation": "c_limit,w_1600,f_jpg,q_auto", "format": "jpg", "status": "success"}])
 
 
 @pytest.mark.parametrize(("resource_type", "path"), [
