@@ -515,10 +515,12 @@ export function AiCinemaCreatorWorkspace({ getAccessToken }: Props) {
       }
       setUploadDraftId(contentId);
       setUploadIdempotencyKey(mediaId);
-      await uploadNativeFileWithCloudinary(
+      await uploadNativeFileWithProvider(
         file, contentId, mediaId, uploadAsset.name, mediaType,
+        process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "",
         (path, init) => request(getAccessToken, path, init),
         setUploadProgress,
+        "allpha:cinema:tus",
       );
       await SecureStore.deleteItemAsync(sessionKey);
       setUploadAsset(null); setUploadDraftId(""); setUploadIdempotencyKey(""); setUploadProgress(100);
