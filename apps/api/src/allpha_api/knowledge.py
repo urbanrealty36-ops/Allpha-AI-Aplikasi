@@ -96,9 +96,14 @@ async def _admin_db_request(method: str, path: str, access_token: str | None = N
     if not base or not (service_role or secret):
         raise HTTPException(503, detail={"code": "KNOWLEDGE_WRITE_UNAVAILABLE", "message": "Operasi sumber pengetahuan belum dikonfigurasi di server."})
     key = service_role or secret
-    headers = {"apikey": key, "Content-Type": "application/json"}
-    if service_role:
-        headers["Authorization"] = f"Bearer {service_role}"
+    # PostgREST requires the server key in both headers. SUPABASE_SECRET_KEY
+    # is a supported server credential and must not silently lose its Bearer
+    # authorization header when the legacy service-role variable is absent.
+    headers = {
+        "apikey": key,
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json",
+    }
     if prefer:
         headers["Prefer"] = prefer
     try:
