@@ -42,6 +42,42 @@ def test_eager_callback_persists_cloudinary_transform_metadata_only():
     assert all("storage_path" not in record and "sha256" not in record for record in records)
 
 
+
+
+def build_eager(media_type: str, formats: list[str], resource_type: str):
+    transformations = eager_transformations(media_type).split("|")
+    return [
+        {
+            "status": "success",
+            "secure_url": f"https://res.cloudinary.com/{CLOUD}/{resource_type}/authenticated/s--signed--/{transform}/v{VERSION}/{PUBLIC_ID}.{suffix}",
+            "transformation": transform,
+            "format": suffix,
+            "bytes": 12000 + index,
+            "width": 1280 if suffix in {"mp4", "jpg"} else 0,
+            "height": 720 if suffix in {"mp4", "jpg"} else 0,
+            "duration": 8.5 if suffix in {"mp4", "mp3", "m4a"} else None,
+        }
+        for index, (transform, suffix) in enumerate(zip(transformations, formats))
+    ]
+
+
+def test_video_derivatives_are_cloudinary_authenticated_renditions_and_poster():
+    records = build_cloudinary_derivative_metadata(
+        "video/mp4", build_eager("video/mp4", ["mp4", "mp4", "jpg"], "video"),
+        cloud_name=CLOUD, resource_type="video", public_id=PUBLIC_ID, version=VERSION,
+    )
+    assert [record["kind"] for record in records] == ["rendition_1", "rendition_2", "moderation_poster"]
+    assert all(record["provider"] == "cloudinary" for record in records)
+
+
+def test_audio_derivatives_are_cloudinary_authenticated_renditions():
+    records = build_cloudinary_derivative_metadata(
+        "audio/mpeg", build_eager("audio/mpeg", ["mp3", "m4a"], "video"),
+        cloud_name=CLOUD, resource_type="video", public_id=PUBLIC_ID, version=VERSION,
+    )
+    assert [record["kind"] for record in records] == ["rendition_1", "rendition_2"]
+    assert [record["mime_type"] for record in records] == ["audio/mpeg", "audio/mp4"]
+
 def test_eager_callback_rejects_non_success_transformations():
     eager = image_eager()
     eager[1]["status"] = "pending"
