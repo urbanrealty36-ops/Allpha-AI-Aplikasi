@@ -406,6 +406,17 @@ select public.reserve_cloudinary_media_upload(
         if unauthorized_profile.returncode == 0 or "MEDIA_RESOURCE_ACCESS_DENIED" not in unauthorized_profile.stderr:
             raise RuntimeError("cross-owner profile media reservation was not rejected")
 
+        psql("""
+do $do$
+declare v jsonb;
+begin
+ v:=public.cloudinary_media_schema_readiness();
+ if v->>'contract_version'<>'1' or not (v ? 'ready') then
+  raise exception 'Cloudinary media schema readiness contract is malformed: %',v;
+ end if;
+end
+$do$;
+""")
         psql(f"""
 insert into public.content_media(
  id,content_id,owner_id,bucket_id,storage_path,filename,media_type,size_bytes,sha256,status,scan_status
