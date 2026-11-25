@@ -182,7 +182,7 @@ def test_production_router_requires_owner_agent_skill_attribution_before_provide
 
     router = make_router(adapter, preflight=verify)
     with pytest.raises(TextGenerationRouterRejected, match="trusted owner, Agent and Skill"):
-        asyncio.run(router.generate(request()))
+        asyncio.run(router.generate(request_with_billing_context()))
     assert adapter.calls == 0
 
 
@@ -278,11 +278,12 @@ def test_text_generation_fails_over_only_when_primary_preflight_is_unavailable()
         fallback_routes={"private": (TextGenerationRoute("provider-b", "model-a", "version-a"),)},
         adapters={"provider-a": primary, "provider-b": fallback},
         policies={"private": policy}, metering_sink=MemorySink(), runtime_preflight=verify,
+        credit_ledger=FakeCreditLedger(),
     )
     ready = asyncio.run(router.preflight("private"))
     assert ready["route"]["provider_id"] == "provider-b"
     assert ready["route"]["fallback_used"] is True
-    response, evidence = asyncio.run(router.generate(request()))
+    response, evidence = asyncio.run(router.generate(request_with_billing_context()))
     assert response.provider_id == "provider-b"
     assert evidence.provider_id == "provider-b"
     assert primary.calls == 0
