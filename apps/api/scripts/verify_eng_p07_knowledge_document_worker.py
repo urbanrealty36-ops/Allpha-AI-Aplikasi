@@ -9,6 +9,7 @@ import uuid
 
 ROOT=Path(__file__).resolve().parents[3]
 MIGRATIONS=ROOT/"apps/api/supabase/migrations"
+SOURCE_ONLY=ROOT/"apps/api/supabase/source-only-migrations"
 FILES=[
  MIGRATIONS/"20261014173000_eng_p07_knowledge_fulltext_index.sql",
  MIGRATIONS/"20261014180000_eng_p09_knowledge_job_leases.sql",
@@ -21,6 +22,7 @@ FILES=[
  MIGRATIONS/"20261124052559_eng_p07_delete_fence_authorize_before_lookup.sql",
  MIGRATIONS/"20261124081300_eng_p07_knowledge_job_lease_heartbeat.sql",
  MIGRATIONS/"20261124091222_eng_p07_knowledge_source_state_lease_fence.sql",
+ SOURCE_ONLY/"20261125150000_eng_p07_knowledge_acl_hardening.sql",
 ]
 NAME="allpha-p07-knowledge-"+uuid.uuid4().hex[:8]
 OWNER="11111111-1111-4111-8111-111111111111"
@@ -258,12 +260,39 @@ do $do$
 begin
  if has_table_privilege('authenticated','public.agent_knowledge_sources','INSERT')
     or has_table_privilege('authenticated','public.agent_knowledge_sources','UPDATE')
+    or has_table_privilege('authenticated','public.agent_knowledge_sources','DELETE')
+    or has_table_privilege('authenticated','public.agent_knowledge_sources','TRUNCATE')
+    or has_table_privilege('authenticated','public.agent_knowledge_sources','REFERENCES')
+    or has_table_privilege('authenticated','public.agent_knowledge_sources','TRIGGER')
     or has_table_privilege('authenticated','public.agent_knowledge_jobs','INSERT')
-    or has_table_privilege('authenticated','public.agent_knowledge_chunks','DELETE') then
-  raise exception 'authenticated role retains Knowledge lifecycle DML';
+    or has_table_privilege('authenticated','public.agent_knowledge_jobs','UPDATE')
+    or has_table_privilege('authenticated','public.agent_knowledge_jobs','DELETE')
+    or has_table_privilege('authenticated','public.agent_knowledge_jobs','TRUNCATE')
+    or has_table_privilege('authenticated','public.agent_knowledge_jobs','REFERENCES')
+    or has_table_privilege('authenticated','public.agent_knowledge_jobs','TRIGGER')
+    or has_table_privilege('authenticated','public.agent_knowledge_chunks','INSERT')
+    or has_table_privilege('authenticated','public.agent_knowledge_chunks','UPDATE')
+    or has_table_privilege('authenticated','public.agent_knowledge_chunks','DELETE')
+    or has_table_privilege('authenticated','public.agent_knowledge_chunks','TRUNCATE')
+    or has_table_privilege('authenticated','public.agent_knowledge_chunks','REFERENCES')
+    or has_table_privilege('authenticated','public.agent_knowledge_chunks','TRIGGER') then
+  raise exception 'authenticated role retains Knowledge lifecycle or table-level bypass privileges';
+ end if;
+ if has_table_privilege('anon','public.agent_knowledge_sources','SELECT')
+    or has_table_privilege('anon','public.agent_knowledge_jobs','SELECT')
+    or has_table_privilege('anon','public.agent_knowledge_chunks','SELECT')
+    or has_table_privilege('anon','public.agent_knowledge_sources','TRUNCATE')
+    or has_table_privilege('anon','public.agent_knowledge_jobs','TRUNCATE')
+    or has_table_privilege('anon','public.agent_knowledge_chunks','TRUNCATE') then
+  raise exception 'anon role retains Knowledge table privileges';
  end if;
  if not has_table_privilege('authenticated','public.agent_knowledge_sources','SELECT') then
   raise exception 'authenticated owner read access was removed';
+ end if;
+ if not has_table_privilege('service_role','public.agent_knowledge_sources','INSERT')
+    or not has_table_privilege('service_role','public.agent_knowledge_jobs','UPDATE')
+    or not has_table_privilege('service_role','public.agent_knowledge_chunks','DELETE') then
+  raise exception 'service_role lost canonical Knowledge worker data access';
  end if;
  if has_function_privilege('authenticated','public.persist_agent_knowledge_chunk_batch(uuid,uuid,integer,boolean,jsonb)','EXECUTE')
     or has_function_privilege('authenticated','public.complete_agent_knowledge_document_parse(uuid,uuid,integer,integer)','EXECUTE')
@@ -315,7 +344,7 @@ begin
  end if;
 end $do$;
 """)
-  print("PASS: ENG-P07 PostgreSQL 17 private quarantine enqueue, idempotency, lease-fenced chunk persistence, atomic embedding handoff, retry recovery, deletion fencing and client DML lockdown.")
+  print("PASS: ENG-P07 PostgreSQL 17 private quarantine enqueue, idempotency, lease-fenced chunk persistence, atomic embedding handoff, retry recovery, deletion fencing and least-privilege client ACL lockdown.")
  finally:
   run(["docker","rm","--force",NAME],check=False)
 
