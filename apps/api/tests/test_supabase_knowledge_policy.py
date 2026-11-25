@@ -141,3 +141,12 @@ def test_provider_preserves_timezone_aware_expiry_timestamps():
         assert snapshot.consent_expires_at == "2026-12-01T10:00:00+07:00"
         assert snapshot.grant_expires_at == "2026-12-02T10:00:00+00:00"
     asyncio.run(scenario())
+
+def test_provider_factory_accepts_supabase_secret_key(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://project.supabase.co")
+    monkeypatch.delenv("SUPABASE_SERVICE_ROLE_KEY", raising=False)
+    monkeypatch.setenv("SUPABASE_SECRET_KEY", "canonical-secret-key")
+
+    provider = build_provider()
+
+    assert provider._service_role_key == "canonical-secret-key"
