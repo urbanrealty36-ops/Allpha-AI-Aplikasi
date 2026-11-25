@@ -32,11 +32,12 @@ class TranscodeWorker:
   jid=str(job["id"]);token=str(job["lease_token"]);mid=str(job["media_id"]);p=job.get("payload") or {}
   try:
    bucket=str(p["bucket_id"]);path=str(p["storage_path"])
+   media_type=str(p["media_type"])
    url=f"{self.base}/storage/v1/object/{quote(bucket,safe='')}/{quote(path,safe='/')}"
    src=await self.client.get(url);src.raise_for_status();data=src.content
-   if hashlib.sha256(data).hexdigest()!=p["sha256"]:raise ValueError("MEDIA_SOURCE_HASH_MISMATCH")
+   if len(data)!=int(p.get("size_bytes") or 0) or hashlib.sha256(data).hexdigest()!=p["sha256"]:
+    raise ValueError("MEDIA_SOURCE_HASH_MISMATCH")
    await self.scan(data,str(p.get("filename") or mid),media_type)
-   media_type=str(p["media_type"])
    intent=build_signed_upload_intent(config=self.cloudinary,media_id=mid,media_type=media_type,callback_url=self.callback)
    resource=str(intent["resource_type"])
    public_id=str(intent["public_id"])
@@ -46,7 +47,11 @@ class TranscodeWorker:
    async with httpx.AsyncClient(trust_env=False, follow_redirects=False, timeout=httpx.Timeout(180,connect=10)) as provider_client:
     upload=await provider_client.post(str(intent["upload_url"]),data={k:v for k,v in form.items() if k!="file"},files={"file":form["file"]})
    upload.raise_for_status();asset=upload.json()
-   if asset.get("public_id")!=public_id or not asset.get("asset_id") or not asset.get("batch_id"):
+   if (
+    asset.get("public_id")!=public_id or asset.get("resource_type")!=resource
+    or asset.get("type")!="authenticated" or int(asset.get("bytes") or 0)!=len(data)
+    or not asset.get("asset_id") or not asset.get("batch_id")
+   ):
     raise ValueError("CLOUDINARY_UPLOAD_RESPONSE_INVALID")
    handoff=await self.rpc("handoff_content_provider_job",{
     "p_job_id":jid,"p_lease_token":token,"p_media_id":mid,
@@ -55,7 +60,7 @@ class TranscodeWorker:
    })
    if not isinstance(handoff,dict) or handoff.get("outcome")!="handed_off":
     raise ValueError("MEDIA_PROVIDER_HANDOFF_LEASE_LOST")
-   # Job remains processing until authenticated eager callback copies derivatives to Supabase.
+   # Job remains processing until the authenticated eager callback verifies the original and persists Cloudinary derivative identities.
   except Exception as exc:
    log.exception("transcode dispatch failed job=%s media=%s",jid,mid)
    try:await self.rpc("fail_content_lifecycle_job",{"p_job_id":jid,"p_lease_token":token,"p_error_code":(str(exc) if isinstance(exc,ValueError) else type(exc).__name__)[:80]})
