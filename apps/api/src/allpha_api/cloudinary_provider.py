@@ -6,6 +6,7 @@ FastAPI and workers so no domain reimplements provider cryptography.
 """
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import os
@@ -205,7 +206,7 @@ def build_signed_authenticated_delivery_url(
     components.append(f"{public_id}.{format.lower()}")
     signed_path = "/".join(components)
     digest = hashlib.sha1((signed_path + config.api_secret).encode("utf-8")).digest()
-    signature = __import__("base64").urlsafe_b64encode(digest).decode("ascii")[:8]
+    signature = base64.urlsafe_b64encode(digest).decode("ascii")[:8]
     path = "/".join((
         config.cloud_name,
         resource_type,
