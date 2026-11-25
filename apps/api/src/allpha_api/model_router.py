@@ -625,6 +625,8 @@ class CanonicalTextGenerationRouter:
         policy = self._policies[request.sensitivity]
         if request.timeout_ms > policy.max_latency_ms:
             raise TextGenerationRouterRejected("request timeout exceeds approved latency budget")
+        if self._runtime_preflight is not None and not all((request.owner_id, request.agent_id, request.source_id)):
+            raise TextGenerationRouterRejected("runtime generation requires trusted owner, Agent and Skill attribution before provider execution")
         combined_prompt = request.prompt_material()
         if len(combined_prompt.encode("utf-8")) > policy.max_prompt_bytes:
             raise TextGenerationRouterRejected("combined system and user prompt exceeds approved policy bound")
@@ -664,23 +666,29 @@ class CanonicalTextGenerationRouter:
                         timeout=request.timeout_ms / 1000,
                     )
                     latency_ms = max(0, int((time.monotonic() - started) * 1000))
+                    policy_rejection: str | None = None
                     if (response.task_id != request.task_id or response.trace_id != request.trace_id
                             or response.provider_id != route.provider_id or response.model_id != route.model_id
                             or response.model_version != route.model_version):
-                        raise TextGenerationRouterRejected("provider response identity does not match the approved route")
-                    if response.output_tokens > request.max_output_tokens:
-                        raise TextGenerationRouterRejected("provider output exceeded requested token limit")
-                    if response.tool_calls and not request.tool_definitions:
-                        raise TextGenerationRouterRejected("provider returned tool calls when no tools were authorized for this request")
-                    if len(response.tool_calls) > request.max_tool_calls:
-                        raise TextGenerationRouterRejected("provider returned more tool calls than the request limit")
-                    allowed_tool_names = {item["function"]["name"] for item in request.tool_definitions}
-                    if any(call.name not in allowed_tool_names for call in response.tool_calls):
-                        raise TextGenerationRouterRejected("provider returned a tool name outside the request allowlist")
+                        policy_rejection = "provider response identity does not match the approved route"
+                    elif response.output_tokens > request.max_output_tokens:
+                        policy_rejection = "provider output exceeded requested token limit"
+                    elif response.tool_calls and not request.tool_definitions:
+                        policy_rejection = "provider returned tool calls when no tools were authorized for this request"
+                    elif len(response.tool_calls) > request.max_tool_calls:
+                        policy_rejection = "provider returned more tool calls than the request limit"
+                    else:
+                        allowed_tool_names = {item["function"]["name"] for item in request.tool_definitions}
+                        if any(call.name not in allowed_tool_names for call in response.tool_calls):
+                            policy_rejection = "provider returned a tool name outside the request allowlist"
                     if response.cost_unit != policy.cost_unit or response.pricing_version != policy.pricing_version:
-                        raise TextGenerationRouterRejected("provider usage does not match approved pricing contract")
+                        policy_rejection = policy_rejection or "provider usage does not match approved pricing contract"
                     if response.cost_microunits > policy.max_cost_microunits:
-                        raise TextGenerationRouterRejected("provider cost exceeded approved policy budget")
+                        policy_rejection = policy_rejection or "provider cost exceeded approved policy budget"
+                    if latency_ms > policy.max_latency_ms:
+                        policy_rejection = policy_rejection or "provider latency exceeded approved policy budget"
+                    # Provider execution may already be billable even when its result
+                    # violates a request/policy limit. Persist the usage evidence first.
                     prompt_hash = hashlib.sha256(request.prompt_material().encode("utf-8")).hexdigest()
                     output_material = response.output_text if response.output_text.strip() else json.dumps(
                         [{"id": call.call_id, "name": call.name, "arguments": call.arguments} for call in response.tool_calls],
@@ -714,6 +722,8 @@ class CanonicalTextGenerationRouter:
                         raise TextGenerationRouterUnavailable(
                             "generation completed but durable usage evidence could not be recorded; automatic replay is blocked"
                         ) from exc
+                    if policy_rejection:
+                        raise TextGenerationRouterRejected(policy_rejection)
                     return response, evidence
                 except TextGenerationProviderTransient as exc:
                     if not exc.safe_to_retry:
