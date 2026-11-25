@@ -64,6 +64,11 @@ for (const contract of [
   "Draft konten tersimpan melalui FastAPI", "Konten dikirim untuk moderasi"
 ]) assert.ok(app.includes(contract), `missing ENG-P13 Native content pipeline contract: ${contract}`);
 
+const nativeResumableMedia = readFileSync(new URL("../components/AiCinemaCreatorWorkspace.tsx", import.meta.url), "utf8");
+for (const contract of ["Tus-Resumable", "Upload-Offset", "upload_token", "upload_metadata", "allpha:cinema:tus"]) {
+  assert.ok(nativeResumableMedia.includes(contract), `missing Native TUS media contract: ${contract}`);
+}
+
 for (const contract of [
   "/v1/feed?", "/v1/feed/preferences", "/reaction", "/save", "/comments", "/report", "/share",
   "loadNativeFeed", "saveNativeFeedPreferences", "nativeFeedAction", "submitNativeFeedComment", "toggleNativeComments", "chooseNativeReportReason", "shareNativeContent", "Share.share",
