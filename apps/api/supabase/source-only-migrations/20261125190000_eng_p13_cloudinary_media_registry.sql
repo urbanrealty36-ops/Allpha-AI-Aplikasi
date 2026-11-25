@@ -490,7 +490,7 @@ begin
 
   select * into v_job from public.content_lifecycle_jobs
   where id=p_job_id and status='processing' and lease_token=p_lease_token
-    and lease_expires_at>now() and job_type='media_transcode' and media_id=p_media_id
+    and lease_expires_at>now() and job_type in ('media_transcode','image_process') and media_id=p_media_id
   for update;
   if not found then return jsonb_build_object('outcome','lease_lost'); end if;
 
@@ -516,7 +516,7 @@ begin
   where id=p_media_id returning * into v_media;
 
   update public.content_lifecycle_jobs
-  set status='awaiting_provider',lease_token=null,lease_expires_at=null,
+  set job_type='media_transcode',status='awaiting_provider',lease_token=null,lease_expires_at=null,
     payload=coalesce(payload,'{}'::jsonb)||jsonb_build_object(
       'provider','cloudinary','provider_asset_id',p_provider_asset_id,
       'provider_public_id',p_provider_public_id,'provider_batch_id',p_provider_batch_id,
