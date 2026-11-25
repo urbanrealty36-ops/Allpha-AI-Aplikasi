@@ -178,7 +178,7 @@ const superAdmin = readFileSync(superAdminPath, "utf8");
 const contentStudio = readFileSync(new URL("../app/content-studio/page.tsx", import.meta.url), "utf8");
 const resumableMediaUploader = readFileSync(new URL("../lib/resumable-media-upload.ts", import.meta.url), "utf8");
 for (const contract of [
-  "/v1/content/mine", "/v1/content", "uploadContentMediaWithTus", "/preview", "/publish", "/retry",
+  "/v1/content/mine", "/v1/content", "uploadContentMediaWithCloudinary", "/preview", "/publish", "/retry",
   "Authorization", "session.access_token", "preview_url", "visibility", "content_type",
   "Konten dikirim untuk ditinjau."
 ]) assert.ok(contentStudio.includes(contract), `missing ENG-P13 Web content contract: ${contract}`);
