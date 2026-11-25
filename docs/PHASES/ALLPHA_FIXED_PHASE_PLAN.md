@@ -1579,3 +1579,11 @@ This is an evidence refresh inside the existing fixed plan. It does not create a
 - **Scope:** This is an internal credential-resolution compatibility fix only. It does not create credentials, alter provider/tariff/model/dimension decisions, change client contracts, or activate the Knowledge document/embedding consumers. All credentials remain server-only; the canonical RPC, approved embedding profile, scanner and vector generation continue to fail closed when unavailable.
 - **Status:** ENG-P07 key-resolution source and regression coverage are **implemented**; policy/RPC/vector production integration remains **deferred / not verified**. ENG-P07 remains `in_progress`.
 - **Next:** continue the P07 consent/source-grant and ingestion-to-retrieval vertical slice, then P09 Model Router and P10–P11 runtime/workflow. Do not mark integration verified based on source-only credential compatibility.
+
+## 40.70 — ENG-P07 Knowledge admin REST secret-key authorization (2026-11-25)
+
+- **Implementation:** `f7b43c314f14337e1d3f4b7d36cc1009a5546c3a` fixes `apps/api/src/allpha_api/knowledge.py::_admin_db_request()`. Previously, the `SUPABASE_SECRET_KEY`-only path populated `apikey` but omitted the PostgREST `Authorization: Bearer` header because that header was conditional on the legacy `SUPABASE_SERVICE_ROLE_KEY`. The request now sends both headers from the single resolved server-only key.
+- **Focused regression coverage:** `5dd9bc19571806ed6ee832c36c65374501c5c8af` adds parameterized coverage for both supported server credential variables and asserts matching `apikey` and Bearer authorization headers. Test source was committed; execution result is pending CI.
+- **Scope:** No schema or data changes; no client credential exposure. This closes an actual runtime failure mode in the Knowledge source lifecycle when deployments use the canonical secret key exclusively.
+- **Status:** API credential-resolution source is **implemented**; regression execution and production Knowledge lifecycle remain **not verified**. ENG-P07 remains `in_progress`.
+- **Next:** continue P07 retrieval consent/grant integration and vector persistence without reusing general legal consent as Knowledge permission or fabricating an embedding profile/dimension. Then proceed in canonical order through P08–P11 and AI Cinema.
