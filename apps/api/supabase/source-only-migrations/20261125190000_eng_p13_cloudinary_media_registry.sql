@@ -592,7 +592,7 @@ begin
   if not found then return 'lease_lost'; end if;
 
   update public.content_media
-  set provider_delete_state='deleted',provider_deleted_at=coalesce(provider_deleted_at,now())
+  set status='deleted',provider_delete_state='deleted',provider_deleted_at=coalesce(provider_deleted_at,now()),updated_at=now()
   where id=p_media_id and owner_id=v_job.owner_id and status='deleting'
     and storage_provider='cloudinary'
     and provider_public_id=v_job.payload->>'provider_public_id'
