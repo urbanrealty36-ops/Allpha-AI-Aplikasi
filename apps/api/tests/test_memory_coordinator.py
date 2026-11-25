@@ -37,6 +37,8 @@ class FakeMemoryCoordinator(MemoryCoordinator):
             return self.conversation_participants
         if path == "messages":
             return self.message_rows
+        if path == "rpc/expire_agent_memory_items_batch":
+            return {"expired_count": 7}
         if path == "rpc/agent_memory_transition":
             return {"expired_count": 0}
         if path == "rpc/agent_memory_search":
@@ -286,3 +288,40 @@ def test_conversation_context_applies_policy_retention_window():
     assert asyncio.run(store.conversation_context(conversation,requester,agent)) == "Human: recent"
     message_read = next(call for call in store.calls if call["path"]=="messages")
     assert message_read["params"]["created_at"].startswith("gte.")
+
+
+def test_global_memory_expiry_uses_bounded_batch_rpc(monkeypatch):
+    monkeypatch.setenv("ALLPHA_MEMORY_COORDINATOR_ENABLED", "true")
+    store = FakeMemoryCoordinator()
+    result = asyncio.run(store.expire_all(batch_limit=25))
+    assert result == {"expired_count": 7, "batch_limit": 25}
+    call = next(call for call in store.calls if call["path"] == "rpc/expire_agent_memory_items_batch")
+    assert call["method"] == "POST"
+    assert call["body"] == {"p_limit": 25}
+    assert not any(
+        call["path"] == "rpc/agent_memory_transition"
+        and call["body"]["p_action"] == "expire_all"
+        for call in store.calls
+    )
+
+
+@pytest.mark.parametrize("batch_limit", [0, 501, True, 1.5, "10"])
+def test_global_memory_expiry_rejects_unbounded_or_invalid_batch_size(monkeypatch, batch_limit):
+    monkeypatch.setenv("ALLPHA_MEMORY_COORDINATOR_ENABLED", "true")
+    store = FakeMemoryCoordinator()
+    with pytest.raises(MemoryDenied):
+        asyncio.run(store.expire_all(batch_limit=batch_limit))
+    assert not store.calls
+
+
+def test_global_memory_expiry_fails_closed_when_bounded_rpc_response_is_invalid(monkeypatch):
+    monkeypatch.setenv("ALLPHA_MEMORY_COORDINATOR_ENABLED", "true")
+
+    class InvalidRetentionRPC(FakeMemoryCoordinator):
+        async def db(self, method, path, *, params=None, body=None, prefer=None):
+            self.calls.append({"method": method, "path": path, "params": params, "body": body})
+            return {"expired_count": 501}
+
+    store = InvalidRetentionRPC()
+    with pytest.raises(MemoryUnavailable):
+        asyncio.run(store.expire_all(batch_limit=500))
