@@ -405,6 +405,11 @@ begin
        or v_existing.provider_delivery_type is distinct from p_delivery_type then
       raise exception 'MEDIA_IDEMPOTENCY_CONFLICT' using errcode='23505';
     end if;
+    if v_existing.status='uploading' and v_existing.provider_asset_id is null then
+      update public.content_media
+      set upload_expires_at=p_upload_expires_at,updated_at=now()
+      where id=v_existing.id returning * into v_existing;
+    end if;
     return jsonb_build_object('media',to_jsonb(v_existing),'idempotent_replay',true);
   end if;
   insert into public.content_media(
