@@ -623,7 +623,7 @@ export default function AiCinemaCreatorWorkspace() {
         const next: PersistedCinemaUpload = { contentId, mediaId, filename: file.name, size: file.size, sha256: digest };
         window.localStorage.setItem(sessionKey, JSON.stringify(next));
       }
-      await uploadContentMedia(authorizedRequest, contentId, file, mediaId, setUploadProgress);
+      await uploadContentMedia(authorizedRequest, contentId, file, mediaId, setUploadProgress, mediaType);
       window.localStorage.removeItem(sessionKey);
       window.localStorage.removeItem("allpha:cinema:tus:" + mediaId);
       if (kind === "feature") setFeatureFilmFile(null);
