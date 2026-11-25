@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import Link from "next/link";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
-import { uploadContentMediaWithTus } from "../../lib/resumable-media-upload";
+import { uploadContentMedia } from "../../lib/resumable-media-upload";
 import StoriesViewerModal, { type StoryItem } from "../../components/reference-ui/StoriesViewerModal";
 type StoryMedia = { id: string; filename: string; media_type: string; preview_url?: string | null };
 type Story = {
@@ -141,7 +141,7 @@ export default function StoriesPage() {
       if (file) {
         const key = uploadId || crypto.randomUUID();
         setUploadId(key);
-        await uploadContentMediaWithTus(request, storyId, file, key, setUploadProgress);
+        await uploadContentMedia(request, storyId, file, key, setUploadProgress);
       }
       const submitted = await request("/v1/content/" + encodeURIComponent(storyId) + "/publish", { method: "POST" }) as { item?: Story; message?: string };
       setBody(""); setFile(null); setDraftId(""); setUploadId(""); setUploadProgress(0);
