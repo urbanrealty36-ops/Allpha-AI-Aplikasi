@@ -34,7 +34,7 @@ A successful image build or running container is not processing evidence. Activa
 - The worker claims only image_process jobs using the typed claim RPC, so video/audio jobs remain queued until a managed transcoding provider has been approved and configured.
 - Build context: apps/api; Dockerfile: apps/api/Dockerfile.media-worker; entrypoint: allpha-content-media-worker.
 - Run as a separate, non-root container with CPU/memory/PID limits and restricted egress. The image worker needs only Supabase Storage/API and the approved ClamAV daemon endpoint; it must not receive unrelated provider credentials.
-- Required server-only environment: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (or supported secret alias), CLAMAV_HOST; optional CLAMAV_PORT, CONTENT_IMAGE_BATCH_SIZE, CONTENT_IMAGE_LEASE_SECONDS, CONTENT_IMAGE_POLL_SECONDS.
+- Required server-only environment: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (or supported secret alias), and either the complete authenticated remote scanner contract (ALLPHA_DOCUMENT_SCANNER_URL, ALLPHA_DOCUMENT_SCANNER_API_KEY, ALLPHA_DOCUMENT_SCANNER_ALLOWED_HOSTS, ALLPHA_DOCUMENT_SCANNER_ID, ALLPHA_DOCUMENT_SCANNER_ENGINE_VERSION, ALLPHA_DOCUMENT_SCANNER_SIGNATURE_VERSION) or explicitly enabled/pinned local ClamAV (ALLPHA_DOCUMENT_SCANNER_MODE=clamd, ALLPHA_CLAMAV_ENABLED=true, CLAMAV_HOST). Optional controls: CLAMAV_PORT, CONTENT_IMAGE_BATCH_SIZE, CONTENT_IMAGE_LEASE_SECONDS, CONTENT_IMAGE_POLL_SECONDS.
 - It verifies the source SHA-256, requires ClamAV clean response, decodes with Pillow pixel limits, strips metadata through re-encoding, writes display/thumbnail WebP derivatives, and calls the atomic completion RPC. Only that RPC marks image media ready.
 - Missing scanner, invalid images, hash mismatch, or derivative persistence failure must fail closed. No image is marked ready without a clean scan and durable derivative paths.
 - This source implementation is NOT runtime activation evidence. Do not activate until the new migrations are reviewed/applied through the approved non-production path, the worker image is built and scanned, secrets/egress/resource limits are configured, and real integration checks are authorized.
@@ -94,7 +94,7 @@ A successful image build or running container is not processing evidence. Activa
 - Entrypoint: allpha-content-provider-callback; Dockerfile: apps/api/Dockerfile.provider-callback-worker.
 - The FastAPI webhook does only raw-body signature verification, media/asset/batch correlation and an atomic database enqueue. It returns quickly so the provider's notification timeout/retry window is not consumed by large file transfers.
 - The callback payload and digest are stored in content_provider_callbacks; a unique provider_callback lifecycle job is inserted in the same Postgres RPC.
-- The isolated callback worker claims the job, downloads only signed authenticated Cloudinary URLs from the configured CDN host, enforces size/MIME limits, scans each derivative through ClamAV, copies derivatives into private Supabase Storage, and calls the atomic provider completion RPC.
+- The isolated callback worker claims the job, downloads only signed authenticated Cloudinary URLs from the configured CDN host, enforces size/MIME limits, scans each derivative through the canonical authenticated remote scanner (or explicitly enabled pinned ClamAV), copies derivatives into private Supabase Storage, and calls the atomic provider completion RPC.
 - A provider_callback job can be operator-retried without clearing the Cloudinary asset/batch identity; if exhausted, media remains non-ready/failed.
 
 
@@ -252,3 +252,11 @@ For planned Agent tasks that carry Knowledge citations, the API and shared worke
 - Embedding retries are permitted only when the adapter can prove the request did not execute (connection was never established) or the provider explicitly returned HTTP 429. The adapter honors a bounded Retry-After value for the latter.
 - Provider timeouts, post-connect transport errors, HTTP 408/425 and 5xx are outcome-unknown and terminal for the current billable request. They are not replayed by the router or requeued as a fresh provider call; this prevents duplicate provider charges when the first response may have been lost.
 - Text generation remains single-attempt and fail-closed after timeout, transport uncertainty or metering uncertainty. Cross-provider fallback is not enabled until every candidate has an independently approved active tariff/policy and an adapter-level non-execution/idempotency contract. No default provider or fallback is inferred.
+
+
+### Canonical remote scanner reuse for media workers (source implemented)
+
+- Image, subtitle, Cloudinary transcode and Cloudinary callback workers now use the same allpha.document-scan.v1 authenticated scanner contract already implemented for Knowledge documents. This avoids requiring a second scanner service or loading a 2.5 GB ClamAV signature database into the 1 GB shared Railway worker.
+- Remote mode is the default. It pins the exact allowlisted HTTPS hostname to validated public DNS addresses, disables redirects and ambient proxies, validates the scanner/engine/signature identity, requires an exact SHA-256 receipt, and fails closed on missing/ambiguous verdicts. Malware verdicts are terminal; unavailable/missing scanner remains fail-closed with stable error codes for bounded retry handling.
+- Local ClamAV is available only when ALLPHA_DOCUMENT_SCANNER_MODE=clamd and ALLPHA_CLAMAV_ENABLED=true, with deployment-pinned engine/signature identity and CLAMAV_HOST. Do not use local mode on the current 1 GB shared Railway worker.
+- The media workers remain disabled until the remote scanner endpoint, credential, exact hostname allowlist and immutable scanner identity are configured on the actual worker service; Knowledge scanner configuration on another service is not implicitly inherited.

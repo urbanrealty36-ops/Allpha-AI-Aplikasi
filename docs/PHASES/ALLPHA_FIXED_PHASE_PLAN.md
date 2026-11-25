@@ -1768,3 +1768,13 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 - **P07 remaining:** `resolve_agent_knowledge_policy` and the consent/grant RPCs are absent; no dedicated knowledge consent/source-grant tables exist; no vector columns or vector index exist on Knowledge chunks (the vector extension is installed, but the embedding model/version/dimension and index parameters are not approved). Do not enable retrieval or mark P07 complete.
 - **Commit:** `1d8c8bd7f12b81cea9ad3a2055c7f6c013c65409` (`fix(knowledge): revoke client table-level bypass privileges`).
 - **Status:** ACL hardening is implemented and the focused PostgreSQL 17 verifier passed; the migration remains source-only and production privileges are unchanged until the approved forward migration is applied. ENG-P07 remains `in_progress`; next work is the Privacy/Security + Data Platform reviewed canonical consent/grant schema, followed by the approved vector profile contract.
+
+
+## 40.91 — Reuse canonical remote malware scanner for ENG-P13 media workers (2026-11-25)
+
+- **Implementation:** media_scanner.py now supports the existing versioned allpha.document-scan.v1 remote scanner contract and retains local ClamAV only as an explicit opt-in. Image, subtitle, Cloudinary transcode and Cloudinary callback workers now call the same asynchronous scanner adapter.
+- **Security properties:** remote scanner uses the existing HTTPS exact-host allowlist, DNS pinning, no redirects/proxy, bounded response, pinned scanner/engine/signature identity and exact SHA-256 receipt. Malware is a terminal rejection; unavailable/missing scanner remains fail-closed with stable error codes.
+- **Operational improvement:** this removes the mandatory local ClamAV daemon and its signature-memory footprint from the media worker contract. It is suitable for the existing 1 GB Railway shared worker if resource checks permit; it does not itself enable any worker.
+- **Focused tests added:** remote media scanner receipt, malicious verdict, missing configuration and media-worker readiness with remote scanner/no local ClamAV. Existing local ClamAV tests remain as opt-in compatibility coverage. CI result pending.
+- **Remaining activation dependency:** the actual remote scanner URL, API credential, exact hostname allowlist and scanner/engine/signature pins must be configured on the worker service itself. No scanner variables are currently evidenced on the Railway worker, so no worker is enabled and no media job is claimed.
+- **Status:** ENG-P13 remains in_progress; no media lifecycle or Cloudinary binary upload is production-verified.

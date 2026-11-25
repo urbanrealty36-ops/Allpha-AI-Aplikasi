@@ -82,3 +82,67 @@ def test_media_scanner_rejects_non_clean_verdict(monkeypatch):
     monkeypatch.setattr(media_scanner.socket, "create_connection", lambda *args, **kwargs: FakeSocket(responses.pop(0)))
     with pytest.raises(RuntimeError, match="NOT_CLEAN"):
         media_scanner.scan_media_bytes(b"infected", "clamav.internal", 3310)
+
+
+def test_remote_media_scanner_uses_canonical_document_scanner_contract(monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+
+    monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_MODE", "remote")
+    expected = {"scanner_id": "scanner-prod", "engine_version": "engine-1", "signature_version": "sig-1"}
+
+    class FakeRemoteScanner:
+        @classmethod
+        def from_environment(cls):
+            return cls()
+
+        async def scan(self, data, *, filename, media_type):
+            assert data == b"safe-media"
+            assert filename == "photo.jpg"
+            assert media_type == "image/jpeg"
+            return SimpleNamespace(as_provenance=lambda: {**expected, "sha256": "a" * 64, "contract_version": "allpha.document-scan.v1"})
+
+    monkeypatch.setattr(media_scanner, "RemoteDocumentScanner", FakeRemoteScanner)
+    receipt = asyncio.run(media_scanner.scan_media_bytes_async(
+        b"safe-media", filename="photo.jpg", media_type="image/jpeg",
+    ))
+    assert receipt["scanner_id"] == "scanner-prod"
+    assert receipt["engine_version"] == "engine-1"
+    assert receipt["signature_version"] == "sig-1"
+    assert receipt["contract_version"] == "allpha.document-scan.v1"
+
+
+def test_remote_media_scanner_maps_malware_to_terminal_rejection(monkeypatch):
+    import asyncio
+    from allpha_api.document_scanner import DocumentMalwareDetected
+
+    monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_MODE", "remote")
+
+    class FakeRemoteScanner:
+        @classmethod
+        def from_environment(cls):
+            return cls()
+
+        async def scan(self, data, *, filename, media_type):
+            raise DocumentMalwareDetected("malware")
+
+    monkeypatch.setattr(media_scanner, "RemoteDocumentScanner", FakeRemoteScanner)
+    with pytest.raises(ValueError, match="MEDIA_SCAN_REJECTED"):
+        asyncio.run(media_scanner.scan_media_bytes_async(
+            b"bad", filename="bad.mp4", media_type="video/mp4",
+        ))
+
+
+def test_remote_media_scanner_fails_closed_when_not_configured(monkeypatch):
+    from allpha_api.document_scanner import DocumentScannerConfigurationError
+
+    monkeypatch.setenv("ALLPHA_DOCUMENT_SCANNER_MODE", "remote")
+
+    class FakeRemoteScanner:
+        @classmethod
+        def from_environment(cls):
+            raise DocumentScannerConfigurationError("missing")
+
+    monkeypatch.setattr(media_scanner, "RemoteDocumentScanner", FakeRemoteScanner)
+    with pytest.raises(RuntimeError, match="REMOTE_SCANNER_NOT_CONFIGURED"):
+        media_scanner.require_media_scanner_configuration()

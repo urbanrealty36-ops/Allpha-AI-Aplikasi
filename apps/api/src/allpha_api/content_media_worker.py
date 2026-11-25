@@ -16,7 +16,7 @@ from urllib.parse import quote
 import httpx
 from PIL import Image, ImageOps, UnidentifiedImageError
 
-from allpha_api.media_scanner import local_scanner_identity_pins, scan_media_bytes
+from allpha_api.media_scanner import require_media_scanner_configuration, scan_media_bytes_async
 
 log = logging.getLogger("allpha.content_media_worker")
 Image.MAX_IMAGE_PIXELS = 40_000_000
@@ -89,8 +89,7 @@ class MediaWorker:
         self.batch_size = max(1, min(int(os.getenv("CONTENT_IMAGE_BATCH_SIZE", "1")), 10))
         self.lease_seconds = max(30, min(int(os.getenv("CONTENT_IMAGE_LEASE_SECONDS", "300")), 300))
         self.poll_seconds = max(1.0, float(os.getenv("CONTENT_IMAGE_POLL_SECONDS", "3")))
-        self.clamav_host = os.environ["CLAMAV_HOST"]
-        self.clamav_port = int(os.getenv("CLAMAV_PORT", "3310"))
+        self.scanner_mode = require_media_scanner_configuration()
         self.client = httpx.AsyncClient(trust_env=False, follow_redirects=False, 
             timeout=httpx.Timeout(60, connect=5),
             headers={"apikey": self.key, "Authorization": f"Bearer {self.key}",
@@ -103,8 +102,8 @@ class MediaWorker:
         response.raise_for_status()
         return response.json() if response.content else None
 
-    def scan(self, data: bytes) -> dict[str, Any]:
-        return scan_media_bytes(data, self.clamav_host, self.clamav_port)
+    async def scan(self, data: bytes, filename: str, media_type: str) -> dict[str, Any]:
+        return await scan_media_bytes_async(data, filename=filename, media_type=media_type)
 
     def derivatives(self, data: bytes) -> list[tuple[str, bytes, int, int]]:
         try:
@@ -147,7 +146,7 @@ class MediaWorker:
             source = await self.download_source(str(payload["bucket_id"]), str(payload["storage_path"]))
             if hashlib.sha256(source).hexdigest() != payload["sha256"]:
                 raise ValueError("MEDIA_SOURCE_HASH_MISMATCH")
-            await asyncio.to_thread(self.scan, source)
+            await self.scan(source, str(payload.get("filename") or media_id), str(payload.get("media_type") or "application/octet-stream"))
             variants = await asyncio.to_thread(self.derivatives, source)
             derivative_records = []
             root = str(payload["storage_path"])
@@ -184,7 +183,7 @@ class MediaWorker:
             digest = hashlib.sha256(source).hexdigest()
             if digest != payload["sha256"]:
                 raise ValueError("MEDIA_SOURCE_HASH_MISMATCH")
-            scan_receipt = await asyncio.to_thread(self.scan, source)
+            scan_receipt = await self.scan(source, str(payload.get("filename") or media_id), str(payload["media_type"]))
             validation = await asyncio.to_thread(validate_subtitle_bytes, source, str(payload["media_type"]))
             receipt = {**scan_receipt, "validation": validation}
             result = await self.rpc("complete_content_subtitle_job", {
@@ -238,13 +237,11 @@ def enabled() -> bool:
         raise SystemExit("ALLPHA_CONTENT_MEDIA_WORKER_ENABLED must be true or false")
     if value != "true":
         return False
-    if os.getenv("ALLPHA_CLAMAV_ENABLED", "false").strip().lower() != "true":
-        raise SystemExit("Content image worker requires ALLPHA_CLAMAV_ENABLED=true")
     try:
-        local_scanner_identity_pins()
+        scanner_mode = require_media_scanner_configuration()
     except RuntimeError as exc:
-        raise SystemExit("Content image worker requires pinned ClamAV engine/signature identity") from exc
-    required = ("SUPABASE_URL", "CLAMAV_HOST")
+        raise SystemExit("Content image worker requires a configured remote scanner or explicitly enabled pinned ClamAV") from exc
+    required = ("SUPABASE_URL",) + (("CLAMAV_HOST",) if scanner_mode == "clamd" else ())
     missing = [name for name in required if not os.getenv(name)]
     if not (os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SECRET_KEY")):
         missing.append("SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SECRET_KEY")

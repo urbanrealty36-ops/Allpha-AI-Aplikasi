@@ -1,10 +1,10 @@
 """Cloudinary video/audio transcode dispatcher. Provider callback owns readiness promotion."""
 from __future__ import annotations
-import asyncio, hashlib, logging, os, signal, time, uuid, socket, struct
+import asyncio, hashlib, logging, os, signal, time, uuid
 from urllib.parse import quote
 import httpx
 
-from allpha_api.media_scanner import local_scanner_identity_pins, scan_media_bytes
+from allpha_api.media_scanner import require_media_scanner_configuration, scan_media_bytes_async
 
 log=logging.getLogger("allpha.content_transcode_worker")
 
@@ -16,7 +16,7 @@ class TranscodeWorker:
   self.api_key=os.environ["CLOUDINARY_API_KEY"]
   self.secret=os.environ["CLOUDINARY_API_SECRET"]
   self.callback=os.environ["ALLPHA_CLOUDINARY_CALLBACK_URL"]
-  self.clamav_host=os.environ["CLAMAV_HOST"]; self.clamav_port=int(os.getenv("CLAMAV_PORT","3310"))
+  self.scanner_mode=require_media_scanner_configuration()
   self.worker_id=f"content-transcode-{uuid.uuid4()}"
   self.client=httpx.AsyncClient(trust_env=False, follow_redirects=False, timeout=httpx.Timeout(180,connect=10),headers={"apikey":self.key,"Authorization":f"Bearer {self.key}"})
   self.stopping=False
@@ -26,8 +26,8 @@ class TranscodeWorker:
   h={"apikey":self.key,"Authorization":f"Bearer {self.key}","Content-Type":"application/json"}
   if prefer:h["Prefer"]=prefer
   r=await self.client.request(method,f"{self.base}/rest/v1/{path}",params=params,json=body,headers=h);r.raise_for_status();return r.json() if r.content else None
- def scan(self,data):
-  return scan_media_bytes(data,self.clamav_host,self.clamav_port)
+ async def scan(self,data,filename,media_type):
+  return await scan_media_bytes_async(data,filename=filename,media_type=media_type)
  async def run_job(self,job):
   jid=str(job["id"]);token=str(job["lease_token"]);mid=str(job["media_id"]);p=job.get("payload") or {}
   try:
@@ -35,7 +35,7 @@ class TranscodeWorker:
    url=f"{self.base}/storage/v1/object/{quote(bucket,safe='')}/{quote(path,safe='/')}"
    src=await self.client.get(url);src.raise_for_status();data=src.content
    if hashlib.sha256(data).hexdigest()!=p["sha256"]:raise ValueError("MEDIA_SOURCE_HASH_MISMATCH")
-   await asyncio.to_thread(self.scan,data)
+   await self.scan(data,str(p.get("filename") or mid),media_type)
    media_type=str(p["media_type"])
    resource="video" # Cloudinary uses video resource_type for audio assets too.
    public_id=f"allpha/{mid}"
@@ -81,11 +81,9 @@ def enabled():
  raw=os.getenv("ALLPHA_CONTENT_TRANSCODE_WORKER_ENABLED","false").strip().lower()
  if raw not in {"true","false"}:raise SystemExit("ALLPHA_CONTENT_TRANSCODE_WORKER_ENABLED must be true or false")
  if raw!="true":return False
- if os.getenv("ALLPHA_CLAMAV_ENABLED","false").strip().lower()!="true":
-  raise SystemExit("Content transcode worker requires ALLPHA_CLAMAV_ENABLED=true")
- try:local_scanner_identity_pins()
- except RuntimeError as exc:raise SystemExit("Content transcode worker requires pinned ClamAV engine/signature identity") from exc
- required=("SUPABASE_URL","CLAMAV_HOST","CLOUDINARY_CLOUD_NAME","CLOUDINARY_API_KEY","CLOUDINARY_API_SECRET","ALLPHA_CLOUDINARY_CALLBACK_URL")
+ try:scanner_mode=require_media_scanner_configuration()
+ except RuntimeError as exc:raise SystemExit("Content transcode worker requires a configured remote scanner or explicitly enabled pinned ClamAV") from exc
+ required=("SUPABASE_URL","CLOUDINARY_CLOUD_NAME","CLOUDINARY_API_KEY","CLOUDINARY_API_SECRET","ALLPHA_CLOUDINARY_CALLBACK_URL") + (("CLAMAV_HOST",) if scanner_mode=="clamd" else ())
  missing=[name for name in required if not os.getenv(name)]
  if not (os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SECRET_KEY")):
   missing.append("SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SECRET_KEY")

@@ -4,7 +4,7 @@ from typing import Any
 import asyncio,hashlib,logging,os,signal,uuid
 from urllib.parse import urlparse,quote
 import httpx
-from allpha_api.media_scanner import local_scanner_identity_pins, scan_media_bytes
+from allpha_api.media_scanner import require_media_scanner_configuration, scan_media_bytes_async
 log=logging.getLogger("allpha.provider_callback_worker")
 MAX_PROVIDER_DERIVATIVE_BYTES = 100 * 1024 * 1024
 
@@ -56,13 +56,7 @@ class CallbackWorker:
   self.base=os.environ["SUPABASE_URL"].rstrip("/")
   self.key=os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ["SUPABASE_SECRET_KEY"]
   self.cloud=os.environ["CLOUDINARY_CLOUD_NAME"]
-  self.clamav_host=os.environ["CLAMAV_HOST"];self.clamav_port=int(os.getenv("CLAMAV_PORT","3310"))
-  if os.getenv("ALLPHA_CLAMAV_ENABLED","false").strip().lower() != "true":
-   raise SystemExit("Provider callback worker requires ALLPHA_CLAMAV_ENABLED=true")
-  try:
-   local_scanner_identity_pins()
-  except RuntimeError as exc:
-   raise SystemExit("Provider callback worker requires pinned ClamAV engine/signature identity") from exc
+  self.scanner_mode=require_media_scanner_configuration()
   self.worker_id=f"provider-callback-{uuid.uuid4()}"
   self.client=httpx.AsyncClient(trust_env=False, follow_redirects=False, timeout=httpx.Timeout(90,connect=5),headers={"apikey":self.key,"Authorization":f"Bearer {self.key}","Content-Type":"application/json"})
   self.stopping=False
@@ -72,9 +66,9 @@ class CallbackWorker:
   h={"apikey":self.key,"Authorization":f"Bearer {self.key}","Content-Type":"application/json"}
   if prefer:h["Prefer"]=prefer
   r=await self.client.request(method,f"{self.base}/rest/v1/{path}",params=params,json=body,headers=h);r.raise_for_status();return r.json() if r.content else None
- def scan(self,data):
-  # Shared scanner verifies pinned engine/signature identity before a clean verdict.
-  return scan_media_bytes(data,self.clamav_host,self.clamav_port,timeout_seconds=60)
+ async def scan(self,data,filename,media_type):
+  # The canonical remote scanner pins hostname, scanner/engine/signature identity and content digest.
+  return await scan_media_bytes_async(data,filename=filename,media_type=media_type)
  async def process(self,job):
   jid=str(job["id"]);token=str(job["lease_token"]);payload=job.get("payload") or {};event_id=str(payload["provider_event_id"])
   try:
@@ -104,7 +98,7 @@ class CallbackWorker:
      if parsed.scheme!="https" or parsed.hostname!="res.cloudinary.com" or not parsed.path.startswith(f"/{self.cloud}/video/authenticated/"):
       raise ValueError("PROVIDER_DERIVATIVE_URL_REJECTED")
      binary,mime=await download_provider_derivative(provider,url)
-     await asyncio.to_thread(self.scan,binary)
+     await self.scan(binary,f"{kind}.{suffix}",mime)
      suffix="mp4" if mime=="video/mp4" else "mp3" if mime=="audio/mpeg" else "m4a" if mime=="audio/mp4" else "jpg" if mime=="image/jpeg" else "bin"
      kind="moderation_poster" if mime=="image/jpeg" else f"rendition_{index+1}"
      path=f"{media['storage_path']}.derived/{kind}.{suffix}"
@@ -141,11 +135,10 @@ def enabled():
  raw=os.getenv("ALLPHA_CONTENT_PROVIDER_CALLBACK_WORKER_ENABLED","false").strip().lower()
  if raw not in {"true","false"}:raise SystemExit("ALLPHA_CONTENT_PROVIDER_CALLBACK_WORKER_ENABLED must be true or false")
  if raw!="true":return False
- if os.getenv("ALLPHA_CLAMAV_ENABLED","false").strip().lower()!="true":
-  raise SystemExit("Provider callback worker requires ALLPHA_CLAMAV_ENABLED=true")
- try:local_scanner_identity_pins()
- except RuntimeError as exc:raise SystemExit("Provider callback worker requires pinned ClamAV engine/signature identity") from exc
- missing=[name for name in ("SUPABASE_URL","CLOUDINARY_CLOUD_NAME","CLAMAV_HOST") if not os.getenv(name)]
+ try:scanner_mode=require_media_scanner_configuration()
+ except RuntimeError as exc:raise SystemExit("Provider callback worker requires a configured remote scanner or explicitly enabled pinned ClamAV") from exc
+ required=("SUPABASE_URL","CLOUDINARY_CLOUD_NAME") + (("CLAMAV_HOST",) if scanner_mode=="clamd" else ())
+ missing=[name for name in required if not os.getenv(name)]
  if not (os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SECRET_KEY")):missing.append("SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SECRET_KEY")
  if missing:raise SystemExit("Provider callback worker configuration missing: "+", ".join(missing))
  return True

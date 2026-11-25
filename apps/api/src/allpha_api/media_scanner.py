@@ -1,16 +1,21 @@
 """Shared pinned-identity ClamAV daemon adapter for media workers."""
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import os
 import re
 import socket
 import struct
 from typing import Any
 
-from allpha_api.knowledge import (
+from allpha_api.document_scanner import (
+    DocumentMalwareDetected,
     DocumentScannerConfigurationError,
-    _local_scanner_identity_pins,
+    DocumentScannerUnavailable,
+    RemoteDocumentScanner,
 )
+from allpha_api.knowledge import _local_scanner_identity_pins
 
 
 def local_scanner_identity_pins() -> tuple[str, str]:
@@ -62,3 +67,54 @@ def scan_media_bytes(data: bytes, host: str, port: int, *, timeout_seconds: int 
         "sha256": hashlib.sha256(data).hexdigest(),
         "contract_version": "allpha.local-clamav.v1",
     }
+
+
+def media_scanner_mode() -> str:
+    """Resolve the shared malware scanner mode; remote scanning is the default."""
+    mode = os.getenv("ALLPHA_DOCUMENT_SCANNER_MODE", "remote").strip().lower()
+    if mode not in {"remote", "clamd"}:
+        raise RuntimeError("MEDIA_SCANNER_MODE_INVALID")
+    return mode
+
+
+def require_media_scanner_configuration() -> str:
+    """Validate scanner configuration without performing a network scan."""
+    mode = media_scanner_mode()
+    if mode == "clamd":
+        if os.getenv("ALLPHA_CLAMAV_ENABLED", "false").strip().lower() != "true":
+            raise RuntimeError("MEDIA_LOCAL_CLAMAV_NOT_ENABLED")
+        local_scanner_identity_pins()
+        return mode
+    try:
+        RemoteDocumentScanner.from_environment()
+    except DocumentScannerConfigurationError as exc:
+        raise RuntimeError("MEDIA_REMOTE_SCANNER_NOT_CONFIGURED") from exc
+    return mode
+
+
+async def scan_media_bytes_async(
+    data: bytes,
+    *,
+    filename: str,
+    media_type: str,
+    clamav_host: str | None = None,
+    clamav_port: int = 3310,
+) -> dict[str, Any]:
+    """Scan media using the canonical remote scanner or explicitly enabled local ClamAV."""
+    mode = require_media_scanner_configuration()
+    if mode == "clamd":
+        host = (clamav_host or os.getenv("CLAMAV_HOST", "")).strip()
+        if not host:
+            raise ValueError("MEDIA_SCANNER_NOT_CONFIGURED")
+        return await asyncio.to_thread(scan_media_bytes, data, host, clamav_port)
+
+    try:
+        scanner = RemoteDocumentScanner.from_environment()
+        receipt = await scanner.scan(data, filename=filename, media_type=media_type)
+        return receipt.as_provenance()
+    except DocumentMalwareDetected as exc:
+        raise ValueError("MEDIA_SCAN_REJECTED") from exc
+    except DocumentScannerConfigurationError as exc:
+        raise ValueError("MEDIA_SCANNER_NOT_CONFIGURED") from exc
+    except DocumentScannerUnavailable as exc:
+        raise ValueError("MEDIA_SCANNER_UNAVAILABLE") from exc
