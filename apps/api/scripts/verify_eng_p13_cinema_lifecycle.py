@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+import hashlib
 import subprocess
+import sys
 import time
 import uuid
 
@@ -23,6 +25,8 @@ HEARTBEAT_EVENT = "88888888-8888-4888-8888-888888888888"
 FINISH_EVENT = "99999999-9999-4999-8999-999999999998"
 SUBTITLE_MEDIA = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 INVALID_SUBTITLE_MEDIA = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+SUBTITLE_BYTES = b"WEBVTT\\n\\n00:00:00.000 --> 00:00:02.000\\nHello\\n"
+SUBTITLE_SHA = hashlib.sha256(SUBTITLE_BYTES).hexdigest()
 TOKEN_HASH = "a" * 64
 
 
@@ -268,7 +272,7 @@ begin
  for v_job in select * from public.claim_content_lifecycle_jobs('ci-subtitle-worker',10,60,'subtitle_validate')
  loop
   if v_job.media_id='{SUBTITLE_MEDIA}'::uuid then
-   select sha256 into v_sha from public.content_media where id='{SUBTITLE_MEDIA}';
+   v_sha := '{SUBTITLE_SHA}';
    v_receipt:=jsonb_build_object(
     'scanner_id','clamav-local','contract_version','allpha.local-clamav.v1',
     'sha256',v_sha,'engine_version','ci-clamav-engine','signature_version','ci-signature-set',
@@ -278,7 +282,7 @@ begin
    if v_result->>'outcome'<>'completed' then raise exception 'subtitle job did not complete: %',v_result; end if;
    v_valid_found:=true;
   elsif v_job.media_id='{INVALID_SUBTITLE_MEDIA}'::uuid then
-   select sha256 into v_sha from public.content_media where id='{INVALID_SUBTITLE_MEDIA}';
+   v_sha := repeat('c',64);
    v_receipt:=jsonb_build_object(
     'scanner_id','untrusted-scanner','contract_version','allpha.local-clamav.v1',
     'sha256',v_sha,'engine_version','ci-clamav-engine','signature_version','ci-signature-set',
