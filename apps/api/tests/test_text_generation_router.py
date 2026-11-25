@@ -310,12 +310,13 @@ def test_text_generation_fails_over_after_explicit_pre_execution_rate_limit():
         max_prompt_bytes=1024, max_output_tokens=100, max_cost_microunits=10,
         max_latency_ms=5000, cost_unit="approved-unit", pricing_version="pricing-v1",
     )
+    credit_ledger = FakeCreditLedger()
     router = CanonicalTextGenerationRouter(
         routes={"private": TextGenerationRoute("provider-a", "model-a", "version-a")},
         fallback_routes={"private": (TextGenerationRoute("provider-b", "model-a", "version-a"),)},
         adapters={"provider-a": primary, "provider-b": fallback},
         policies={"private": policy}, metering_sink=MemorySink(), runtime_preflight=verify,
-        credit_ledger=FakeCreditLedger(),
+        credit_ledger=credit_ledger,
     )
     response, evidence = asyncio.run(router.generate(request_with_billing_context()))
     assert response.provider_id == "provider-b"
@@ -323,6 +324,9 @@ def test_text_generation_fails_over_after_explicit_pre_execution_rate_limit():
     assert primary.calls == 1
     assert fallback.calls == 1
     assert verified == ["provider-a", "provider-b"]
+    assert len(credit_ledger.reserved) == 1
+    assert len(credit_ledger.settled) == 1
+    assert credit_ledger.released == []
 
 
 def test_text_generation_rejects_request_timeout_above_approved_latency_budget():
@@ -352,17 +356,20 @@ def test_text_generation_does_not_fallback_after_provider_outcome_becomes_unknow
         max_prompt_bytes=1024, max_output_tokens=100, max_cost_microunits=10,
         max_latency_ms=5000, cost_unit="approved-unit", pricing_version="pricing-v1",
     )
+    credit_ledger = FakeCreditLedger()
     router = CanonicalTextGenerationRouter(
         routes={"private": TextGenerationRoute("provider-a", "model-a", "version-a")},
         fallback_routes={"private": (TextGenerationRoute("provider-b", "model-a", "version-a"),)},
         adapters={"provider-a": primary, "provider-b": fallback},
         policies={"private": policy}, metering_sink=MemorySink(), runtime_preflight=verify,
-        credit_ledger=FakeCreditLedger(),
+        credit_ledger=credit_ledger,
     )
     with pytest.raises(TextGenerationRouterUnavailable, match="outcome is unknown"):
         asyncio.run(router.generate(request_with_billing_context()))
     assert primary.calls == 1
     assert fallback.calls == 0
+    assert len(credit_ledger.pending) == 1
+    assert credit_ledger.released == []
 
 
 def test_text_generation_fallback_must_preserve_model_identity():
