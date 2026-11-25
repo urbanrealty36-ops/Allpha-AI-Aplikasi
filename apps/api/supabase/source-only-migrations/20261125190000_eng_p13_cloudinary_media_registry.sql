@@ -651,7 +651,7 @@ create or replace function public.cloudinary_media_schema_readiness()
 returns jsonb
 language plpgsql
 security definer
-set search_path=pg_catalog,public,storage
+set search_path=pg_catalog,public
 as $function$
 declare
   v_missing_columns text[];
