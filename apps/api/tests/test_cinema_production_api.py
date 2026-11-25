@@ -350,3 +350,38 @@ def test_cinema_title_primary_media_rejects_unlinked_cover(monkeypatch):
         assert response.json()["error"]["code"] == "CINEMA_PRIMARY_MEDIA_ASSET_NOT_LINKED"
     finally:
         app.dependency_overrides.pop(current_user, None)
+
+def test_cinema_database_client_disables_ambient_proxy_and_redirects(monkeypatch):
+    import asyncio
+
+    captured = {}
+
+    class FakeResponse:
+        status_code = 200
+        content = b"[]"
+
+        def json(self):
+            return []
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            captured.update(kwargs)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def request(self, *args, **kwargs):
+            return FakeResponse()
+
+    monkeypatch.setenv("SUPABASE_URL", "https://project.supabase.co")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "server-only-test-key")
+    monkeypatch.setattr(cinema_api.httpx, "AsyncClient", FakeClient)
+
+    result = asyncio.run(cinema_api._db("GET", "cinema_titles"))
+
+    assert result == []
+    assert captured["trust_env"] is False
+    assert captured["follow_redirects"] is False
