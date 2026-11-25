@@ -43,7 +43,7 @@ MEDIA_RESPONSE_FIELDS = (
     "provider_resource_type", "provider_delivery_type", "provider_format", "provider_version",
     "provider_width", "provider_height", "provider_duration", "provider_bytes",
     "provider_delete_state", "upload_expires_at", "upload_completed_at", "provider_deleted_at",
-    "provider_callback_verified_at", "derivatives", "created_at", "processed_at", "updated_at",
+    "provider_callback_verified_at", "created_at", "processed_at", "updated_at",
 )
 
 
@@ -354,7 +354,12 @@ async def get_media(media_id:uuid.UUID,user:dict[str,Any]=Depends(current_user))
                     transformation=str(derivative["transformation"]),
                     version=int(derivative.get("version") or raw_item["provider_version"]),
                 )
-                derivative_deliveries.append({**derivative,"delivery_url":derivative_url})
+                derivative_deliveries.append({
+                    "kind":derivative.get("kind"),"mime_type":derivative.get("mime_type"),
+                    "size_bytes":derivative.get("size_bytes"),"width":derivative.get("width"),
+                    "height":derivative.get("height"),"duration":derivative.get("duration"),
+                    "format":derivative.get("format"),"delivery_url":derivative_url,
+                })
         except (CloudinaryConfigurationError,ValueError,KeyError,TypeError):
             raise HTTPException(503,detail={"code":"MEDIA_DELIVERY_NOT_READY","message":"Private media delivery belum siap."})
     elif raw_item.get("status")=="ready" and raw_item.get("storage_provider")=="supabase":
