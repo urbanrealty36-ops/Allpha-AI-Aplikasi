@@ -1,7 +1,7 @@
 from pathlib import Path
 import uuid
 import pytest
-from fastapi import Request
+from fastapi import HTTPException, Request
 from fastapi.testclient import TestClient
 from allpha_api.auth import current_user
 from allpha_api.main import app
@@ -448,7 +448,7 @@ def test_knowledge_admin_rest_request_does_not_masquerade_missing_schema_as_empt
 
     monkeypatch.setattr(knowledge.httpx, "AsyncClient", FakeAsyncClient)
 
-    with pytest.raises(Exception) as error:
+    with pytest.raises(HTTPException) as error:
         asyncio.run(knowledge._admin_db_request("GET", "agent_knowledge_sources"))
 
     assert getattr(error.value, "status_code", None) == 503
