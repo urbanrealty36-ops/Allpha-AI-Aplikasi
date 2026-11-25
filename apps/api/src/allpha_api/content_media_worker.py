@@ -217,6 +217,11 @@ class MediaWorker:
             await self.process_subtitle(job)
         return len(image_jobs) + len(subtitle_jobs)
 
+    async def assert_schema_ready(self) -> None:
+        result = await self.rpc("cloudinary_media_schema_readiness", {})
+        if not isinstance(result, dict) or result.get("ready") is not True:
+            raise RuntimeError("MEDIA_SCHEMA_NOT_READY")
+
     async def run(self) -> None:
         try:
             while not self.stopping:
@@ -261,6 +266,7 @@ def main() -> None:
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, lambda: setattr(worker, "stopping", True))
     try:
+        loop.run_until_complete(worker.assert_schema_ready())
         loop.run_until_complete(worker.run())
     finally:
         loop.close()
