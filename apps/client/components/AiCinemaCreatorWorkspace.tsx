@@ -217,8 +217,7 @@ export async function uploadNativeFileWithCloudinary(
     throw new Error("Kontrak upload Cloudinary dari FastAPI tidak lengkap.");
   }
 
-  let providerAlreadyExists = ["processing", "ready"].includes(intent.item.status);
-  if (!providerAlreadyExists) {
+  if (!["processing", "ready"].includes(intent.item.status)) {
     if (intent.upload.expires_at <= Math.floor(Date.now() / 1000)) {
       throw new Error("Intent upload Cloudinary sudah kedaluwarsa. Silakan mulai ulang upload.");
     }
@@ -255,7 +254,6 @@ export async function uploadNativeFileWithCloudinary(
       catch { /* Keep the HTTP status as the provider signal. */ }
       const duplicate = providerResponse.status === 409 || /already exists|already uploaded/i.test(providerMessage);
       if (!duplicate) throw new Error(providerMessage || ("Cloudinary menolak upload (HTTP " + providerResponse.status + ")."));
-      providerAlreadyExists = true;
     }
   }
 
