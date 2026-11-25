@@ -1732,3 +1732,11 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 - **Native:** SpatialNavigationScreen and SpatialThemeCatalogScreen now render only the development-lock notice; they no longer request or render spatial catalog/assets.
 - **Commit evidence:** 85fd07217cfeaf88f52044c8d26b452a1f382b9a; c25ff35284a16250f002a90983a6bcbf49869cc6; b676fec2aa611af83253ddb1e0ab5b255c93ab43; 8af3a717e7b9b4d93c47cdcc504efb365899a3da; b0a1ac164897102f9d60e32d69265956cf176a72; c3e389ce50a0b6791caaba11e1b67b740de7b84.
 - **Status:** source-level lock now covers Web, Native screen entry points, Super Admin pages, and FastAPI public/operator endpoints. Build/runtime confirmation remains pending; cached local copies of previously downloaded GLB files cannot be remotely erased by this route lock and must not be exposed by other screens.
+
+
+## 40.87 — Spatial lock regression alignment (2026-11-25)
+
+- **CI finding:** first Allpha Smoke run on the lock commit exposed 21 expected failures in legacy Spatial route tests, because those tests asserted the now-forbidden public/admin Spatial endpoints remained available. Native smoke also expected the Theme screen to fetch and render the public Spatial catalog, conflicting with the global lock.
+- **Correction:** the four legacy endpoint-test modules are explicitly skipped while Spatial is locked; the dedicated test_spatial_access_lock.py remains the active access-policy regression contract. Native smoke now asserts the Theme screen displays the development notice and does not request or render Spatial assets.
+- **Commits:** f5ea33a65cb6d57cca7ac3eec98629a5f66141c9; 69b1abefe198b0b5cb8eaf2c7fa7e8cbba233df0; d39c35571696e07c7f5eb6dcac882e339aa87a13; cdafa10ac228ddbcf2ae7eafad03e96e4bf6929f; bff0276390bed6e44f2213aa31e6ef80568447cf.
+- **Verification:** corrected CI has been triggered by direct commits to main; results pending. No full product phase completion is implied.
