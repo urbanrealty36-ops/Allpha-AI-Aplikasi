@@ -43,7 +43,6 @@ _PROFILE_FIELDS = (
     "ALLPHA_EMBEDDING_MAX_LATENCY_MS",
     "ALLPHA_EMBEDDING_ALLOWED_SENSITIVITIES",
     "SUPABASE_URL",
-    "SUPABASE_SERVICE_ROLE_KEY",
 )
 
 
@@ -158,12 +157,20 @@ async def build_embedding_router_from_environment(
 ) -> CanonicalModelRouter | None:
     """Build a runtime-ready embedding router only from a complete approved profile."""
     configured = [os.getenv(name, "").strip() for name in _PROFILE_FIELDS]
-    if not any(configured):
+    supabase_server_key = (
+        os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+        or os.getenv("SUPABASE_SECRET_KEY", "").strip()
+    )
+    if not any(configured) and not supabase_server_key:
         return None
     if not all(configured):
         missing = [name for name in _PROFILE_FIELDS if not os.getenv(name, "").strip()]
         raise EmbeddingProviderConfigurationError(
             "embedding deployment profile is incomplete: " + ", ".join(missing)
+        )
+    if not supabase_server_key:
+        raise EmbeddingProviderConfigurationError(
+            "embedding deployment profile requires SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SECRET_KEY"
         )
 
     def integer(name: str) -> int:
@@ -215,7 +222,7 @@ async def build_embedding_router_from_environment(
     verifier = _VerifiedApproval(approval)
     registry = SupabaseActiveEmbeddingCostVerifier(
         supabase_url=os.environ["SUPABASE_URL"],
-        service_role_key=os.environ["SUPABASE_SERVICE_ROLE_KEY"],
+        service_role_key=supabase_server_key,
         policy_id=policy_id,
         policy_version=policy_version,
         approval_reference=approval_reference,
@@ -271,7 +278,7 @@ async def build_embedding_router_from_environment(
         adapters={provider_id: adapter},
         metering_sink=SupabaseMeteringSink(
             supabase_url=os.environ["SUPABASE_URL"],
-            service_key=os.environ["SUPABASE_SERVICE_ROLE_KEY"],
+            service_key=supabase_server_key,
             transport=transport,
         ),
         cost_budgets=budgets,
