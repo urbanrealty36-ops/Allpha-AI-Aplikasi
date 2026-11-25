@@ -176,12 +176,16 @@ const superAdmin = readFileSync(superAdminPath, "utf8");
 
 // ENG-P13 Creator Studio + moderation contracts: authenticated API only; no mocked business records.
 const contentStudio = readFileSync(new URL("../app/content-studio/page.tsx", import.meta.url), "utf8");
+const resumableMediaUploader = readFileSync(new URL("../lib/resumable-media-upload.ts", import.meta.url), "utf8");
 for (const contract of [
-  "/v1/content/mine", "/v1/content", "/media/resumable", "/complete", "/preview", "/publish", "/retry",
-  "Authorization", "session.access_token", "Tus-Resumable", "Upload-Offset", "upload_token",
-  "chunk_size_bytes", "preview_url", "visibility", "content_type",
+  "/v1/content/mine", "/v1/content", "uploadContentMediaWithTus", "/preview", "/publish", "/retry",
+  "Authorization", "session.access_token", "preview_url", "visibility", "content_type",
   "Konten dikirim untuk ditinjau."
 ]) assert.ok(contentStudio.includes(contract), `missing ENG-P13 Web content contract: ${contract}`);
+for (const contract of [
+  "/media/resumable", "/complete", "Tus-Resumable", "Upload-Offset", "upload_token",
+  "upload_metadata", "chunk_size_bytes", "application/offset+octet-stream", "Idempotency-Key"
+]) assert.ok(resumableMediaUploader.includes(contract), `missing canonical browser TUS contract: ${contract}`);
 assert.doesNotMatch(contentStudio, /new FormData\(\)/, "Web Creator Studio must use the canonical resumable media upload lifecycle");
 assert.doesNotMatch(contentStudio, /SUPABASE_SERVICE_ROLE_KEY|service_role|mockContentItems|fakeFeed/);
 
@@ -429,6 +433,11 @@ if (existsSync(nativeContentPath)) {
 const feedCard = readFileSync(new URL("../components/feed/FeedPostCard.tsx", import.meta.url), "utf8");
 const createPage = readFileSync(new URL("../app/create/page.tsx", import.meta.url), "utf8");
 const storiesPage = readFileSync(new URL("../app/stories/page.tsx", import.meta.url), "utf8");
+for (const [name, source] of [["Create", createPage], ["Stories", storiesPage], ["Feed", feedPage]]) {
+  assert.ok(source.includes("uploadContentMediaWithTus"), `${name} must use the canonical browser TUS media service`);
+  assert.doesNotMatch(source, /new FormData\(\)/, `${name} must not use one-shot multipart upload for social media`);
+}
+
 const reelsPageParity = readFileSync(new URL("../app/reels/page.tsx", import.meta.url), "utf8");
 const referenceNavbar = readFileSync(new URL("../components/reference-ui/Navbar.tsx", import.meta.url), "utf8");
 const nativeApp = nativeContent;
