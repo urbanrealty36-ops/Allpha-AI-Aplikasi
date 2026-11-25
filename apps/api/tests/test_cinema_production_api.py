@@ -374,6 +374,7 @@ def test_cinema_database_client_disables_ambient_proxy_and_redirects(monkeypatch
             return None
 
         async def request(self, *args, **kwargs):
+            captured["request_kwargs"] = kwargs
             return FakeResponse()
 
     monkeypatch.setenv("SUPABASE_URL", "https://project.supabase.co")
@@ -386,5 +387,5 @@ def test_cinema_database_client_disables_ambient_proxy_and_redirects(monkeypatch
     assert result == []
     assert captured["trust_env"] is False
     assert captured["follow_redirects"] is False
-    assert captured["headers"]["apikey"] == "server-only-test-key"
-    assert captured["headers"]["Authorization"] == "Bearer server-only-test-key"
+    assert captured["request_kwargs"]["headers"]["apikey"] == "server-only-test-key"
+    assert captured["request_kwargs"]["headers"]["Authorization"] == "Bearer server-only-test-key"
