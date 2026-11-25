@@ -14,6 +14,7 @@ from typing import Any
 
 import httpx
 
+from allpha_api.text_generation_credits import SupabaseTextGenerationCreditLedger
 from allpha_api.model_router import (
     CanonicalTextGenerationRouter,
     TextGenerationEvidence,
@@ -431,6 +432,12 @@ def build_text_generation_router_from_environment() -> CanonicalTextGenerationRo
         "ALLPHA_TEXTGEN_OUTPUT_MICRO_COST_PER_TOKEN",
         "ALLPHA_TEXTGEN_MAX_COST_MICROUNITS",
         "SUPABASE_URL",
+        "ALLPHA_TEXTGEN_CREDIT_POLICY_VERSION",
+        "ALLPHA_TEXTGEN_CREDIT_SCHEME_VERSION",
+        "ALLPHA_TEXTGEN_CREDIT_POLICY_APPROVAL_REFERENCE",
+        "ALLPHA_TEXTGEN_CREDIT_CAPABILITY_ID",
+        "ALLPHA_TEXTGEN_CREDIT_TARIFF_VERSION",
+        "ALLPHA_TEXTGEN_CREDIT_ENTITLEMENT_VERSION",
     )
     service_role_key = (
         os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
@@ -563,6 +570,7 @@ def build_text_generation_router_from_environment() -> CanonicalTextGenerationRo
             policies={"private": policy},
             metering_sink=SupabaseTextGenerationMeteringSink.from_environment(),
             runtime_preflight=verify_active_tariff,
+            credit_ledger=SupabaseTextGenerationCreditLedger.from_environment(),
         )
         router.require_runtime_ready("private")
         return router
