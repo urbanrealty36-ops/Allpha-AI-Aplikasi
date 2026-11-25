@@ -91,7 +91,7 @@ class MediaWorker:
         self.poll_seconds = max(1.0, float(os.getenv("CONTENT_IMAGE_POLL_SECONDS", "3")))
         self.clamav_host = os.environ["CLAMAV_HOST"]
         self.clamav_port = int(os.getenv("CLAMAV_PORT", "3310"))
-        self.client = httpx.AsyncClient(
+        self.client = httpx.AsyncClient(trust_env=False, follow_redirects=False, 
             timeout=httpx.Timeout(60, connect=5),
             headers={"apikey": self.key, "Authorization": f"Bearer {self.key}",
                      "Content-Type": "application/json", "Accept": "application/json"},
