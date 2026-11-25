@@ -469,6 +469,15 @@ class TextGenerationRouterRejected(RuntimeError):
     """The provider response violated the canonical text-generation contract."""
 
 
+class TextGenerationProviderTransient(RuntimeError):
+    """Provider explicitly confirms that no generation was executed."""
+
+    def __init__(self, message: str, *, safe_to_retry: bool, retry_after_ms: int | None = None) -> None:
+        self.safe_to_retry = safe_to_retry is True
+        self.retry_after_ms = max(0, min(int(retry_after_ms), 30_000)) if retry_after_ms is not None else None
+        super().__init__(message)
+
+
 class CanonicalTextGenerationRouter:
     """Provider-neutral text-generation path for Agent/Skill execution.
 
@@ -567,6 +576,8 @@ class CanonicalTextGenerationRouter:
             raise TextGenerationRouterUnavailable("no registered text-generation provider adapter is available for primary or fallback route", category="provider_route")
         if self._metering_sink is None or not callable(getattr(self._metering_sink, "write_idempotent", None)):
             raise TextGenerationRouterUnavailable("runtime requires a durable idempotent text-generation metering sink", category="metering_sink")
+        if self._fallback_routes and self._runtime_preflight is None:
+            raise TextGenerationRouterUnavailable("provider fallback requires per-candidate policy and tariff preflight", category="runtime_policy")
 
     async def preflight(self, sensitivity: str) -> dict[str, Any]:
         """Select the first approved route whose provider, policy, active tariff and metering are ready."""
@@ -612,97 +623,128 @@ class CanonicalTextGenerationRouter:
     async def generate(self, request: TextGenerationRequest) -> tuple[TextGenerationResponse, TextGenerationEvidence]:
         self.require_runtime_ready(request.sensitivity)
         policy = self._policies[request.sensitivity]
-        # Fail over only before any provider call, when a candidate fails policy/tariff
-        # preflight. Once a provider call starts, an unknown outcome is never replayed.
-        if self._runtime_preflight is not None:
-            route, _fallback_rank = await self._select_preflight_route(request.sensitivity)
-        else:
-            route = next(
-                (candidate for candidate in self._candidate_routes(request.sensitivity)
-                 if candidate.provider_id in self._adapters),
-                None,
-            )
-            if route is None:
-                raise TextGenerationRouterUnavailable("no configured provider adapter is available", category="provider_route")
+        if request.timeout_ms > policy.max_latency_ms:
+            raise TextGenerationRouterRejected("request timeout exceeds approved latency budget")
         combined_prompt = request.prompt_material()
         if len(combined_prompt.encode("utf-8")) > policy.max_prompt_bytes:
             raise TextGenerationRouterRejected("combined system and user prompt exceeds approved policy bound")
         if request.max_output_tokens > policy.max_output_tokens:
             raise TextGenerationRouterRejected("requested output tokens exceed approved policy bound")
-        adapter = self._adapters[route.provider_id]
-        last_error: Exception | None = None
-        for attempt in range(route.max_attempts):
-            started = time.monotonic()
-            try:
-                response = await asyncio.wait_for(
-                    adapter.generate(request, model_id=route.model_id),
-                    timeout=request.timeout_ms / 1000,
-                )
-                latency_ms = max(0, int((time.monotonic() - started) * 1000))
-                if (response.task_id != request.task_id or response.trace_id != request.trace_id
-                        or response.provider_id != route.provider_id or response.model_id != route.model_id
-                        or response.model_version != route.model_version):
-                    raise TextGenerationRouterRejected("provider response identity does not match the approved route")
-                if response.output_tokens > request.max_output_tokens:
-                    raise TextGenerationRouterRejected("provider output exceeded requested token limit")
-                if response.tool_calls and not request.tool_definitions:
-                    raise TextGenerationRouterRejected("provider returned tool calls when no tools were authorized for this request")
-                if len(response.tool_calls) > request.max_tool_calls:
-                    raise TextGenerationRouterRejected("provider returned more tool calls than the request limit")
-                allowed_tool_names = {item["function"]["name"] for item in request.tool_definitions}
-                if any(call.name not in allowed_tool_names for call in response.tool_calls):
-                    raise TextGenerationRouterRejected("provider returned a tool name outside the request allowlist")
-                if response.cost_unit != policy.cost_unit or response.pricing_version != policy.pricing_version:
-                    raise TextGenerationRouterRejected("provider usage does not match approved pricing contract")
-                if response.cost_microunits > policy.max_cost_microunits:
-                    raise TextGenerationRouterRejected("provider cost exceeded approved policy budget")
-                prompt_hash = hashlib.sha256(request.prompt_material().encode("utf-8")).hexdigest()
-                output_material = response.output_text if response.output_text.strip() else json.dumps(
-                    [{"id": call.call_id, "name": call.name, "arguments": call.arguments} for call in response.tool_calls],
-                    sort_keys=True, separators=(",", ":"), allow_nan=False,
-                )
-                output_hash = hashlib.sha256(output_material.encode("utf-8")).hexdigest()
-                evidence_payload = {
-                    "task_id": request.task_id, "trace_id": request.trace_id,
-                    "idempotency_key": request.idempotency_key, "policy_id": policy.policy_id,
-                    "policy_version": policy.policy_version, "provider_id": response.provider_id,
-                    "model_id": response.model_id, "model_version": response.model_version,
-                    "prompt_sha256": prompt_hash, "output_sha256": output_hash,
-                    "input_tokens": response.input_tokens, "output_tokens": response.output_tokens,
-                    "cost_microunits": response.cost_microunits, "cost_unit": response.cost_unit,
-                    "pricing_version": response.pricing_version, "latency_ms": latency_ms,
-                    "latency_budget_ms": policy.max_latency_ms,
-                    "cost_budget_microunits": policy.max_cost_microunits, "status": "succeeded",
-                    "owner_id": request.owner_id, "agent_id": request.agent_id,
-                    "source_id": request.source_id, "source_version": request.source_version,
-                    "sensitivity": request.sensitivity,
-                    "billing_account_id": request.billing_account_id or request.owner_id,
-                    "completed_at": datetime.now(timezone.utc).isoformat(),
-                }
-                digest = hashlib.sha256(json.dumps(evidence_payload, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
-                evidence = TextGenerationEvidence(**evidence_payload, evidence_sha256=digest)
+
+        candidates = self._candidate_routes(request.sensitivity)
+        if self._runtime_preflight is not None:
+            _initial_route, start_rank = await self._select_preflight_route(request.sensitivity)
+        else:
+            start_rank = next(
+                (rank for rank, candidate in enumerate(candidates) if candidate.provider_id in self._adapters),
+                -1,
+            )
+            if start_rank < 0:
+                raise TextGenerationRouterUnavailable("no configured provider adapter is available", category="provider_route")
+
+        last_safe_failure: TextGenerationProviderTransient | None = None
+        for rank in range(start_rank, len(candidates)):
+            route = candidates[rank]
+            if route.provider_id not in self._adapters:
+                continue
+            if rank > start_rank and self._runtime_preflight is not None:
                 try:
-                    await self._metering_sink.write_idempotent(evidence)  # type: ignore[union-attr]
-                except Exception as exc:
-                    # The provider may already have charged for this generation. Never
-                    # retry the provider call just because durable evidence persistence failed.
+                    await self._runtime_preflight(request.sensitivity, route, policy)
+                except Exception:
+                    # An unverified fallback is never called. Continue only to a
+                    # separately configured candidate with its own tariff proof.
+                    continue
+
+            adapter = self._adapters[route.provider_id]
+            for attempt in range(route.max_attempts):
+                started = time.monotonic()
+                try:
+                    response = await asyncio.wait_for(
+                        adapter.generate(request, model_id=route.model_id),
+                        timeout=request.timeout_ms / 1000,
+                    )
+                    latency_ms = max(0, int((time.monotonic() - started) * 1000))
+                    if (response.task_id != request.task_id or response.trace_id != request.trace_id
+                            or response.provider_id != route.provider_id or response.model_id != route.model_id
+                            or response.model_version != route.model_version):
+                        raise TextGenerationRouterRejected("provider response identity does not match the approved route")
+                    if response.output_tokens > request.max_output_tokens:
+                        raise TextGenerationRouterRejected("provider output exceeded requested token limit")
+                    if response.tool_calls and not request.tool_definitions:
+                        raise TextGenerationRouterRejected("provider returned tool calls when no tools were authorized for this request")
+                    if len(response.tool_calls) > request.max_tool_calls:
+                        raise TextGenerationRouterRejected("provider returned more tool calls than the request limit")
+                    allowed_tool_names = {item["function"]["name"] for item in request.tool_definitions}
+                    if any(call.name not in allowed_tool_names for call in response.tool_calls):
+                        raise TextGenerationRouterRejected("provider returned a tool name outside the request allowlist")
+                    if response.cost_unit != policy.cost_unit or response.pricing_version != policy.pricing_version:
+                        raise TextGenerationRouterRejected("provider usage does not match approved pricing contract")
+                    if response.cost_microunits > policy.max_cost_microunits:
+                        raise TextGenerationRouterRejected("provider cost exceeded approved policy budget")
+                    prompt_hash = hashlib.sha256(request.prompt_material().encode("utf-8")).hexdigest()
+                    output_material = response.output_text if response.output_text.strip() else json.dumps(
+                        [{"id": call.call_id, "name": call.name, "arguments": call.arguments} for call in response.tool_calls],
+                        sort_keys=True, separators=(",", ":"), allow_nan=False,
+                    )
+                    output_hash = hashlib.sha256(output_material.encode("utf-8")).hexdigest()
+                    evidence_payload = {
+                        "task_id": request.task_id, "trace_id": request.trace_id,
+                        "idempotency_key": request.idempotency_key, "policy_id": policy.policy_id,
+                        "policy_version": policy.policy_version, "provider_id": response.provider_id,
+                        "model_id": response.model_id, "model_version": response.model_version,
+                        "prompt_sha256": prompt_hash, "output_sha256": output_hash,
+                        "input_tokens": response.input_tokens, "output_tokens": response.output_tokens,
+                        "cost_microunits": response.cost_microunits, "cost_unit": response.cost_unit,
+                        "pricing_version": response.pricing_version, "latency_ms": latency_ms,
+                        "latency_budget_ms": policy.max_latency_ms,
+                        "cost_budget_microunits": policy.max_cost_microunits, "status": "succeeded",
+                        "owner_id": request.owner_id, "agent_id": request.agent_id,
+                        "source_id": request.source_id, "source_version": request.source_version,
+                        "sensitivity": request.sensitivity,
+                        "billing_account_id": request.billing_account_id or request.owner_id,
+                        "completed_at": datetime.now(timezone.utc).isoformat(),
+                    }
+                    digest = hashlib.sha256(json.dumps(evidence_payload, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
+                    evidence = TextGenerationEvidence(**evidence_payload, evidence_sha256=digest)
+                    try:
+                        await self._metering_sink.write_idempotent(evidence)  # type: ignore[union-attr]
+                    except Exception as exc:
+                        # The provider may already have charged for this generation. Never
+                        # retry the provider call just because durable evidence persistence failed.
+                        raise TextGenerationRouterUnavailable(
+                            "generation completed but durable usage evidence could not be recorded; automatic replay is blocked"
+                        ) from exc
+                    return response, evidence
+                except TextGenerationProviderTransient as exc:
+                    if not exc.safe_to_retry:
+                        raise TextGenerationRouterUnavailable(
+                            "text-generation provider outcome is unknown; automatic replay is blocked"
+                        ) from exc
+                    last_safe_failure = exc
+                    if attempt + 1 < route.max_attempts:
+                        delay_ms = exc.retry_after_ms if exc.retry_after_ms is not None else int(self._retry_delay_seconds * 1000)
+                        if delay_ms:
+                            await asyncio.sleep(min(delay_ms, 30_000) / 1000)
+                        continue
+                    # The provider explicitly rejected/never received this call;
+                    # fail over only after the next candidate passes its own preflight.
+                    break
+                except (TextGenerationRouterRejected, TextGenerationRouterUnavailable):
+                    raise
+                except asyncio.TimeoutError as exc:
+                    # A timed-out generation may have completed remotely. Without an
+                    # adapter-verified idempotent replay contract, never issue a second call.
                     raise TextGenerationRouterUnavailable(
-                        "generation completed but durable usage evidence could not be recorded; automatic replay is blocked"
+                        "text-generation outcome is unknown after timeout; automatic replay is blocked"
                     ) from exc
-                return response, evidence
-            except (TextGenerationRouterRejected, TextGenerationRouterUnavailable):
-                raise
-            except asyncio.TimeoutError as exc:
-                # A timed-out generation may have completed remotely. Without an adapter-
-                # verified idempotent replay contract, never issue a second billable call.
-                raise TextGenerationRouterUnavailable(
-                    "text-generation outcome is unknown after timeout; automatic replay is blocked"
-                ) from exc
-            except Exception as exc:
-                # The adapter must classify failures before adding any safe retry strategy.
-                raise TextGenerationRouterUnavailable(
-                    "text-generation provider outcome is unknown; automatic replay is blocked"
-                ) from exc
-        if last_error is not None:
-            raise TextGenerationRouterUnavailable("approved text-generation route failed") from last_error
-        raise TextGenerationRouterUnavailable("approved text-generation route failed without a response")
+                except Exception as exc:
+                    raise TextGenerationRouterUnavailable(
+                        "text-generation provider outcome is unknown; automatic replay is blocked"
+                    ) from exc
+
+        if last_safe_failure is not None:
+            raise TextGenerationRouterUnavailable(
+                "all approved text-generation providers were unavailable before generation; fallback exhausted",
+                category="provider_route",
+            ) from last_safe_failure
+        raise TextGenerationRouterUnavailable("no configured approved text-generation route candidate is available", category="provider_route")
