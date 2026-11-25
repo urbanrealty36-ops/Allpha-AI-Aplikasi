@@ -1874,3 +1874,11 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 - **No schema/deployment bypass:** this uses the existing `content_provider_callbacks` and `content_lifecycle_jobs` contracts. No migration was applied and no production media rows were created.
 - **Commit:** `7d6b0da7bd238d456e4f328f06ecf348eeb3076d`. Railway API deployment was BUILDING at the time of this entry; GitHub combined checks for API and shared worker were pending. Do not call the callback path integration-verified until the deployment is healthy and a real Cloudinary callback is exercised.
 - **Remaining P13:** callback URL must resolve to this route in Cloudinary/Railway configuration; verify callback signature against a real provider delivery; Cloudinary-only derivative persistence/delivery, deletion API, Web UI call-site wiring, Native Client upload, remote scanner configuration and worker activation remain open. P13 remains `in_progress`.
+
+
+### 40.100 — P13 Web creator upload wired to Cloudinary API (2026-11-25)
+
+- **Web integration:** `/create` and Creator Studio now call the existing `uploadContentMediaWithCloudinary` helper instead of the legacy TUS/Supabase Storage uploader. The helper computes SHA-256 in the browser, obtains an owner-authorized FastAPI upload intent, uploads directly to the signed authenticated Cloudinary endpoint, then asks FastAPI to verify provider metadata and complete the canonical media record.
+- **Commits:** `28e825d823ce43edbeb74eb40845d5a826f49df3` (`apps/web/app/create/page.tsx`) and `d65b473bb16a1b2b01b9a1ed058f2bd23d154f34` (`apps/web/app/content-studio/page.tsx`).
+- **Boundary:** this is source integration, not yet browser end-to-end verification. Existing reference `CreatePostModal` media flow remains governed by its parent `onCreatePost` handler and has not been proven to use the new uploader. Native Client has no equivalent creator-media upload journey in its current screen tree; do not claim Native integration.
+- **Remaining:** verify Web build/deployment and real upload against configured Cloudinary; finish callback URL alignment, derivative Cloudinary-only delivery, media deletion endpoint/worker lifecycle, Native media journey, and scanner configuration before enabling consumers. No production migration or DDL was applied. ENG-P13 remains `in_progress`.
