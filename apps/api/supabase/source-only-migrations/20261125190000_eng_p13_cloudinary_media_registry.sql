@@ -716,6 +716,46 @@ begin
 end;
 $function$;
 
+create or replace function public.complete_legacy_content_media_delete_job(
+  p_job_id uuid,p_lease_token uuid,p_media_id uuid
+) returns text
+language plpgsql security definer set search_path=pg_catalog,public
+as $function$
+declare
+  v_job public.content_lifecycle_jobs%rowtype;
+  v_media public.content_media%rowtype;
+begin
+  select * into v_job from public.content_lifecycle_jobs
+  where id=p_job_id and status='processing' and lease_token=p_lease_token
+    and lease_expires_at>now() and job_type='provider_cleanup'
+    and media_id=p_media_id and payload->>'provider'='supabase_storage'
+    and payload->>'action'='delete_media'
+  for update;
+  if not found then return 'lease_lost'; end if;
+
+  select * into v_media from public.content_media
+  where id=p_media_id and owner_id=v_job.owner_id and status='deleting'
+    and storage_provider='supabase' and bucket_id=v_job.payload->>'bucket_id'
+    and storage_path=v_job.payload->>'storage_path'
+  for update;
+  if not found then return 'media_not_deleting'; end if;
+
+  update public.content_media
+  set status='deleted',provider_delete_state='deleted',provider_deleted_at=coalesce(provider_deleted_at,now()),updated_at=now()
+  where id=p_media_id;
+  update public.content_lifecycle_jobs
+  set status='succeeded',lease_token=null,lease_expires_at=null,
+    completed_at=now(),updated_at=now(),last_error_code=null
+  where id=p_job_id;
+  insert into public.content_lifecycle_events(event_key,event_type,content_id,media_id,owner_id,payload)
+  values('media.deleted:'||p_media_id::text,'media.deleted',v_media.content_id,v_media.id,v_media.owner_id,
+    jsonb_build_object('provider','supabase_storage','bucket_id',v_media.bucket_id))
+  on conflict(event_key) do nothing;
+  return 'succeeded';
+end;
+$function$;
+
+
 create or replace function public.fail_cloudinary_media_delete_job(
   p_job_id uuid,p_lease_token uuid,p_error_code text
 ) returns text
@@ -822,6 +862,7 @@ begin
     ('public.handoff_cloudinary_content_provider_job(uuid,uuid,uuid,text,text,text,text,text,bigint,text,integer,integer,numeric,bigint,text[],jsonb)'),
     ('public.request_cloudinary_content_media_delete(uuid,uuid)'),
     ('public.complete_cloudinary_media_delete_job(uuid,uuid,uuid)'),
+    ('public.complete_legacy_content_media_delete_job(uuid,uuid,uuid)'),
     ('public.fail_cloudinary_media_delete_job(uuid,uuid,text)')
   ) as req(signature)
   where to_regprocedure(req.signature) is null;
@@ -892,6 +933,8 @@ revoke all on function public.complete_cloudinary_content_provider_job(uuid,uuid
 
 revoke all on function public.request_cloudinary_content_media_delete(uuid,uuid) from public,anon,authenticated;
 revoke all on function public.complete_cloudinary_media_delete_job(uuid,uuid,uuid) from public,anon,authenticated;
+revoke all on function public.complete_legacy_content_media_delete_job(uuid,uuid,uuid) from public,anon,authenticated;
+grant execute on function public.complete_legacy_content_media_delete_job(uuid,uuid,uuid) to service_role;
 revoke all on function public.fail_cloudinary_media_delete_job(uuid,uuid,text) from public,anon,authenticated;
 grant execute on function public.request_cloudinary_content_media_delete(uuid,uuid) to service_role;
 grant execute on function public.complete_cloudinary_media_delete_job(uuid,uuid,uuid) to service_role;
