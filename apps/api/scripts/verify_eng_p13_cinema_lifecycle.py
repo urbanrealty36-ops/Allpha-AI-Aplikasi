@@ -25,6 +25,10 @@ SESSION = "77777777-7777-4777-8777-777777777777"
 HEARTBEAT_EVENT = "88888888-8888-4888-8888-888888888888"
 FINISH_EVENT = "99999999-9999-4999-8999-999999999998"
 SUBTITLE_MEDIA = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+DELETE_CONTENT = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+CLOUDINARY_DELETE_MEDIA = "ffffffff-ffff-4fff-8fff-ffffffffffff"
+CLOUDINARY_DELETE_SHA = "f" * 64
+UNAUTHORIZED_PROFILE_MEDIA = "12121212-1212-4121-8121-121212121212"
 INVALID_SUBTITLE_MEDIA = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
 CLOUDINARY_IMAGE_MEDIA = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
 CLOUDINARY_SUBTITLE_MEDIA = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
@@ -90,6 +94,16 @@ create table auth.users(id uuid primary key);
 create table public.content_items(
  id uuid primary key, owner_id uuid not null references auth.users(id), status text not null default 'draft'
 );
+create table public.profiles(id uuid primary key references auth.users(id));
+create table public.content_retention_holds(
+ id uuid primary key default gen_random_uuid(), content_id uuid not null, released_at timestamptz
+);
+create table public.ai_agents(id uuid primary key, created_by uuid not null);
+create table public.agent_runtime_tasks(id uuid primary key, owner_user_id uuid not null);
+create table public.conversations(id uuid primary key);
+create table public.conversation_participants(conversation_id uuid not null, user_id uuid);
+create table public.community_posts(id uuid primary key, community_id uuid not null, author_id uuid not null);
+create table public.community_memberships(community_id uuid not null, user_id uuid not null, status text not null);
 create table public.cinema_titles(
  id uuid primary key, owner_id uuid not null references auth.users(id) on delete cascade,
  title text not null, status text not null default 'draft', moderation_status text not null default 'pending',
@@ -99,7 +113,8 @@ create table public.cinema_titles(
 );
 create table public.cinema_episodes(
  id uuid primary key, title_id uuid not null references public.cinema_titles(id) on delete cascade,
- episode_number integer not null, title text not null, unique(title_id,episode_number)
+ owner_id uuid not null references auth.users(id), episode_number integer not null, title text not null,
+ unique(title_id,episode_number)
 );
 create table public.playback_entitlements(
  id uuid primary key, owner_user_id uuid not null references auth.users(id) on delete cascade,
@@ -152,8 +167,10 @@ grant usage on schema public,auth,storage,extensions to anon,authenticated,servi
 insert into auth.users(id) values('{OWNER}'),('{OTHER}');
 insert into public.cinema_titles(id,owner_id,title,status,moderation_status,rights_status)
  values('{TITLE}','{OWNER}','CI Cinema Title','published','approved','cleared');
-insert into public.cinema_episodes(id,title_id,episode_number,title)
- values('{EPISODE}','{TITLE}',1,'Episode 1');
+insert into public.cinema_episodes(id,title_id,owner_id,episode_number,title)
+ values('{EPISODE}','{TITLE}','{OWNER}',1,'Episode 1');
+insert into public.profiles(id) values('{OWNER}');
+insert into public.content_items(id,owner_id,status) values('{DELETE_CONTENT}','{OWNER}','draft');
 insert into public.playback_entitlements(id,owner_user_id,status)
  values('{ENTITLEMENT}','{OWNER}','active');
 insert into public.content_media(
@@ -313,7 +330,7 @@ do $do$
 declare v_result jsonb; v_media_id uuid:='{CLOUDINARY_SUBTITLE_MEDIA}'; v_public_id text:='allpha/{CLOUDINARY_SUBTITLE_MEDIA}';
 begin
  v_result:=public.reserve_cloudinary_media_upload(
-  v_media_id,null,'{OWNER}','cinema','cinema_asset','{TITLE}',null,null,'captions.vtt','text/vtt',
+  v_media_id,null,'{OWNER}','cinema','cinema_asset','{EPISODE}',null,null,'captions.vtt','text/vtt',
   128,'{CLOUDINARY_SUBTITLE_SHA}',v_public_id,'raw','authenticated',now()+interval '5 minutes',
   'ci-cloudinary-subtitle:{CLOUDINARY_SUBTITLE_MEDIA}'
  );
@@ -334,6 +351,59 @@ begin
 end
 $do$;
 """)
+
+        psql(f"""
+set role service_role;
+do $do$
+declare v_result jsonb; v_media_id uuid:='{CLOUDINARY_DELETE_MEDIA}'; v_public_id text:='allpha/{CLOUDINARY_DELETE_MEDIA}';
+begin
+ v_result:=public.reserve_cloudinary_media_upload(
+  v_media_id,'{DELETE_CONTENT}','{OWNER}','content','attachment',null,null,null,'delete.jpg','image/jpeg',512,
+  '{CLOUDINARY_DELETE_SHA}',v_public_id,'image','authenticated',now()+interval '5 minutes',
+  'ci-cloudinary-delete:{CLOUDINARY_DELETE_MEDIA}'
+ );
+ if v_result->>'idempotent_replay'<>'false' then raise exception 'delete fixture reserve unexpectedly replayed'; end if;
+ v_result:=public.request_cloudinary_content_media_delete(v_media_id,'{OWNER}');
+ if v_result->>'outcome'<>'queued' then raise exception 'Cloudinary media deletion was not queued: %',v_result; end if;
+ v_result:=public.request_cloudinary_content_media_delete(v_media_id,'{OWNER}');
+ if v_result->>'outcome'<>'already_queued' then raise exception 'Cloudinary media deletion request was not idempotent: %',v_result; end if;
+end
+$do$;
+do $do$
+declare v_job public.content_lifecycle_jobs%rowtype; v_result text;
+begin
+ select * into v_job from public.claim_content_lifecycle_jobs('ci-delete-worker',10,60,'provider_cleanup')
+ where media_id='{CLOUDINARY_DELETE_MEDIA}'::uuid;
+ if not found then raise exception 'Cloudinary media deletion job was not claimed'; end if;
+ v_result:=public.complete_cloudinary_media_delete_job(v_job.id,v_job.lease_token,'{CLOUDINARY_DELETE_MEDIA}');
+ if v_result<>'succeeded' then raise exception 'Cloudinary media deletion job did not complete: %',v_result; end if;
+end
+$do$;
+reset role;
+do $do$
+begin
+ if not exists(select 1 from public.content_media where id='{CLOUDINARY_DELETE_MEDIA}'
+  and status='deleting' and provider_delete_state='deleted' and provider_deleted_at is not null) then
+  raise exception 'Cloudinary media deletion did not persist its terminal tombstone';
+ end if;
+ if not exists(select 1 from public.content_lifecycle_jobs where media_id='{CLOUDINARY_DELETE_MEDIA}'
+  and job_type='provider_cleanup' and status='succeeded') then
+  raise exception 'Cloudinary media deletion job was not completed';
+ end if;
+end
+$do$;
+""")
+
+        unauthorized_profile = psql(f"""
+set role service_role;
+select public.reserve_cloudinary_media_upload(
+ '{UNAUTHORIZED_PROFILE_MEDIA}',null,'{OWNER}','profile','avatar','{OTHER}',null,null,'avatar.jpg','image/jpeg',
+ 512,'{'a' * 64}','allpha/{UNAUTHORIZED_PROFILE_MEDIA}','image','authenticated',now()+interval '5 minutes',
+ 'ci-cloudinary-unauthorized:{UNAUTHORIZED_PROFILE_MEDIA}'
+);
+""", check=False)
+        if unauthorized_profile.returncode == 0 or "MEDIA_RESOURCE_ACCESS_DENIED" not in unauthorized_profile.stderr:
+            raise RuntimeError("cross-owner profile media reservation was not rejected")
 
         psql(f"""
 insert into public.content_media(
@@ -422,7 +492,7 @@ begin
 end
 $do$;
 """)
-        print("PASS: ENG-P13 PostgreSQL 17 Creator Asset Library, Cloudinary canonical media registry/idempotent upload lifecycle, provider-pending jobs, no premature asset cleanup, remote/local subtitle scanner receipts, owner-scoped playback and service-role-only RPCs.")
+        print("PASS: ENG-P13 PostgreSQL 17 Creator Asset Library, Cloudinary canonical media registry, domain ownership, idempotent upload/deletion lifecycle, provider-pending jobs, no premature asset cleanup, remote/local subtitle scanner receipts, owner-scoped playback and service-role-only RPCs.")
     finally:
         run(["docker", "rm", "-f", NAME], check=False)
 
