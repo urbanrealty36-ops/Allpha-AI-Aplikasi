@@ -78,6 +78,8 @@ class TitleUpdateCommand(BaseModel):
     language_code: str | None = Field(default=None,max_length=12)
     maturity_rating: str | None = None
     ai_disclosure: str | None = Field(default=None,max_length=1000)
+    cover_media_id: uuid.UUID | None = None
+    trailer_media_id: uuid.UUID | None = None
 
 
 class TitleSubmitCommand(BaseModel):
@@ -909,6 +911,46 @@ async def update_creator_title(title_id: uuid.UUID,payload: TitleUpdateCommand,
         raise HTTPException(422,detail={"code":"CINEMA_GENRE_INVALID","message":"Genre tidak valid."})
     if "maturity_rating" in changes and changes["maturity_rating"] not in {"unrated","all_ages","13_plus","17_plus","21_plus"}:
         raise HTTPException(422,detail={"code":"CINEMA_MATURITY_INVALID","message":"Klasifikasi usia tidak valid."})
+    for field, asset_role, expected_kind in (
+        ("cover_media_id", "cover", "image"),
+        ("trailer_media_id", "trailer", "video"),
+    ):
+        if field not in changes or changes[field] is None:
+            continue
+        media_id = str(changes[field])
+        allowed_owners = await _title_media_owner_ids(title)
+        media_rows = await _db("GET", "content_media", params={
+            "select": "id,owner_id,media_type,status,scan_status,processed_at,derivatives",
+            "id": "eq." + media_id,
+            "owner_id": "in.(" + ",".join(sorted(allowed_owners)) + ")",
+            "limit": "1",
+        })
+        if not media_rows:
+            raise HTTPException(404, detail={
+                "code": "CINEMA_PRIMARY_MEDIA_NOT_FOUND",
+                "message": "Media poster/trailer tidak ditemukan atau bukan milik pemilik/collaborator yang berhak.",
+            })
+        media = media_rows[0]
+        if (media.get("status") != "ready" or media.get("scan_status") != "clean"
+                or not media.get("processed_at") or not isinstance(media.get("derivatives"), list)
+                or not media.get("derivatives")
+                or not str(media.get("media_type") or "").lower().startswith(expected_kind + "/")):
+            raise HTTPException(409, detail={
+                "code": "CINEMA_PRIMARY_MEDIA_NOT_READY",
+                "message": "Poster/trailer harus sesuai tipe file, selesai diproses, memiliki derivative, dan lolos pemindaian.",
+            })
+        links = await _db("GET", "cinema_assets", params={
+            "select": "id", "title_id": "eq." + str(title_id),
+            "owner_id": "eq." + str(title["owner_id"]),
+            "media_id": "eq." + media_id, "asset_role": "eq." + asset_role,
+            "limit": "1",
+        })
+        if not links:
+            raise HTTPException(422, detail={
+                "code": "CINEMA_PRIMARY_MEDIA_ASSET_NOT_LINKED",
+                "message": "Tautkan media terlebih dahulu ke Asset Library dengan peran poster/cover atau trailer.",
+            })
+        changes[field] = media_id
     changes.update({"version":expected+1,"updated_at":datetime.now(timezone.utc).isoformat()})
     rows=await _db("PATCH","cinema_titles",params={
         "id":"eq."+str(title_id),"owner_id":"eq."+str(title["owner_id"]),

@@ -468,8 +468,21 @@ export default function AiCinemaCreatorWorkspace() {
           media_id: selectedMediaId, asset_role: assetRole, display_name: media.filename,
         }) },
       );
-      setNotice("Media siap pakai ditautkan ke Asset Library film.");
+      if (assetRole === "cover" || assetRole === "trailer") {
+        const selectedTitle = titles.find(item => item.id === selectedTitleId);
+        if (!selectedTitle) throw new Error("Draft film tidak tersedia untuk menetapkan poster/trailer utama.");
+        const primaryField = assetRole === "cover" ? "cover_media_id" : "trailer_media_id";
+        const updated = await authorizedRequest<{ item: DraftTitle }>(
+          `/v1/cinema/creator/titles/${encodeURIComponent(selectedTitleId)}`,
+          { method: "PATCH", body: JSON.stringify({ expected_version: selectedTitle.version, [primaryField]: selectedMediaId }) },
+        );
+        setTitles(current => current.map(item => item.id === updated.item.id ? updated.item : item));
+        setNotice(assetRole === "cover" ? "Poster/cover utama berhasil ditautkan dan disimpan pada metadata film." : "Trailer utama berhasil ditautkan dan disimpan pada metadata film.");
+      } else {
+        setNotice("Media siap pakai ditautkan ke Asset Library film.");
+      }
       await loadCinemaProduction(selectedTitleId);
+      if (assetRole === "cover" || assetRole === "trailer") await loadTitles();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Asset gagal ditautkan ke film.");
     } finally { setSaving(false); }

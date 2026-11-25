@@ -284,3 +284,69 @@ def test_cinema_asset_rejects_role_and_media_type_mismatch(monkeypatch):
         assert response.json()["error"]["code"] == "CINEMA_ASSET_ROLE_MEDIA_TYPE_MISMATCH"
     finally:
         app.dependency_overrides.pop(current_user, None)
+
+
+def test_cinema_title_primary_cover_and_trailer_require_ready_linked_role(monkeypatch):
+    captured = {}
+    async def title_access(*args, **kwargs):
+        return {"id": TITLE, "owner_id": OWNER, "status": "draft", "version": 4, "title": "Test Film"}
+    async def media_owners(_title):
+        return {OWNER}
+    async def fake_db(method, table, *, params=None, payload=None, prefer=None):
+        if method == "GET" and table == "content_media":
+            media_id = params["id"].removeprefix("eq.")
+            kind = "image/png" if media_id == IMAGE_MEDIA else "video/mp4"
+            return [{
+                "id": media_id, "owner_id": OWNER, "media_type": kind, "status": "ready",
+                "scan_status": "clean", "processed_at": "2026-11-25T00:00:00Z",
+                "derivatives": [{"kind": "display" if kind.startswith("image/") else "hls_manifest"}],
+            }]
+        if method == "GET" and table == "cinema_assets":
+            return [{"id": str(uuid.uuid4())}]
+        if method == "PATCH" and table == "cinema_titles":
+            captured["payload"] = payload
+            return [{"id": TITLE, "version": payload["version"], "status": "draft", **payload}]
+        raise AssertionError((method, table, params, payload))
+    monkeypatch.setattr(cinema_api, "_title_access", title_access)
+    monkeypatch.setattr(cinema_api, "_title_media_owner_ids", media_owners)
+    monkeypatch.setattr(cinema_api, "_db", fake_db)
+    client = _client(monkeypatch)
+    try:
+        response = client.patch(f"/v1/cinema/creator/titles/{TITLE}", json={
+            "expected_version": 4, "cover_media_id": IMAGE_MEDIA, "trailer_media_id": VIDEO_MEDIA,
+        })
+        assert response.status_code == 200
+        assert captured["payload"]["cover_media_id"] == IMAGE_MEDIA
+        assert captured["payload"]["trailer_media_id"] == VIDEO_MEDIA
+        assert captured["payload"]["version"] == 5
+    finally:
+        app.dependency_overrides.pop(current_user, None)
+
+
+def test_cinema_title_primary_media_rejects_unlinked_cover(monkeypatch):
+    async def title_access(*args, **kwargs):
+        return {"id": TITLE, "owner_id": OWNER, "status": "draft", "version": 4, "title": "Test Film"}
+    async def media_owners(_title):
+        return {OWNER}
+    async def fake_db(method, table, *, params=None, payload=None, prefer=None):
+        if method == "GET" and table == "content_media":
+            return [{
+                "id": IMAGE_MEDIA, "owner_id": OWNER, "media_type": "image/png", "status": "ready",
+                "scan_status": "clean", "processed_at": "2026-11-25T00:00:00Z",
+                "derivatives": [{"kind": "display"}],
+            }]
+        if method == "GET" and table == "cinema_assets":
+            return []
+        raise AssertionError("primary media must be linked with the matching asset role before update")
+    monkeypatch.setattr(cinema_api, "_title_access", title_access)
+    monkeypatch.setattr(cinema_api, "_title_media_owner_ids", media_owners)
+    monkeypatch.setattr(cinema_api, "_db", fake_db)
+    client = _client(monkeypatch)
+    try:
+        response = client.patch(f"/v1/cinema/creator/titles/{TITLE}", json={
+            "expected_version": 4, "cover_media_id": IMAGE_MEDIA,
+        })
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "CINEMA_PRIMARY_MEDIA_ASSET_NOT_LINKED"
+    finally:
+        app.dependency_overrides.pop(current_user, None)
