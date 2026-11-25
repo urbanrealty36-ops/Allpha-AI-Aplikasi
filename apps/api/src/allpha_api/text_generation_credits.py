@@ -92,12 +92,23 @@ class SupabaseTextGenerationCreditLedger:
             timeout=httpx.Timeout(10.0, connect=3.0), transport=self._transport,
             follow_redirects=False, trust_env=False,
         ) as client:
-            response = await client.request(
-                method, self._base + path, params=params, json=body,
-                headers=self._headers(),
-            )
-            response.raise_for_status()
-            return response.json() if response.content else None
+            for attempt in range(2):
+                try:
+                    response = await client.request(
+                        method, self._base + path, params=params, json=body,
+                        headers=self._headers(),
+                    )
+                    response.raise_for_status()
+                    return response.json() if response.content else None
+                except httpx.HTTPStatusError as exc:
+                    if attempt == 0 and exc.response.status_code >= 500:
+                        continue
+                    raise
+                except httpx.TransportError:
+                    if attempt == 0:
+                        continue
+                    raise
+        raise RuntimeError("credit ledger request retry exhausted")
 
     async def _policy(self, policy: TextGenerationPolicy) -> tuple[int, dict[str, Any]]:
         rows = await self._request(
