@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 import pytest
 
 from allpha_api.agent_runtime import AgentRuntime, AgentRuntimeBlocked
@@ -52,6 +53,28 @@ class MemorySink:
         self.rows[evidence.idempotency_key] = evidence
 
 
+class FakeCreditLedger:
+    def __init__(self):
+        self.reserved = []
+        self.settled = []
+        self.released = []
+        self.pending = []
+
+    async def reserve(self, request, policy):
+        reservation = {"task_id": request.task_id}
+        self.reserved.append(reservation)
+        return reservation
+
+    async def settle(self, reservation, evidence):
+        self.settled.append((reservation, evidence))
+
+    async def release(self, reservation, reason_code):
+        self.released.append((reservation, reason_code))
+
+    async def mark_pending(self, reservation, reason_code):
+        self.pending.append((reservation, reason_code))
+
+
 def make_router(adapter=None, *, route=True, sink=True, cost=3, max_cost=10, preflight=None):
     adapter = adapter or FakeAdapter(cost=cost)
     return CanonicalTextGenerationRouter(
@@ -72,6 +95,7 @@ def make_router(adapter=None, *, route=True, sink=True, cost=3, max_cost=10, pre
         } if route else {},
         metering_sink=MemorySink() if sink else None,
         runtime_preflight=preflight,
+        credit_ledger=FakeCreditLedger() if preflight else None,
     )
 
 
@@ -84,6 +108,15 @@ def request():
         prompt="Use the pinned Skill instructions to answer this test.",
         max_output_tokens=32,
         timeout_ms=1000,
+    )
+
+
+def request_with_billing_context():
+    return replace(
+        request(), owner_id="00000000-0000-4000-8000-000000000001",
+        agent_id="00000000-0000-4000-8000-000000000002",
+        source_id="00000000-0000-4000-8000-000000000003",
+        billing_account_id="00000000-0000-4000-8000-000000000001",
     )
 
 
@@ -282,8 +315,9 @@ def test_text_generation_fails_over_after_explicit_pre_execution_rate_limit():
         fallback_routes={"private": (TextGenerationRoute("provider-b", "model-a", "version-a"),)},
         adapters={"provider-a": primary, "provider-b": fallback},
         policies={"private": policy}, metering_sink=MemorySink(), runtime_preflight=verify,
+        credit_ledger=FakeCreditLedger(),
     )
-    response, evidence = asyncio.run(router.generate(request()))
+    response, evidence = asyncio.run(router.generate(request_with_billing_context()))
     assert response.provider_id == "provider-b"
     assert evidence.provider_id == "provider-b"
     assert primary.calls == 1
@@ -323,9 +357,10 @@ def test_text_generation_does_not_fallback_after_provider_outcome_becomes_unknow
         fallback_routes={"private": (TextGenerationRoute("provider-b", "model-a", "version-a"),)},
         adapters={"provider-a": primary, "provider-b": fallback},
         policies={"private": policy}, metering_sink=MemorySink(), runtime_preflight=verify,
+        credit_ledger=FakeCreditLedger(),
     )
     with pytest.raises(TextGenerationRouterUnavailable, match="outcome is unknown"):
-        asyncio.run(router.generate(request()))
+        asyncio.run(router.generate(request_with_billing_context()))
     assert primary.calls == 1
     assert fallback.calls == 0
 
