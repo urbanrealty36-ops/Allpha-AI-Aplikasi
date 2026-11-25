@@ -395,7 +395,7 @@ export default function AiCinemaCreatorWorkspace() {
       await authorizedRequest("/v1/cinema/creator/titles/"+encodeURIComponent(selectedTitleId)+"/credits",{
         method:"POST",body:JSON.stringify({contributor_type:creditType,contributor_agent_id:creditType==="agent"?creditAgentId.trim():null,role:creditRole,attribution_label:creditLabel,disclosure:"Kontribusi AI/Human dicatat oleh Creator Studio"}),
       });
-      setCreditAgentId("");setNotice("Kredit kontributor tersimpan.");await loadCreatorGovernance();
+      setCreditAgentId("");setNotice("Kredit kontributor tersimpan pada metadata film dan katalog Viewer.");await loadCreatorGovernance();await loadTitles();
     }catch(cause){setError(cause instanceof Error?cause.message:"Kredit kontributor gagal disimpan.");}
     finally{setSaving(false);}
   }
