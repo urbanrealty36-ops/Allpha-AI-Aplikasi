@@ -448,6 +448,21 @@ begin
   if v_media.storage_provider<>'cloudinary' then
     return jsonb_build_object('outcome','legacy_provider_requires_domain_delete');
   end if;
+  if v_media.domain<>'content' or v_media.content_id is null then
+    return jsonb_build_object('outcome','domain_delete_not_supported');
+  end if;
+  if exists(
+    select 1 from public.content_retention_holds h
+    where h.content_id=v_media.content_id and h.released_at is null
+  ) then
+    return jsonb_build_object('outcome','legal_hold');
+  end if;
+  if exists(
+    select 1 from public.content_items c
+    where c.id=v_media.content_id and c.status not in ('draft','failed','deleted')
+  ) then
+    return jsonb_build_object('outcome','media_in_use');
+  end if;
   if v_media.provider_delete_state='deleted' then
     return jsonb_build_object('outcome','already_deleted','media',to_jsonb(v_media));
   end if;
