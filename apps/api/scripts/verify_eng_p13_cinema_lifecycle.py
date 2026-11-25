@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[3]
 ASSET_MIGRATION = ROOT / "apps/api/supabase/source-only-migrations/20261120100000_wp11_cinema_production_workspace.sql"
 PLAYBACK_MIGRATION = ROOT / "apps/api/supabase/migrations/20261125010000_eng_p13_cinema_playback_watchlist_lifecycle.sql"
 SUBTITLE_MIGRATION = ROOT / "apps/api/supabase/migrations/20261125020000_eng_p13_subtitle_media_processing.sql"
+CLOUDINARY_MEDIA_MIGRATION = ROOT / "apps/api/supabase/source-only-migrations/20261125190000_eng_p13_cloudinary_media_registry.sql"
 NAME = "allpha-p13-cinema-" + uuid.uuid4().hex[:8]
 OWNER = "11111111-1111-4111-8111-111111111111"
 OTHER = "99999999-9999-4999-8999-999999999999"
@@ -25,6 +26,10 @@ HEARTBEAT_EVENT = "88888888-8888-4888-8888-888888888888"
 FINISH_EVENT = "99999999-9999-4999-8999-999999999998"
 SUBTITLE_MEDIA = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 INVALID_SUBTITLE_MEDIA = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+CLOUDINARY_IMAGE_MEDIA = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+CLOUDINARY_SUBTITLE_MEDIA = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+CLOUDINARY_IMAGE_SHA = "d" * 64
+CLOUDINARY_SUBTITLE_SHA = "e" * 64
 SUBTITLE_BYTES = b"WEBVTT" + bytes([10,10]) + b"00:00:00.000 --> 00:00:02.000" + bytes([10]) + b"Hello" + bytes([10])
 SUBTITLE_SHA = hashlib.sha256(SUBTITLE_BYTES).hexdigest()
 TOKEN_HASH = "a" * 64
@@ -50,7 +55,7 @@ def psql(sql: str, check: bool = True) -> subprocess.CompletedProcess[str]:
 
 
 def main() -> None:
-    for migration in (ASSET_MIGRATION, PLAYBACK_MIGRATION, SUBTITLE_MIGRATION):
+    for migration in (ASSET_MIGRATION, PLAYBACK_MIGRATION, SUBTITLE_MIGRATION, CLOUDINARY_MEDIA_MIGRATION):
         if not migration.is_file():
             raise RuntimeError(f"Missing Cinema migration: {migration}")
     run(["docker", "run", "-d", "--rm", "--name", NAME, "-e", "POSTGRES_PASSWORD=ci-only", "postgres:17-alpine"])
@@ -82,6 +87,9 @@ create function auth.uid() returns uuid language sql stable as $uid$
  select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid
 $uid$;
 create table auth.users(id uuid primary key);
+create table public.content_items(
+ id uuid primary key, owner_id uuid not null references auth.users(id), status text not null default 'draft'
+);
 create table public.cinema_titles(
  id uuid primary key, owner_id uuid not null references auth.users(id) on delete cascade,
  title text not null, status text not null default 'draft', moderation_status text not null default 'pending',
@@ -138,6 +146,7 @@ grant usage on schema public,auth,storage,extensions to anon,authenticated,servi
         psql(ASSET_MIGRATION.read_text(encoding="utf-8"))
         psql(PLAYBACK_MIGRATION.read_text(encoding="utf-8"))
         psql(SUBTITLE_MIGRATION.read_text(encoding="utf-8"))
+        psql(CLOUDINARY_MEDIA_MIGRATION.read_text(encoding="utf-8"))
 
         psql(f"""
 insert into auth.users(id) values('{OWNER}'),('{OTHER}');
@@ -249,6 +258,73 @@ after insert or update of status on public.content_media
 for each row execute function public.enqueue_content_media_processing();
 """)
         psql(f"""
+set role service_role;
+do $do$
+declare v_result jsonb; v_media_id uuid:='{CLOUDINARY_IMAGE_MEDIA}'; v_public_id text:='allpha/{CLOUDINARY_IMAGE_MEDIA}';
+begin
+ v_result:=public.reserve_cloudinary_media_upload(
+  v_media_id,null,'{OWNER}','profile','avatar','{OWNER}',null,null,'avatar.jpg','image/jpeg',
+  1024,'{CLOUDINARY_IMAGE_SHA}',v_public_id,'image','authenticated',now()+interval '5 minutes',
+  'ci-cloudinary-image:{CLOUDINARY_IMAGE_MEDIA}'
+ );
+ if v_result->>'idempotent_replay'<>'false' then raise exception 'first Cloudinary reserve unexpectedly replayed'; end if;
+ v_result:=public.reserve_cloudinary_media_upload(
+  v_media_id,null,'{OWNER}','profile','avatar','{OWNER}',null,null,'avatar.jpg','image/jpeg',
+  1024,'{CLOUDINARY_IMAGE_SHA}',v_public_id,'image','authenticated',now()+interval '5 minutes',
+  'ci-cloudinary-image:{CLOUDINARY_IMAGE_MEDIA}'
+ );
+ if v_result->>'idempotent_replay'<>'true' then raise exception 'Cloudinary upload intent retry was not idempotent'; end if;
+ v_result:=public.complete_cloudinary_content_media_upload(
+  v_media_id,'{OWNER}','ci-cloudinary-asset-image',v_public_id,'image','authenticated','ci-batch-image',
+  1,'jpg',32,32,null,1024,array['allpha'],'{{"source":"ci"}}'::jsonb
+ );
+ if v_result->'media'->>'status'<>'processing' then raise exception 'Cloudinary image upload did not enter provider lifecycle: %',v_result; end if;
+ v_result:=public.complete_cloudinary_content_media_upload(
+  v_media_id,'{OWNER}','ci-cloudinary-asset-image',v_public_id,'image','authenticated','ci-batch-image',
+  1,'jpg',32,32,null,1024,array['allpha'],'{{"source":"ci"}}'::jsonb
+ );
+ if v_result->>'idempotent_replay'<>'true' then raise exception 'Cloudinary completion retry was not idempotent'; end if;
+ if not exists(select 1 from public.content_lifecycle_jobs where media_id=v_media_id and job_type='media_transcode' and status='awaiting_provider') then
+  raise exception 'Cloudinary eager job was not fenced awaiting provider callback';
+ end if;
+ update public.content_lifecycle_jobs set status='succeeded' where media_id=v_media_id and job_type='media_transcode';
+ update public.content_media set status='ready',scan_status='clean',processed_at=now(),processing_version=1,
+  provider_callback_verified_at=now(),
+  scan_receipt='{{"scanner_id":"ci-scanner","contract_version":"allpha.document-scan.v1","sha256":"{CLOUDINARY_IMAGE_SHA}","engine_version":"ci-engine","signature_version":"ci-signatures"}}'::jsonb,
+  derivatives='[{{"kind":"display","provider":"cloudinary"}},{{"kind":"thumbnail","provider":"cloudinary"}}]'::jsonb
+ where id=v_media_id;
+ if exists(select 1 from public.content_lifecycle_jobs where media_id=v_media_id and job_type='provider_cleanup') then
+  raise exception 'canonical Cloudinary asset was incorrectly queued for cleanup';
+ end if;
+end
+$do$;
+reset role;
+""")
+
+        psql(f"""
+set role service_role;
+do $do$
+declare v_result jsonb; v_media_id uuid:='{CLOUDINARY_SUBTITLE_MEDIA}'; v_public_id text:='allpha/{CLOUDINARY_SUBTITLE_MEDIA}';
+begin
+ v_result:=public.reserve_cloudinary_media_upload(
+  v_media_id,null,'{OWNER}','cinema','cinema_asset','{TITLE}',null,null,'captions.vtt','text/vtt',
+  128,'{CLOUDINARY_SUBTITLE_SHA}',v_public_id,'raw','authenticated',now()+interval '5 minutes',
+  'ci-cloudinary-subtitle:{CLOUDINARY_SUBTITLE_MEDIA}'
+ );
+ v_result:=public.complete_cloudinary_content_media_upload(
+  v_media_id,'{OWNER}','ci-cloudinary-asset-subtitle',v_public_id,'raw','authenticated',null,
+  1,'vtt',null,null,null,128,array['allpha'],'{{"source":"ci"}}'::jsonb
+ );
+ if v_result->'media'->>'status'<>'processing' then raise exception 'Cloudinary subtitle did not enter validation lifecycle: %',v_result; end if;
+ if not exists(select 1 from public.content_lifecycle_jobs where media_id=v_media_id and job_type='subtitle_validate' and status='pending') then
+  raise exception 'Cloudinary subtitle validation job was not queued';
+ end if;
+end
+$do$;
+reset role;
+""")
+
+        psql(f"""
 insert into public.content_media(
  id,content_id,owner_id,bucket_id,storage_path,filename,media_type,size_bytes,sha256,status,scan_status
 ) values(
@@ -291,6 +367,15 @@ begin
    v_result:=public.complete_content_subtitle_job(v_job.id,v_job.lease_token,'{INVALID_SUBTITLE_MEDIA}',v_receipt,1);
    if v_result->>'outcome'<>'scan_receipt_invalid' then raise exception 'invalid scanner receipt was not rejected'; end if;
    v_invalid_found:=true;
+  elsif v_job.media_id='{CLOUDINARY_SUBTITLE_MEDIA}'::uuid then
+   v_sha := '{CLOUDINARY_SUBTITLE_SHA}';
+   v_receipt:=jsonb_build_object(
+    'scanner_id','ci-remote-document-scan','contract_version','allpha.document-scan.v1',
+    'sha256',v_sha,'engine_version','remote-engine-v1','signature_version','remote-signatures-v1',
+    'validation',jsonb_build_object('sha256',v_sha,'format','webvtt','cue_count','1')
+   );
+   v_result:=public.complete_content_subtitle_job(v_job.id,v_job.lease_token,'{CLOUDINARY_SUBTITLE_MEDIA}',v_receipt,1);
+   if v_result->>'outcome'<>'completed' then raise exception 'remote scanner receipt did not complete Cloudinary subtitle: %',v_result; end if;
   end if;
  end loop;
  if not v_valid_found or not v_invalid_found then raise exception 'subtitle jobs were not both claimed and verified'; end if;
@@ -309,13 +394,24 @@ begin
  if not exists(select 1 from public.content_lifecycle_jobs where media_id='{INVALID_SUBTITLE_MEDIA}' and job_type='subtitle_validate' and status='processing') then
   raise exception 'invalid scanner receipt must not complete subtitle job';
  end if;
+ if not exists(select 1 from public.content_media where id='{CLOUDINARY_SUBTITLE_MEDIA}' and status='ready'
+  and storage_provider='cloudinary' and scan_receipt->>'contract_version'='allpha.document-scan.v1') then
+  raise exception 'Cloudinary subtitle did not persist remote scanner provenance';
+ end if;
+ if not exists(select 1 from public.content_lifecycle_jobs where media_id='{CLOUDINARY_SUBTITLE_MEDIA}' and job_type='subtitle_validate' and status='succeeded') then
+  raise exception 'Cloudinary subtitle lifecycle did not complete';
+ end if;
+ if has_function_privilege('authenticated','public.reserve_cloudinary_media_upload(uuid,uuid,uuid,text,text,uuid,uuid,uuid,text,text,bigint,text,text,text,text,timestamptz,text)','execute')
+  or has_function_privilege('anon','public.complete_cloudinary_content_media_upload(uuid,uuid,text,text,text,text,text,bigint,text,integer,integer,numeric,bigint,text[],jsonb)','execute') then
+  raise exception 'Cloudinary upload RPC privileges are not restricted';
+ end if;
  if not exists(select 1 from storage.buckets where id='content-media' and allowed_mime_types @> array['text/vtt','application/x-subrip']) then
   raise exception 'subtitle MIME types were not enabled in the private media bucket';
  end if;
 end
 $do$;
 """)
-        print("PASS: ENG-P13 PostgreSQL 17 Creator Asset Library, primary media metadata schema, owner-scoped playback heartbeat/finish idempotency, Watchlist uniqueness/RLS, subtitle MIME/job claim/ClamAV receipt validation and service-role-only RPCs.")
+        print("PASS: ENG-P13 PostgreSQL 17 Creator Asset Library, Cloudinary canonical media registry/idempotent upload lifecycle, provider-pending jobs, no premature asset cleanup, remote/local subtitle scanner receipts, owner-scoped playback and service-role-only RPCs.")
     finally:
         run(["docker", "rm", "-f", NAME], check=False)
 
