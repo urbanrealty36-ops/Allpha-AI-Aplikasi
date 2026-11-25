@@ -191,20 +191,35 @@ async def cloudinary_callback(
     public_id, asset_id, batch_id = event.get("public_id"), event.get("asset_id"), event.get("batch_id")
     if not isinstance(public_id, str) or not public_id.startswith("allpha/") or not isinstance(asset_id, str) or not isinstance(batch_id, str) or not batch_id:
         raise HTTPException(422, detail={"code":"CLOUDINARY_CALLBACK_IDENTITY_INVALID","message":"Identitas asset callback tidak lengkap."})
+    try:
+        media_id = uuid.UUID(public_id.removeprefix("allpha/"))
+    except ValueError as exc:
+        raise HTTPException(422, detail={"code":"CLOUDINARY_CALLBACK_PUBLIC_ID_INVALID","message":"Public ID callback tidak valid."}) from exc
     base, key = _config()
     headers = {"apikey":key,"Authorization":f"Bearer {key}"}
     async with httpx.AsyncClient(timeout=12, trust_env=False, follow_redirects=False) as client:
         media_response = await client.get(f"{base}/rest/v1/content_media", params={
             "select":"id,provider_asset_id,provider_public_id,provider_batch_id,status,storage_provider",
-            "provider_public_id":f"eq.{public_id}","provider_asset_id":f"eq.{asset_id}",
-            "storage_provider":"eq.cloudinary","status":"eq.processing","limit":"1",
+            "id":f"eq.{media_id}","limit":"1",
         }, headers=headers)
         if media_response.status_code >= 300:
             raise HTTPException(503, detail={"code":"MEDIA_DB_UNAVAILABLE","message":"Registry media tidak tersedia."})
         media_rows = media_response.json()
         if not media_rows:
-            raise HTTPException(404, detail={"code":"MEDIA_CALLBACK_ASSET_NOT_FOUND","message":"Asset callback tidak cocok dengan media aktif."})
+            raise HTTPException(404, detail={"code":"MEDIA_CALLBACK_ASSET_NOT_FOUND","message":"Media untuk callback tidak ditemukan."})
         media = media_rows[0]
+        if media.get("status") not in {"uploading","processing"}:
+            raise HTTPException(409, detail={"code":"MEDIA_CALLBACK_STATE_INVALID","message":"Media tidak berada pada lifecycle upload atau processing."})
+        if (
+            media.get("storage_provider") != "cloudinary"
+            or media.get("provider_public_id") != public_id
+            or not media.get("provider_asset_id")
+        ):
+            raise HTTPException(503, detail={"code":"CLOUDINARY_CALLBACK_AWAITING_HANDOFF","message":"Upload atau handoff Cloudinary belum tercatat; callback akan dicoba kembali."}, headers={"Retry-After":"5"})
+        if media.get("status") != "processing":
+            raise HTTPException(503, detail={"code":"CLOUDINARY_CALLBACK_AWAITING_COMPLETION","message":"Completion media belum tercatat; callback akan dicoba kembali."}, headers={"Retry-After":"5"})
+        if media.get("provider_asset_id") != asset_id:
+            raise HTTPException(409, detail={"code":"MEDIA_CALLBACK_ASSET_MISMATCH","message":"Asset ID callback tidak cocok."})
         if media.get("provider_batch_id") and media["provider_batch_id"] != batch_id:
             raise HTTPException(409, detail={"code":"MEDIA_CALLBACK_BATCH_MISMATCH","message":"Batch callback tidak cocok."})
         job_response = await client.get(f"{base}/rest/v1/content_lifecycle_jobs", params={
@@ -215,7 +230,7 @@ async def cloudinary_callback(
             raise HTTPException(503, detail={"code":"MEDIA_JOB_LOOKUP_FAILED","message":"Job transcode tidak tersedia."})
         jobs = job_response.json()
     if not jobs:
-        raise HTTPException(409, detail={"code":"MEDIA_TRANSCODE_NOT_WAITING","message":"Job transcode tidak sedang menunggu callback."})
+        raise HTTPException(503, detail={"code":"MEDIA_TRANSCODE_NOT_WAITING","message":"Handoff transcode belum tersedia; callback akan dicoba kembali."}, headers={"Retry-After":"5"})
     event_id = hashlib.sha256(raw).hexdigest()
     queued = await service_db_request("enqueue_content_provider_callback", body={
         "p_provider_event_id":event_id,"p_media_id":media["id"],"p_transcode_job_id":jobs[0]["id"],
