@@ -10,7 +10,7 @@ class ContentScheduler:
   self.base=os.environ["SUPABASE_URL"].rstrip("/")
   self.key=os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ["SUPABASE_SECRET_KEY"]
   self.worker_id=f"content-scheduler-{uuid.uuid4()}"
-  self.client=httpx.AsyncClient(timeout=httpx.Timeout(30,connect=5),headers={"apikey":self.key,"Authorization":f"Bearer {self.key}","Content-Type":"application/json"})
+  self.client=httpx.AsyncClient(trust_env=False, follow_redirects=False, timeout=httpx.Timeout(30,connect=5),headers={"apikey":self.key,"Authorization":f"Bearer {self.key}","Content-Type":"application/json"})
   self.stopping=False
  async def rpc(self,name,payload):
   r=await self.client.post(f"{self.base}/rest/v1/rpc/{name}",json=payload);r.raise_for_status();return r.json() if r.content else None
@@ -37,8 +37,19 @@ class ContentScheduler:
     except Exception:log.exception("content scheduler poll failed");n=0
     if n==0:await asyncio.sleep(max(1,int(os.getenv("CONTENT_SCHEDULER_POLL_SECONDS","5"))))
   finally:await self.client.aclose()
+def enabled():
+ raw=os.getenv("ALLPHA_CONTENT_SCHEDULER_WORKER_ENABLED","false").strip().lower()
+ if raw not in {"true","false"}:raise SystemExit("ALLPHA_CONTENT_SCHEDULER_WORKER_ENABLED must be true or false")
+ if raw!="true":return False
+ missing=[name for name in ("SUPABASE_URL",) if not os.getenv(name)]
+ if not (os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SECRET_KEY")):missing.append("SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SECRET_KEY")
+ if missing:raise SystemExit("Content scheduler configuration missing: "+", ".join(missing))
+ return True
 def main():
  logging.basicConfig(level=os.getenv("LOG_LEVEL","INFO"))
+ if not enabled():
+  log.info("Content scheduler worker is disabled")
+  return
  worker=ContentScheduler();loop=asyncio.new_event_loop();asyncio.set_event_loop(loop)
  for sig in (signal.SIGINT,signal.SIGTERM):loop.add_signal_handler(sig,lambda:setattr(worker,"stopping",True))
  try:loop.run_until_complete(worker.run())
