@@ -178,15 +178,15 @@ const superAdmin = readFileSync(superAdminPath, "utf8");
 const contentStudio = readFileSync(new URL("../app/content-studio/page.tsx", import.meta.url), "utf8");
 const resumableMediaUploader = readFileSync(new URL("../lib/resumable-media-upload.ts", import.meta.url), "utf8");
 for (const contract of [
-  "/v1/content/mine", "/v1/content", "uploadContentMediaWithCloudinary", "/preview", "/publish", "/retry",
+  "/v1/content/mine", "/v1/content", "uploadContentMediaWithTus", "/preview", "/publish", "/retry",
   "Authorization", "session.access_token", "preview_url", "visibility", "content_type",
   "Konten dikirim untuk ditinjau."
 ]) assert.ok(contentStudio.includes(contract), `missing ENG-P13 Web content contract: ${contract}`);
 for (const contract of [
-  "/v1/media/upload-intents", "/v1/media/complete", "uploadContentMediaWithCloudinary",
-  "sha256", "authenticated", "Idempotency-Key"
+  "/media/resumable", "/complete", "Tus-Resumable", "Upload-Offset", "upload_token",
+  "upload_metadata", "chunk_size_bytes", "application/offset+octet-stream", "Idempotency-Key"
 ]) assert.ok(resumableMediaUploader.includes(contract), `missing canonical browser Cloudinary contract: ${contract}`);
-assert.doesNotMatch(contentStudio, /new FormData\(\)/, "Web Creator Studio must use the canonical Cloudinary media upload lifecycle");
+assert.doesNotMatch(contentStudio, /new FormData\(\)/, "Web Creator Studio must use the canonical resumable media upload lifecycle");
 assert.doesNotMatch(contentStudio, /SUPABASE_SERVICE_ROLE_KEY|service_role|mockContentItems|fakeFeed/);
 
 const moderationPath = new URL("../../super-admin/app/content-moderation/page.tsx", import.meta.url);
@@ -316,11 +316,11 @@ assert.ok(spatialThemeCatalog.includes("Coba lagi"), "Web Theme catalog must pro
 // are canonical-API-backed and must remain reachable from the Feed shell.
 const webCreate = readFileSync(new URL("../app/create/page.tsx", import.meta.url), "utf8");
 for (const contract of [
-  '"/v1/content"', '"/v1/content/"', '"/publish"', "uploadContentMediaWithCloudinary", "draftId", "uploadId",
+  '"/v1/content"', '"/v1/content/"', '"/publish"', "uploadContentMediaWithTus", "draftId", "uploadId",
   "session.access_token", "visibility", "content_type", "allowedMedia", "maxBytes", "file.size",
   "Konten belum", 'role="alert"', "moderation === \"approved\""
 ]) assert.ok(webCreate.includes(contract), "missing Web Create lifecycle contract: " + contract);
-assert.doesNotMatch(webCreate, /new FormData\(\)/, "Web Create must use the canonical Cloudinary upload service");
+assert.doesNotMatch(webCreate, /new FormData\(\)/, "Web Create must use the shared resumable TUS upload service");
 assert.doesNotMatch(webCreate, /SUPABASE_SERVICE_ROLE_KEY|service_role|mockContentItems|fakeFeed/);
 
 assert.doesNotMatch(webCreate, /aria-label="Navigasi utama"/, "Create must use shared global navigation without a duplicate local nav");
@@ -339,12 +339,12 @@ for (const contract of ["/v1/feed", "/v1/feed/preferences", "session.access_toke
 assert.doesNotMatch(webFeed, /mockFeedItems|fakeFeed/);
 
 const webStories = readFileSync(new URL("../app/stories/page.tsx", import.meta.url), "utf8");
-for (const contract of ["/v1/stories", "/v1/content/", "/publish", "uploadContentMediaWithCloudinary", "draftId", "uploadId", "session.access_token"]) {
+for (const contract of ["/v1/stories", "/v1/content/", "/publish", "uploadContentMediaWithTus", "draftId", "uploadId", "session.access_token"]) {
   assert.ok(webStories.includes(contract), "missing Web Stories lifecycle contract: " + contract);
 }
-assert.doesNotMatch(webStories, /new FormData\(\)/, "Web Stories must use the canonical Cloudinary upload service");
-assert.ok(webFeed.includes("uploadContentMediaWithCloudinary"), "Web Feed composer must use the canonical Cloudinary upload service");
-assert.doesNotMatch(webFeed, /new FormData\(\)/, "Web Feed composer must delegate multipart upload to the shared Cloudinary service");
+assert.doesNotMatch(webStories, /new FormData\(\)/, "Web Stories must use the shared resumable TUS upload service");
+assert.ok(webFeed.includes("uploadContentMediaWithTus"), "Web Feed composer must use the shared resumable TUS upload service");
+assert.doesNotMatch(webFeed, /new FormData\(\)/, "Web Feed composer must must not use one-shot multipart media upload");
 assert.doesNotMatch(webStories, /mockStories|fakeStoryItems/);
 
 const webReels = readFileSync(new URL("../app/reels/page.tsx", import.meta.url), "utf8");
@@ -438,7 +438,7 @@ const feedCard = readFileSync(new URL("../components/feed/FeedPostCard.tsx", imp
 const createPage = readFileSync(new URL("../app/create/page.tsx", import.meta.url), "utf8");
 const storiesPage = readFileSync(new URL("../app/stories/page.tsx", import.meta.url), "utf8");
 for (const [name, source] of [["Create", createPage], ["Stories", storiesPage], ["Feed", feedPage]]) {
-  assert.ok(source.includes("uploadContentMediaWithCloudinary"), `${name} must use the canonical browser Cloudinary media service`);
+  assert.ok(source.includes("uploadContentMediaWithTus"), `${name} must use the canonical browser TUS media service`);
   assert.doesNotMatch(source, /new FormData\(\)/, `${name} must not use one-shot multipart upload for social media`);
 }
 
