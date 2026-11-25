@@ -541,7 +541,7 @@ class CanonicalTextGenerationRouter:
                 failures.append(exc)
             except Exception as exc:
                 failures.append(TextGenerationRouterUnavailable(
-                    "approved runtime policy or active tariff could not be verified",
+                    "active model-cost configuration could not be verified; provider execution is blocked",
                     category=getattr(exc, "category", "runtime_policy"),
                 ))
         if len(candidates) == 1 and failures:
