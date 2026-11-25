@@ -22,7 +22,7 @@ from allpha_api.model_router import ModelRouterUnavailable
 
 async def build_worker() -> KnowledgeEmbeddingWorker:
     supabase_url = os.getenv("SUPABASE_URL", "").strip()
-    service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+    service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip() or os.getenv("SUPABASE_SECRET_KEY", "").strip()
     if not supabase_url or not service_role_key:
         raise WorkerConfigurationError("server-side Supabase credentials are required for Knowledge embedding")
 
