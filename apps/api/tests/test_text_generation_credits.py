@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from dataclasses import replace
 
 import httpx
 import pytest
@@ -129,26 +130,33 @@ def test_credit_ledger_reserves_and_settles_only_after_usage_metering():
 def test_credit_ledger_releases_only_definitive_failure_and_marks_unknown_pending():
     observed = []
 
+    reserve_count = 0
+
     def handler(req: httpx.Request) -> httpx.Response:
+        nonlocal reserve_count
         observed.append(req.url.path)
         if req.method == "GET":
             return httpx.Response(200, json=[policy_row()])
         if req.url.path.endswith("/credit_ledger_reserve"):
+            reserve_count += 1
+            reservation_id = RESERVATION if reserve_count == 1 else "00000000-0000-4000-8000-000000000011"
             return httpx.Response(200, json={
-                "reservation_id": RESERVATION, "account_id": OWNER,
+                "reservation_id": reservation_id, "account_id": OWNER,
                 "task_id": "task-1", "reserved_credits": 5, "state": "reserved",
             })
         if req.url.path.endswith("/credit_ledger_release"):
             return httpx.Response(200, json={"reservation_id": RESERVATION, "state": "released"})
         if req.url.path.endswith("/credit_ledger_mark_pending"):
-            return httpx.Response(200, json={"reservation_id": RESERVATION, "state": "pending_reconciliation"})
+            return httpx.Response(200, json={"reservation_id": "00000000-0000-4000-8000-000000000011", "state": "pending_reconciliation"})
         return httpx.Response(404)
 
     async def scenario():
         service = ledger(handler)
-        reservation = await service.reserve(request(), policy())
-        await service.release(reservation, "provider_rejected_before_execution")
-        await service.mark_pending(reservation, "provider_outcome_unknown")
+        first = await service.reserve(request(), policy())
+        await service.release(first, "provider_rejected_before_execution")
+        second_request = replace(request(), idempotency_key="generation-key-2")
+        second = await service.reserve(second_request, policy())
+        await service.mark_pending(second, "provider_outcome_unknown")
 
     asyncio.run(scenario())
     assert "/rest/v1/rpc/credit_ledger_release" in observed
