@@ -1673,3 +1673,12 @@ This is an evidence refresh inside the existing fixed plan. It does not create a
 - **Commits:** `25ccf552d10a4511f69b66ccffc651b2e9c50193`, `5b8cae05a97b9bbc4b4d6e17303df82bc613ff0e`, `37d0e5dc1c70c6f29aabf8e24370e96a869e73bf`, `ba28e482a6171dac1daae2075c547ae68cb8e4d7`, `25644a0a490fd6d5eb0c14cc56e59fff23cb61a8`.
 - **Verification:** focused CI is pending; no external scanner/provider, destructive retention, scheduler execution, or media job processing is enabled or claimed.
 - **Phase status:** ENG-P13 remains `in_progress`; worker source is more safely activatable, but production lifecycle verification is outstanding.
+
+
+## 40.82 — ENG-P13 provider derivative contract and bounded download (2026-11-25)
+
+- **Implementation:** Cloudinary eager callback processing now validates the exact video contract (two MP4 renditions plus one JPEG poster) or audio contract (MP3 + M4A), using Cloudinary's actual `format` metadata. Derivative retrieval now streams with a hard 100 MiB cap, checks declared Content-Length before reading, rejects empty/unsupported MIME responses, and does not buffer unbounded provider responses.
+- **Regression coverage:** added video/audio rendition contract cases, missing-poster rejection, failed-rendition rejection, and bounded-streaming source contract coverage.
+- **Commits:** `3bde258af4b9f4b10e697221692142ada34686fa`, `f21931a35e9aa192466fe952e8427123d7ff7f26`, `2bf7fc2867e01929692aabc4e2eaeb7402a89d73`.
+- **Verification:** GitHub focused CI is pending; no provider callback or real derivative download has been executed because Cloudinary/ClamAV activation remains deferred.
+- **Phase status:** ENG-P13 remains `in_progress`; derivative contract source is implemented, but integration/production verification is not claimed.
