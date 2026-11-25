@@ -19,7 +19,7 @@ class CallbackWorker:
   except RuntimeError as exc:
    raise SystemExit("Provider callback worker requires pinned ClamAV engine/signature identity") from exc
   self.worker_id=f"provider-callback-{uuid.uuid4()}"
-  self.client=httpx.AsyncClient(timeout=httpx.Timeout(90,connect=5),headers={"apikey":self.key,"Authorization":f"Bearer {self.key}","Content-Type":"application/json"})
+  self.client=httpx.AsyncClient(trust_env=False, follow_redirects=False, timeout=httpx.Timeout(90,connect=5),headers={"apikey":self.key,"Authorization":f"Bearer {self.key}","Content-Type":"application/json"})
   self.stopping=False
  async def rpc(self,name,payload):
   r=await self.client.post(f"{self.base}/rest/v1/rpc/{name}",json=payload);r.raise_for_status();return r.json() if r.content else None
@@ -55,7 +55,7 @@ class CallbackWorker:
    if len(eager)<expected or any(not isinstance(item,dict) or item.get("status")=="failed" for item in eager):
     raise ValueError("PROVIDER_EAGER_DERIVATIVES_INCOMPLETE")
    derivatives=[]
-   async with httpx.AsyncClient(timeout=httpx.Timeout(90,connect=5),follow_redirects=False) as provider:
+   async with httpx.AsyncClient(trust_env=False, follow_redirects=False, timeout=httpx.Timeout(90,connect=5),follow_redirects=False) as provider:
     for index,item in enumerate(eager):
      url=item.get("secure_url");parsed=urlparse(url or "")
      if parsed.scheme!="https" or parsed.hostname!="res.cloudinary.com" or not parsed.path.startswith(f"/{self.cloud}/video/authenticated/"):
