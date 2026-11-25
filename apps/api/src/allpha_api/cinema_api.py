@@ -40,9 +40,12 @@ def _credentials() -> tuple[str, str]:
 
 async def _db(method: str, table: str, *, params: dict[str,str] | None = None, payload: Any = None, prefer: str | None = None) -> Any:
     base,key = _credentials()
-    headers = {"apikey":key,"Content-Type":"application/json","Accept":"application/json"}
-    if os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip():
-        headers["Authorization"] = f"Bearer {os.getenv('SUPABASE_SERVICE_ROLE_KEY', '').strip()}"
+    headers = {
+        "apikey": key,
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
     if prefer: headers["Prefer"] = prefer
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(12,connect=3), follow_redirects=False, trust_env=False) as client:
