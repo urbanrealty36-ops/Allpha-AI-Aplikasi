@@ -367,6 +367,22 @@ begin
  );
  if v_result->>'idempotent_replay'<>'false' then raise exception 'delete fixture reserve unexpectedly replayed'; end if;
  v_result:=public.request_cloudinary_content_media_delete(v_media_id,'{OWNER}');
+ if v_result->>'outcome'<>'media_state_invalid' then raise exception 'incomplete upload intent must not be deleted: %',v_result; end if;
+ v_result:=public.complete_cloudinary_content_media_upload(
+  v_media_id,'{OWNER}','ci-cloudinary-asset-delete',v_public_id,'image','authenticated','ci-batch-delete',
+  1,'jpg',32,32,null,512,array['allpha'],'{{"source":"ci"}}'::jsonb
+ );
+ if v_result->'media'->>'status'<>'processing' then raise exception 'delete fixture upload did not enter provider lifecycle: %',v_result; end if;
+ update public.content_lifecycle_jobs
+ set status='succeeded',completed_at=now(),lease_token=null,lease_expires_at=null,updated_at=now()
+ where media_id=v_media_id and job_type='media_transcode' and status='awaiting_provider';
+ update public.content_media
+ set status='ready',scan_status='clean',processed_at=now(),processing_version=1,
+  provider_callback_verified_at=now(),
+  scan_receipt='{{"scanner_id":"ci-scanner","contract_version":"allpha.document-scan.v1","sha256":"{CLOUDINARY_DELETE_SHA}","engine_version":"ci-engine","signature_version":"ci-signatures"}}'::jsonb,
+  derivatives='[{{"kind":"display","provider":"cloudinary"}},{{"kind":"thumbnail","provider":"cloudinary"}}]'::jsonb
+ where id=v_media_id;
+ v_result:=public.request_cloudinary_content_media_delete(v_media_id,'{OWNER}');
  if v_result->>'outcome'<>'queued' then raise exception 'Cloudinary media deletion was not queued: %',v_result; end if;
  v_result:=public.request_cloudinary_content_media_delete(v_media_id,'{OWNER}');
  if v_result->>'outcome'<>'already_queued' then raise exception 'Cloudinary media deletion request was not idempotent: %',v_result; end if;
