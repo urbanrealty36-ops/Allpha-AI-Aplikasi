@@ -59,6 +59,27 @@ def _config():
     return base,key
 
 
+async def _signed_supabase_storage_url(bucket_id: str, storage_path: str, expires_in: int = 300) -> str:
+    base, key = _config()
+    if bucket_id != "content-media" or not storage_path or storage_path.startswith("/") or ".." in storage_path.split("/"):
+        raise HTTPException(409, detail={"code": "MEDIA_STORAGE_IDENTITY_INVALID", "message": "Lokasi media lama tidak valid."})
+    url = f"{base}/storage/v1/object/sign/{quote(bucket_id, safe='')}/{quote(storage_path, safe='/')}"
+    try:
+        async with httpx.AsyncClient(timeout=12, trust_env=False, follow_redirects=False) as client:
+            response = await client.post(
+                url, json={"expiresIn": expires_in},
+                headers={"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+            )
+    except httpx.HTTPError as exc:
+        raise HTTPException(503, detail={"code": "MEDIA_DELIVERY_UNAVAILABLE", "message": "Media lama tidak dapat diakses."}) from exc
+    if response.status_code >= 300:
+        raise HTTPException(503, detail={"code": "MEDIA_DELIVERY_UNAVAILABLE", "message": "Media lama tidak dapat diakses."})
+    signed = response.json().get("signedURL") or response.json().get("signedUrl")
+    if not isinstance(signed, str) or not signed:
+        raise HTTPException(503, detail={"code": "MEDIA_DELIVERY_UNAVAILABLE", "message": "Storage tidak mengembalikan URL media sementara."})
+    return signed if signed.startswith("http") else base + signed
+
+
 async def _require_cloudinary_media_schema() -> None:
     """Fail closed until the canonical media registry and all required RPCs are ready."""
     try:
@@ -76,7 +97,7 @@ async def _owned(media_id: uuid.UUID, owner_id: str) -> dict[str, Any]:
     await _require_cloudinary_media_schema()
     base, key = _config()
     params = {
-        "select": "id,owner_id,status,storage_provider,provider_public_id,provider_resource_type,provider_asset_id,provider_batch_id,provider_version,provider_format,size_bytes,sha256",
+        "select": "id,owner_id,status,storage_provider,bucket_id,storage_path,provider_public_id,provider_resource_type,provider_asset_id,provider_batch_id,provider_version,provider_format,size_bytes,sha256",
         "id": f"eq.{media_id}",
         "owner_id": f"eq.{owner_id}",
         "limit": "1",
@@ -317,7 +338,7 @@ async def get_media(media_id:uuid.UUID,user:dict[str,Any]=Depends(current_user))
     raw_item=rows[0]
     item=media_item_response(raw_item)
     delivery=None
-    if raw_item.get("storage_provider")=="cloudinary" and raw_item.get("status")=="ready":
+    if raw_item.get("status")=="ready" and raw_item.get("storage_provider")=="cloudinary":
         try:
             cfg=CloudinaryConfig.from_environment()
             delivery=build_signed_private_download_url(config=cfg,public_id=str(raw_item["provider_public_id"]),
@@ -336,6 +357,13 @@ async def get_media(media_id:uuid.UUID,user:dict[str,Any]=Depends(current_user))
                 derivative_deliveries.append({**derivative,"delivery_url":derivative_url})
         except (CloudinaryConfigurationError,ValueError,KeyError,TypeError):
             raise HTTPException(503,detail={"code":"MEDIA_DELIVERY_NOT_READY","message":"Private media delivery belum siap."})
+    elif raw_item.get("status")=="ready" and raw_item.get("storage_provider")=="supabase":
+        delivery=await _signed_supabase_storage_url(str(raw_item.get("bucket_id") or ""),str(raw_item.get("storage_path") or ""))
+        for derivative in item.get("derivatives") or []:
+            if not isinstance(derivative,dict) or not derivative.get("storage_path"):continue
+            derivative_url=await _signed_supabase_storage_url(
+                str(raw_item.get("bucket_id") or ""),str(derivative["storage_path"]))
+            derivative_deliveries.append({**derivative,"delivery_url":derivative_url})
     else:
         derivative_deliveries=[]
     return {"item":item,"delivery":{"url":delivery,"derivatives":derivative_deliveries,"expires_in_seconds":300} if delivery else None}
