@@ -163,22 +163,29 @@ def test_provider_derivative_contract_requires_playback_renditions_and_poster():
     from allpha_api.content_provider_callback_worker import validate_eager_derivative_contract
 
     validate_eager_derivative_contract("video/mp4", [
-        {"format": "video/mp4", "status": "success"},
-        {"format": "video/mp4", "status": "success"},
-        {"format": "image/jpeg", "status": "success"},
+        {"format": "mp4", "status": "success"},
+        {"format": "mp4", "status": "success"},
+        {"format": "jpg", "status": "success"},
     ])
     validate_eager_derivative_contract("audio/mpeg", [
-        {"format": "audio/mpeg", "status": "success"},
-        {"format": "audio/mp4", "status": "success"},
+        {"format": "mp3", "status": "success"},
+        {"format": "m4a", "status": "success"},
     ])
     with pytest.raises(ValueError, match="PROVIDER_VIDEO_RENDITION_CONTRACT_INVALID"):
         validate_eager_derivative_contract("video/mp4", [
-            {"format": "video/mp4", "status": "success"},
-            {"format": "video/mp4", "status": "success"},
-            {"format": "video/mp4", "status": "success"},
+            {"format": "mp4", "status": "success"},
+            {"format": "mp4", "status": "success"},
+            {"format": "mp4", "status": "success"},
         ])
     with pytest.raises(ValueError, match="PROVIDER_EAGER_DERIVATIVES_INCOMPLETE"):
         validate_eager_derivative_contract("audio/mpeg", [
-            {"format": "audio/mpeg", "status": "success"},
-            {"format": "audio/mp4", "status": "failed"},
+            {"format": "mp3", "status": "success"},
+            {"format": "m4a", "status": "failed"},
         ])
+
+
+def test_provider_derivative_download_is_stream_bounded():
+    source = (Path(__file__).parents[1] / "src" / "allpha_api" / "content_provider_callback_worker.py").read_text(encoding="utf-8")
+    assert "MAX_PROVIDER_DERIVATIVE_BYTES = 100 * 1024 * 1024" in source
+    assert "async for chunk in response.aiter_bytes()" in source
+    assert "PROVIDER_DERIVATIVE_TOO_LARGE" in source
