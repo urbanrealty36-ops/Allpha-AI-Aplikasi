@@ -428,6 +428,138 @@ begin
 end;
 $function$;
 
+
+create or replace function public.request_cloudinary_content_media_delete(
+  p_media_id uuid, p_owner_id uuid
+) returns jsonb
+language plpgsql security definer set search_path=pg_catalog,public
+as $function$
+declare
+  v_media public.content_media%rowtype;
+  v_job public.content_lifecycle_jobs%rowtype;
+begin
+  select * into v_media
+  from public.content_media
+  where id=p_media_id and owner_id=p_owner_id
+  for update;
+  if not found then
+    return jsonb_build_object('outcome','media_not_found');
+  end if;
+  if v_media.storage_provider<>'cloudinary' then
+    return jsonb_build_object('outcome','legacy_provider_requires_domain_delete');
+  end if;
+  if v_media.provider_delete_state='deleted' then
+    return jsonb_build_object('outcome','already_deleted','media',to_jsonb(v_media));
+  end if;
+  if v_media.provider_delete_state in ('queued','deleting') then
+    return jsonb_build_object('outcome','already_queued','media',to_jsonb(v_media));
+  end if;
+  if v_media.provider_public_id is null or v_media.provider_resource_type not in ('image','video','raw') then
+    return jsonb_build_object('outcome','provider_identity_missing');
+  end if;
+
+  update public.content_media
+  set status='deleting',provider_delete_state='queued'
+  where id=v_media.id
+  returning * into v_media;
+
+  insert into public.content_lifecycle_jobs(
+    job_type,content_id,media_id,owner_id,idempotency_key,payload,
+    domain,resource_id,purpose,tenant_id,session_id
+  )
+  values(
+    'provider_cleanup',v_media.content_id,v_media.id,v_media.owner_id,
+    'provider-cleanup:media-delete:'||v_media.id::text,
+    jsonb_build_object(
+      'provider','cloudinary','action','delete_media','media_id',v_media.id,
+      'provider_public_id',v_media.provider_public_id,
+      'resource_type',v_media.provider_resource_type
+    ),
+    v_media.domain,v_media.resource_id,v_media.purpose,v_media.tenant_id,v_media.session_id
+  )
+  on conflict(idempotency_key) do nothing;
+
+  select * into v_job from public.content_lifecycle_jobs
+  where idempotency_key='provider-cleanup:media-delete:'||v_media.id::text;
+  if not found then
+    raise exception 'CLOUDINARY_MEDIA_DELETE_JOB_NOT_PERSISTED' using errcode='40001';
+  end if;
+  return jsonb_build_object('outcome','queued','media',to_jsonb(v_media),'job_id',v_job.id);
+end;
+$function$;
+
+create or replace function public.complete_cloudinary_media_delete_job(
+  p_job_id uuid,p_lease_token uuid,p_media_id uuid
+) returns text
+language plpgsql security definer set search_path=pg_catalog,public
+as $function$
+declare
+  v_job public.content_lifecycle_jobs%rowtype;
+  v_media public.content_media%rowtype;
+begin
+  select * into v_job from public.content_lifecycle_jobs
+  where id=p_job_id and status='processing' and lease_token=p_lease_token
+    and lease_expires_at>now() and job_type='provider_cleanup'
+    and media_id=p_media_id and payload->>'action'='delete_media'
+  for update;
+  if not found then return 'lease_lost'; end if;
+
+  update public.content_media
+  set provider_delete_state='deleted',provider_deleted_at=coalesce(provider_deleted_at,now())
+  where id=p_media_id and owner_id=v_job.owner_id and status='deleting'
+    and storage_provider='cloudinary'
+    and provider_public_id=v_job.payload->>'provider_public_id'
+  returning * into v_media;
+  if not found then return 'media_not_deleting'; end if;
+
+  update public.content_lifecycle_jobs
+  set status='succeeded',lease_token=null,lease_expires_at=null,
+    completed_at=now(),updated_at=now(),last_error_code=null
+  where id=p_job_id;
+  insert into public.content_lifecycle_events(event_key,event_type,content_id,media_id,owner_id,payload)
+  values(
+    'media.provider_deleted:'||p_media_id::text,
+    'media.provider_deleted',v_media.content_id,v_media.id,v_media.owner_id,
+    jsonb_build_object('provider','cloudinary','provider_public_id',v_media.provider_public_id)
+  )
+  on conflict(event_key) do nothing;
+  return 'succeeded';
+end;
+$function$;
+
+create or replace function public.fail_cloudinary_media_delete_job(
+  p_job_id uuid,p_lease_token uuid,p_error_code text
+) returns text
+language plpgsql security definer set search_path=pg_catalog,public
+as $function$
+declare
+  v_job public.content_lifecycle_jobs%rowtype;
+  v_state text;
+begin
+  select * into v_job from public.content_lifecycle_jobs
+  where id=p_job_id and status='processing' and lease_token=p_lease_token
+    and lease_expires_at>now() and job_type='provider_cleanup'
+    and payload->>'action'='delete_media'
+  for update;
+  if not found then return 'lease_lost'; end if;
+
+  update public.content_lifecycle_jobs
+  set status=case when attempts>=max_attempts then 'dead' else 'pending' end,
+    run_at=case when attempts>=max_attempts then run_at
+      else now()+make_interval(secs=>least(3600,(power(2,least(attempts,10))::integer)*5)) end,
+    lease_token=null,lease_expires_at=null,
+    last_error_code=left(coalesce(p_error_code,'CLOUDINARY_DELETE_FAILED'),80),
+    updated_at=now()
+  where id=p_job_id returning status into v_state;
+
+  if v_state='dead' then
+    update public.content_media set provider_delete_state='failed'
+    where id=v_job.media_id and status='deleting' and provider_delete_state<>'deleted';
+  end if;
+  return coalesce(v_state,'lease_lost');
+end;
+$function$;
+
 update storage.buckets
 set allowed_mime_types=array(
   select distinct mime from unnest(coalesce(allowed_mime_types,array[]::text[]) || array['text/vtt','application/x-subrip']) as mime
@@ -437,6 +569,13 @@ where id='content-media';
 revoke all on function public.reserve_cloudinary_media_upload(uuid,uuid,uuid,text,text,uuid,uuid,uuid,text,text,bigint,text,text,text,text,timestamptz,text) from public,anon,authenticated;
 revoke all on function public.complete_cloudinary_content_media_upload(uuid,uuid,text,text,text,text,text,bigint,text,integer,integer,numeric,bigint,text[],jsonb) from public,anon,authenticated;
 revoke all on function public.complete_cloudinary_content_provider_job(uuid,uuid,text,text,text,text,text,jsonb,text,jsonb) from public,anon,authenticated;
+
+revoke all on function public.request_cloudinary_content_media_delete(uuid,uuid) from public,anon,authenticated;
+revoke all on function public.complete_cloudinary_media_delete_job(uuid,uuid,uuid) from public,anon,authenticated;
+revoke all on function public.fail_cloudinary_media_delete_job(uuid,uuid,text) from public,anon,authenticated;
+grant execute on function public.request_cloudinary_content_media_delete(uuid,uuid) to service_role;
+grant execute on function public.complete_cloudinary_media_delete_job(uuid,uuid,uuid) to service_role;
+grant execute on function public.fail_cloudinary_media_delete_job(uuid,uuid,text) to service_role;
 revoke all on function public.complete_content_subtitle_job(uuid,uuid,uuid,jsonb,integer) from public,anon,authenticated;
 revoke all on function public.enqueue_content_media_processing() from public,anon,authenticated;
 revoke all on function public.claim_content_lifecycle_jobs(text,integer,integer,text) from public,anon,authenticated;
