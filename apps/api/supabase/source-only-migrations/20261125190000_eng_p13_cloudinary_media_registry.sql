@@ -3,6 +3,14 @@
 begin;
 
 alter table public.content_media
+  add column if not exists provider_asset_id text,
+  add column if not exists provider_public_id text,
+  add column if not exists provider_batch_id text,
+  add column if not exists provider_callback_verified_at timestamptz,
+  add column if not exists processed_at timestamptz,
+  add column if not exists processing_version integer not null default 0,
+  add column if not exists processing_attempt integer not null default 0,
+  add column if not exists derivatives jsonb not null default '[]'::jsonb,
   add column if not exists storage_provider text not null default 'supabase',
   add column if not exists domain text not null default 'content',
   add column if not exists purpose text not null default 'attachment',

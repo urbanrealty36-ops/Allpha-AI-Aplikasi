@@ -1827,3 +1827,10 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 - **Operational dependency:** Railway API and shared worker have Cloudinary cloud/key/secret/callback references (values withheld). The shared worker still lacks remote scanner endpoint, credential, allowed-host list and pinned scanner/engine/signature versions. Scan-dependent consumers remain fail-closed; do not enable upload processing until scanner readiness is real.
 - **Focused verification:** the existing CI P13 PostgreSQL 17 verifier is extended to execute the new source migration. No production DDL, Cloudinary upload, Supabase Storage write or synthetic production lifecycle row was created.
 - **Status:** ENG-P13 remains `in_progress`. Next implementation is the canonical `/v1/media` service and upload-intent/completion routes, then adapt Web/Native upload helpers and callback/subtitle workers to store Cloudinary binaries and derivatives without copying them back to Supabase Storage.
+
+
+### 40.96.1 — P13 verifier fixture compatibility correction (2026-11-25)
+
+- **CI failure:** Allpha Smoke `45646721856` passed API pytest, P07/P08 PostgreSQL verifiers, and Web/Native/Super Admin checks, but the P13 disposable PostgreSQL verifier failed while applying the new source migration because its minimal fixture did not include legacy provider columns (`provider_public_id`, asset/batch/callback identity and processing metadata).
+- **Correction:** the source migration now adds those legacy provider/lifecycle columns with `ADD COLUMN IF NOT EXISTS` before applying Cloudinary constraints. This is safe for production schemas where the columns already exist and makes the disposable fixture reflect the minimum contract.
+- **Status:** correction committed separately; P13 verifier rerun pending. Production Supabase remains unchanged; the migration remains source-only.
