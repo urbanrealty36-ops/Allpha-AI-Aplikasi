@@ -657,3 +657,46 @@ def test_subtitle_mime_types_are_signature_checked_and_allowlisted():
     assert content_api._media_signature_valid("text/vtt", b"WEBVTT\n\n00:00:00.000 --> 00:00:02.000")
     assert content_api._media_signature_valid("application/x-subrip", b"1\n00:00:00,000 --> 00:00:02,000\nHello")
     assert not content_api._media_signature_valid("text/vtt", b"not a subtitle")
+
+def test_content_storage_clients_disable_ambient_proxy_and_redirects(monkeypatch):
+    import asyncio
+
+    options = []
+
+    class FakeResponse:
+        status_code = 200
+        content = b"[]"
+
+        def json(self):
+            return {"token": "signed-upload-token"}
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            options.append(kwargs)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def request(self, *args, **kwargs):
+            return FakeResponse()
+
+        async def post(self, *args, **kwargs):
+            return FakeResponse()
+
+    monkeypatch.setenv("SUPABASE_URL", "https://project.supabase.co")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "server-only-test-key")
+    monkeypatch.setattr(content_api.httpx, "AsyncClient", FakeClient)
+
+    async def scenario():
+        await content_api._server_db("GET", "content_items")
+        await content_api._storage("GET", "content-media/owner/path")
+        await content_api._create_resumable_upload_token("owner/content/media.mp4")
+
+    asyncio.run(scenario())
+
+    assert len(options) == 3
+    assert all(item.get("trust_env") is False for item in options)
+    assert all(item.get("follow_redirects") is False for item in options)
