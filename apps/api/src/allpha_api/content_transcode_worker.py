@@ -40,7 +40,7 @@ class TranscodeWorker:
    scan_receipt=await self.scan(data,str(p.get("filename") or mid),media_type)
    if not isinstance(scan_receipt,dict) or scan_receipt.get("sha256")!=p["sha256"]:
     raise ValueError("MEDIA_SOURCE_SCAN_RECEIPT_INVALID")
-   intent=build_signed_upload_intent(config=self.cloudinary,media_id=mid,media_type=media_type,callback_url=self.callback)
+   intent=build_signed_upload_intent(config=self.cloudinary,media_id=mid,media_type=media_type,callback_url=self.callback,context={"allpha_media_id":mid})
    resource=str(intent["resource_type"])
    public_id=str(intent["public_id"])
    params=dict(intent["params"])
