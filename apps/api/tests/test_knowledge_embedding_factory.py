@@ -106,3 +106,33 @@ def test_knowledge_embedding_factory_fails_closed_without_vector_generation(monk
             await build_worker()
 
     asyncio.run(scenario())
+
+def test_knowledge_embedding_factory_accepts_supabase_secret_key(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.delenv("SUPABASE_SERVICE_ROLE_KEY", raising=False)
+    monkeypatch.setenv("SUPABASE_SECRET_KEY", "canonical-secret-key")
+    repository = ReadyRepository()
+    router = ReadyRouter()
+
+    async def _ready_router():
+        return router
+
+    monkeypatch.setattr(
+        "allpha_api.knowledge_worker_factory.load_policy_resolver_from_environment",
+        lambda: ReadyPolicyResolver(),
+    )
+    monkeypatch.setattr(
+        "allpha_api.knowledge_worker_factory.build_embedding_router_from_environment",
+        lambda: _ready_router(),
+    )
+    monkeypatch.setattr(
+        "allpha_api.knowledge_worker_factory.SupabaseKnowledgeVectorRepository.from_environment",
+        lambda: repository,
+    )
+
+    async def scenario():
+        worker = await build_worker()
+        assert worker.store.key == "canonical-secret-key"
+        assert repository.verified is True
+
+    asyncio.run(scenario())
