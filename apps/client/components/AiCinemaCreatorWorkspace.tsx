@@ -77,7 +77,7 @@ async function request<T>(getAccessToken: Props["getAccessToken"], path: string,
 
 type NativeAuthenticatedRequest = (path: string, init?: RequestInit) => Promise<unknown>;
 export type NativeResumableUploadInit = {
-  item: { id: string };
+  item: { id: string; status?: string };
   already_uploaded: boolean;
   tus_endpoint?: string;
   upload_token?: string;
@@ -294,16 +294,23 @@ export async function uploadNativeFileWithProvider(
   });
   const init = raw as NativeResumableUploadInit;
   if (!init.item?.id) throw new Error("API tidak mengembalikan identitas media untuk upload resumable.");
+  let finalStatus = init.item.status || "";
   if (!init.already_uploaded) {
     try {
       await uploadNativeFileWithTus(file, init, apiKey, init.item.id, onProgress, storageKeyPrefix);
     } catch (cause) {
       if (!(cause instanceof Error) || cause.message !== "MEDIA_OBJECT_ALREADY_EXISTS") throw cause;
     }
-    await apiRequest("/v1/content/" + encodeURIComponent(contentId) + "/media/" + encodeURIComponent(init.item.id) + "/complete", { method: "POST" });
+    const rawCompleted = await apiRequest("/v1/content/" + encodeURIComponent(contentId) + "/media/" + encodeURIComponent(init.item.id) + "/complete", { method: "POST" });
+    const completed = rawCompleted as { item?: { id?: string; status?: string } };
+    if (completed.item?.id !== init.item.id || !completed.item.status) {
+      throw new Error("API belum mengonfirmasi status akhir media.");
+    }
+    finalStatus = completed.item.status;
   }
+  if (!finalStatus) throw new Error("API tidak mengembalikan status media yang terkonfirmasi.");
   await SecureStore.deleteItemAsync(storageKeyPrefix + ":" + init.item.id);
-  return { id: init.item.id, status: "uploaded" };
+  return { id: init.item.id, status: finalStatus };
 }
 
 
