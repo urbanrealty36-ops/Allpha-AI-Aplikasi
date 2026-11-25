@@ -48,8 +48,38 @@ def _config():
     return base,key
 
 
+MEDIA_SCHEMA_REQUIRED_COLUMNS = (
+    "storage_provider", "domain", "purpose", "resource_id", "tenant_id", "session_id",
+    "provider_resource_type", "provider_delivery_type", "provider_version", "provider_format",
+    "provider_width", "provider_height", "provider_duration", "provider_bytes", "provider_tags",
+    "provider_metadata", "upload_expires_at", "upload_completed_at", "upload_idempotency_key",
+    "provider_deleted_at", "provider_delete_state", "scan_receipt",
+)
+
+
+async def _require_cloudinary_media_schema() -> None:
+    """Fail closed until the forward-only canonical media migration is applied."""
+    base, key = _config()
+    params = {"select": ",".join(MEDIA_SCHEMA_REQUIRED_COLUMNS), "limit": "0"}
+    try:
+        async with httpx.AsyncClient(timeout=10, trust_env=False, follow_redirects=False) as client:
+            response = await client.get(
+                f"{base}/rest/v1/content_media",
+                params=params,
+                headers={"apikey": key, "Authorization": f"Bearer {key}"},
+            )
+    except httpx.HTTPError as exc:
+        raise HTTPException(503, detail={"code": "MEDIA_DB_UNAVAILABLE", "message": "Media registry tidak tersedia."}) from exc
+    if response.status_code >= 300:
+        raise HTTPException(
+            503,
+            detail={"code": "MEDIA_SCHEMA_NOT_READY", "message": "Kontrak database Media Foundation belum tersedia."},
+        )
+
+
 async def _owned(media_id: uuid.UUID, owner_id: str) -> dict[str, Any]:
     """Load one media row through the service boundary with an explicit owner fence."""
+    await _require_cloudinary_media_schema()
     base, key = _config()
     params = {
         "select": "id,owner_id,status,storage_provider,provider_public_id,provider_resource_type,provider_asset_id,provider_batch_id,provider_version,provider_format,size_bytes,sha256",
@@ -77,6 +107,7 @@ async def _owned(media_id: uuid.UUID, owner_id: str) -> dict[str, Any]:
 
 @router.post("/upload-intents", status_code=201)
 async def create_upload_intent(payload: UploadIntent, request: Request, user: dict[str, Any] = Depends(current_user), idempotency_key: str | None = Header(default=None, alias="Idempotency-Key")):
+    await _require_cloudinary_media_schema()
     media_type = payload.media_type.lower().split(";", 1)[0].strip()
     if media_type not in MEDIA_LIMITS:
         raise HTTPException(415, detail={"code":"MEDIA_TYPE_UNSUPPORTED","message":"Format media tidak didukung."})
@@ -172,6 +203,7 @@ async def cloudinary_callback(
         event = json.loads(raw)
     except (ValueError, UnicodeDecodeError) as exc:
         raise HTTPException(400, detail={"code":"CLOUDINARY_CALLBACK_JSON_INVALID","message":"Payload callback bukan JSON valid."}) from exc
+    await _require_cloudinary_media_schema()
     if not isinstance(event, dict) or event.get("notification_type") != "eager":
         raise HTTPException(422, detail={"code":"CLOUDINARY_CALLBACK_TYPE_UNSUPPORTED","message":"Jenis callback Cloudinary tidak didukung."})
     public_id, asset_id, batch_id = event.get("public_id"), event.get("asset_id"), event.get("batch_id")
@@ -259,6 +291,7 @@ async def delete_media(media_id: uuid.UUID, user: dict[str, Any] = Depends(curre
 
 @router.get("/{media_id}")
 async def get_media(media_id:uuid.UUID,user:dict[str,Any]=Depends(current_user)):
+    await _require_cloudinary_media_schema()
     base,key=_config()
     async with httpx.AsyncClient(timeout=12,trust_env=False,follow_redirects=False) as client:
         response=await client.get(f"{base}/rest/v1/content_media",params={"select":"id,content_id,owner_id,filename,media_type,size_bytes,sha256,status,scan_status,storage_provider,storage_path,provider_public_id,provider_resource_type,provider_delivery_type,provider_format,provider_version,provider_width,provider_height,provider_duration,provider_bytes,provider_delete_state,derivatives,created_at,processed_at,provider_asset_id","id":f"eq.{media_id}","owner_id":f"eq.{user['id']}","limit":"1"},headers={"apikey":key,"Authorization":f"Bearer {key}"})
