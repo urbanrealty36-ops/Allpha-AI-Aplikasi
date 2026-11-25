@@ -14,7 +14,7 @@ import { CanonicalNativeWorldRenderer } from "./components/spatial/CanonicalNati
 import { SpatialNavigationScreen } from "./components/spatial/SpatialNavigationScreen";
 import { SpatialThemeCatalogScreen } from "./components/spatial/SpatialThemeCatalogScreen";
 import { ContentAppealsPanel } from "./components/ContentAppealsPanel";
-import { AiCinemaCreatorWorkspace, uploadNativeFileWithCloudinary } from "./components/AiCinemaCreatorWorkspace";
+import { AiCinemaCreatorWorkspace, uploadNativeFileWithProvider } from "./components/AiCinemaCreatorWorkspace";
 import { File as ExpoFile } from "expo-file-system";
 import { NotificationsInbox } from "./components/NotificationsInbox";
 import { BillingCenter } from "./components/BillingCenter";
@@ -989,8 +989,9 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
         const file = new ExpoFile(storyFile.uri);
         if (!Number.isSafeInteger(file.size) || file.size <= 0) throw new Error("Ukuran file media tidak dapat dibaca.");
         if (!storyFile.mimeType) throw new Error("Tipe MIME file Story tidak dapat ditentukan.");
-        await uploadNativeFileWithCloudinary(
-          file, contentId, mediaId, storyFile.name, storyFile.mimeType, apiRequest, setStoryUploadProgress,
+        await uploadNativeFileWithProvider(
+          file, contentId, mediaId, storyFile.name, storyFile.mimeType, supabaseKey, apiRequest,
+          setStoryUploadProgress, "allpha:story:tus",
         );
         await SecureStore.deleteItemAsync("allpha:story:tus:" + mediaId);
       }
@@ -1159,8 +1160,9 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
         const file = new ExpoFile(contentFile.uri);
         if (!Number.isSafeInteger(file.size) || file.size <= 0) throw new Error("Ukuran file media tidak dapat dibaca.");
         if (!contentFile.mimeType) throw new Error("Tipe MIME file konten tidak dapat ditentukan.");
-        await uploadNativeFileWithCloudinary(
-          file, contentId, mediaId, contentFile.name, contentFile.mimeType, apiRequest, setContentUploadProgress,
+        await uploadNativeFileWithProvider(
+          file, contentId, mediaId, contentFile.name, contentFile.mimeType, supabaseKey, apiRequest,
+          setContentUploadProgress, "allpha:content:tus",
         );
         await SecureStore.deleteItemAsync("allpha:content:tus:" + mediaId);
       }
