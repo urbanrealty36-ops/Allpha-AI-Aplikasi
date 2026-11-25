@@ -45,7 +45,11 @@ async def _upload_private_artifact(job: dict[str, Any], output_text: str) -> tup
     if not body or len(body) > 10 * 1024 * 1024:
         raise RuntimeError("generation artifact size is outside the approved bound")
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(20.0, connect=3.0)) as client:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(20.0, connect=3.0),
+            follow_redirects=False,
+            trust_env=False,
+        ) as client:
             response = await client.post(
                 f"{url}/storage/v1/object/generation-artifacts/{path}",
                 headers={"apikey": key, "Authorization": f"Bearer {key}",
@@ -64,7 +68,11 @@ async def _approved_moderation_policy() -> dict[str, Any] | None:
     url, key = _database()
     now = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
     try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        async with httpx.AsyncClient(
+            timeout=_TIMEOUT,
+            follow_redirects=False,
+            trust_env=False,
+        ) as client:
             response = await client.get(
                 f"{url}/rest/v1/generation_output_moderation_policies",
                 params={"select":"policy_version,approval_reference,configuration,effective_at,expires_at",
@@ -89,16 +97,20 @@ async def _approved_moderation_policy() -> dict[str, Any] | None:
 
 def _database() -> tuple[str, str]:
     url = os.getenv("SUPABASE_URL", "").rstrip("/")
-    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip() or os.getenv("SUPABASE_SECRET_KEY", "").strip()
     if not url or not key:
-        raise RuntimeError("generation worker requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY")
+        raise RuntimeError("generation worker requires SUPABASE_URL and a server-side Supabase key")
     return url, key
 
 
 async def _rpc(name: str, args: dict[str, Any]) -> Any:
     url, key = _database()
     try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        async with httpx.AsyncClient(
+            timeout=_TIMEOUT,
+            follow_redirects=False,
+            trust_env=False,
+        ) as client:
             response = await client.post(
                 f"{url}/rest/v1/rpc/{name}",
                 headers={"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json", "Accept": "application/json"},
@@ -177,7 +189,11 @@ async def _consumer_grant_is_current(job: dict[str, Any]) -> dict[str, Any] | No
         "limit": "1",
     }
     try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        async with httpx.AsyncClient(
+            timeout=_TIMEOUT,
+            follow_redirects=False,
+            trust_env=False,
+        ) as client:
             response = await client.get(
                 f"{url}/rest/v1/agent_consumer_grants",
                 params=params,
@@ -278,7 +294,11 @@ async def _load_runtime_tool_authorization(job: dict[str, Any]) -> RuntimeAuthor
         "limit": "1",
     }
     try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        async with httpx.AsyncClient(
+            timeout=_TIMEOUT,
+            follow_redirects=False,
+            trust_env=False,
+        ) as client:
             policy_response = await client.get(f"{url}/rest/v1/agent_runtime_policies", params=policy_params, headers=headers)
             policy_response.raise_for_status()
             policy_rows = policy_response.json()
@@ -384,7 +404,11 @@ async def _execution_contract_is_current(job: dict[str, Any]) -> bool:
         }),
     )
     try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        async with httpx.AsyncClient(
+            timeout=_TIMEOUT,
+            follow_redirects=False,
+            trust_env=False,
+        ) as client:
             results = []
             for table, params in queries:
                 response = await client.get(
@@ -705,7 +729,11 @@ async def _process_job(job: dict[str, Any], worker_id: str, router: Any,
 async def _admin_get_job_status(job_id: str) -> list[dict[str, Any]]:
     url, key = _database()
     try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        async with httpx.AsyncClient(
+            timeout=_TIMEOUT,
+            follow_redirects=False,
+            trust_env=False,
+        ) as client:
             response = await client.get(
                 f"{url}/rest/v1/generation_jobs",
                 params={"select":"status", "id":f"eq.{job_id}", "limit":"1"},
