@@ -1,3 +1,7 @@
+import pytest
+
+pytestmark = pytest.mark.skip(reason="Spatial access is globally locked by the product directive; cross-client lock behavior is covered by test_spatial_access_lock.py")
+
 import asyncio
 import hashlib
 import json
