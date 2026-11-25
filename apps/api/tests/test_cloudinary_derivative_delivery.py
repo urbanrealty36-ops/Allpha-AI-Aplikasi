@@ -78,6 +78,17 @@ def test_audio_derivatives_are_cloudinary_authenticated_renditions():
     assert [record["kind"] for record in records] == ["rendition_1", "rendition_2"]
     assert [record["mime_type"] for record in records] == ["audio/mpeg", "audio/mp4"]
 
+def test_cloudinary_success_callback_may_omit_status_field():
+    eager = image_eager()
+    for item in eager:
+        item.pop("status", None)
+    records = build_cloudinary_derivative_metadata(
+        "image/jpeg", eager, cloud_name=CLOUD, resource_type="image",
+        public_id=PUBLIC_ID, version=VERSION,
+    )
+    assert len(records) == 2
+
+
 def test_eager_callback_rejects_non_success_transformations():
     eager = image_eager()
     eager[1]["status"] = "pending"
