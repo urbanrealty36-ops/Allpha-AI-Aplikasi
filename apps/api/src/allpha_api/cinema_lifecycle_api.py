@@ -248,6 +248,25 @@ async def start_playback_session(
             raise HTTPException(409, detail={"code": "CINEMA_PLAYBACK_IDEMPOTENCY_CONFLICT", "message": "Idempotency-Key dipakai untuk sesi berbeda."})
         raise HTTPException(409, detail={"code": "CINEMA_PLAYBACK_SESSION_REPLAY", "message": "Sesi lama tidak dapat mengembalikan token rahasia. Buat Idempotency-Key baru."})
 
+    prior_progress = await _db("GET", "cinema_playback_sessions", params={
+        "select": "status,last_position_seconds,duration_seconds",
+        "owner_user_id": "eq." + str(user["id"]),
+        "episode_id": "eq." + str(episode_id),
+        "status": "in.(expired,revoked,completed)",
+        "order": "updated_at.desc", "limit": "1",
+    })
+    resume_position_seconds = 0
+    if prior_progress:
+        previous = prior_progress[0]
+        if previous.get("status") != "completed":
+            try:
+                resume_position_seconds = max(0, int(previous.get("last_position_seconds") or 0))
+                previous_duration = previous.get("duration_seconds")
+                if previous_duration is not None and resume_position_seconds >= max(0, int(previous_duration) - 5):
+                    resume_position_seconds = 0
+            except (TypeError, ValueError):
+                resume_position_seconds = 0
+
     token = secrets.token_urlsafe(32)
     token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
     expires_at = (now + timedelta(hours=1)).isoformat()
@@ -262,7 +281,8 @@ async def start_playback_session(
         raise HTTPException(503, detail={"code": "CINEMA_PLAYBACK_SESSION_UNCONFIRMED", "message": "Sesi belum dapat dikonfirmasi."})
     url = await _signed_media_preview_url(str(media["storage_path"]), expires_in=300)
     return {
-        "session": {"id": rows[0]["id"], "expires_at": expires_at, "heartbeat_interval_seconds": 15},
+        "session": {"id": rows[0]["id"], "expires_at": expires_at, "heartbeat_interval_seconds": 15,
+                    "resume_position_seconds": resume_position_seconds},
         "session_token": token, "playback_url": url,
         "episode": {"id": episode["id"], "title": episode["title"], "duration_seconds": episode.get("duration_seconds")},
         "qualified_watch": "pending_policy",
@@ -307,6 +327,104 @@ async def finish_playback_session(
     if not isinstance(result, dict):
         raise HTTPException(503, detail={"code": "CINEMA_FINISH_UNCONFIRMED", "message": "Penyelesaian sesi belum dikonfirmasi."})
     return result
+
+
+@router.get("/playback-history")
+async def playback_history(limit: int = 20, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    bounded = min(max(1, limit), 50)
+    rows = await _db("GET", "cinema_playback_sessions", params={
+        "select": "id,title_id,episode_id,status,last_position_seconds,max_position_seconds,duration_seconds,started_at,last_heartbeat_at,finished_at,updated_at",
+        "owner_user_id": "eq." + str(user["id"]),
+        "order": "updated_at.desc", "limit": str(bounded),
+    })
+    if not rows:
+        return {"items": [], "limit": bounded}
+    title_ids = sorted({str(row["title_id"]) for row in rows if row.get("title_id")})
+    episode_ids = sorted({str(row["episode_id"]) for row in rows if row.get("episode_id")})
+    title_rows = await _db("GET", "cinema_titles", params={
+        "select": "id,title,genre,cover_media_id", "id": "in.(" + ",".join(title_ids) + ")",
+        "limit": str(len(title_ids)),
+    }) if title_ids else []
+    episode_rows = await _db("GET", "cinema_episodes", params={
+        "select": "id,title,episode_number", "id": "in.(" + ",".join(episode_ids) + ")",
+        "limit": str(len(episode_ids)),
+    }) if episode_ids else []
+    title_map = {str(row["id"]): row for row in title_rows or []}
+    episode_map = {str(row["id"]): row for row in episode_rows or []}
+    items = []
+    for row in rows:
+        try:
+            position = max(0, int(row.get("last_position_seconds") or 0))
+            maximum = max(position, int(row.get("max_position_seconds") or 0))
+            raw_duration = row.get("duration_seconds")
+            duration = int(raw_duration) if raw_duration is not None else None
+        except (TypeError, ValueError):
+            position, maximum, duration = 0, 0, None
+        completed = row.get("status") == "completed"
+        progress = min(100, round(maximum * 100 / duration)) if duration and duration > 0 else None
+        items.append({
+            **row,
+            "title": title_map.get(str(row.get("title_id"))),
+            "episode": episode_map.get(str(row.get("episode_id"))),
+            "resume_position_seconds": 0 if completed else position,
+            "progress_percent": progress,
+        })
+    return {"items": items, "limit": bounded}
+
+
+@router.get("/watchlist")
+async def get_watchlist(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    rows = await _db("GET", "cinema_watchlist_items", params={
+        "select": "id,title_id,created_at", "owner_user_id": "eq." + str(user["id"]),
+        "order": "created_at.desc", "limit": "100",
+    })
+    if not rows:
+        return {"items": []}
+    title_ids = sorted({str(row["title_id"]) for row in rows if row.get("title_id")})
+    titles = await _db("GET", "cinema_titles", params={
+        "select": "id,title,genre,synopsis,cover_media_id,trailer_media_id,published_at",
+        "id": "in.(" + ",".join(title_ids) + ")", "status": "eq.published",
+        "moderation_status": "eq.approved", "rights_status": "eq.cleared",
+        "limit": str(len(title_ids)),
+    }) if title_ids else []
+    title_map = {str(row["id"]): row for row in titles or []}
+    return {"items": [
+        {**row, "title": title_map[str(row["title_id"])]}
+        for row in rows if str(row.get("title_id")) in title_map
+    ]}
+
+
+@router.post("/watchlist/{title_id}", status_code=201)
+async def add_watchlist_item(title_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    titles = await _db("GET", "cinema_titles", params={
+        "select": "id,title,status,moderation_status,rights_status",
+        "id": "eq." + str(title_id), "status": "eq.published",
+        "moderation_status": "eq.approved", "rights_status": "eq.cleared", "limit": "1",
+    })
+    if not titles:
+        raise HTTPException(404, detail={"code": "CINEMA_TITLE_NOT_AVAILABLE", "message": "Judul belum tersedia untuk Watchlist."})
+    rows = await _db("POST", "cinema_watchlist_items", payload={
+        "owner_user_id": str(user["id"]), "title_id": str(title_id),
+    }, prefer="resolution=ignore-duplicates,return=representation")
+    if rows:
+        item = rows[0]
+    else:
+        existing = await _db("GET", "cinema_watchlist_items", params={
+            "select": "id,title_id,created_at", "owner_user_id": "eq." + str(user["id"]),
+            "title_id": "eq." + str(title_id), "limit": "1",
+        })
+        if not existing:
+            raise HTTPException(503, detail={"code": "CINEMA_WATCHLIST_UNCONFIRMED", "message": "Watchlist belum dapat dikonfirmasi."})
+        item = existing[0]
+    return {"item": item, "saved": True}
+
+
+@router.delete("/watchlist/{title_id}")
+async def remove_watchlist_item(title_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    rows = await _db("DELETE", "cinema_watchlist_items", params={
+        "owner_user_id": "eq." + str(user["id"]), "title_id": "eq." + str(title_id),
+    }, prefer="return=representation")
+    return {"removed": bool(rows)}
 
 
 @router.get("/subscription/plans")
