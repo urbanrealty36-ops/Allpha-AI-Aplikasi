@@ -111,7 +111,10 @@ jobs:
           set -euo pipefail
           docker exec -u postgres "$SUPABASE_DB_CONTAINER" \
             psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c \
-            "ALTER SYSTEM SET cron.database_name = 'allpha_p02_restore_verification'; ALTER SYSTEM SET cron.launch_active_jobs = 'off';"
+            "ALTER SYSTEM SET cron.database_name = 'allpha_p02_restore_verification';"
+          docker exec -u postgres "$SUPABASE_DB_CONTAINER" \
+            psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c \
+            "ALTER SYSTEM SET cron.launch_active_jobs = 'off';"
           docker restart "$SUPABASE_DB_CONTAINER"
           for attempt in $(seq 1 60); do
             if docker exec -u postgres "$SUPABASE_DB_CONTAINER" pg_isready -U postgres -d postgres >/dev/null 2>&1; then
@@ -124,7 +127,7 @@ jobs:
             fi
             sleep 2
           done
-          echo "Disposable pg_cron configuration did not become ready." >&2
+          echo "Disposable pg_cron configuration did not become ready after ${attempt} attempts." >&2
           exit 1
 
       - name: Restore the full custom archive into the disposable database
