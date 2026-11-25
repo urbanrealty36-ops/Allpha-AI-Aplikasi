@@ -156,7 +156,11 @@ async def user_db_request(
     if prefer:
         headers["Prefer"] = prefer
     try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        async with httpx.AsyncClient(
+            timeout=_TIMEOUT,
+            follow_redirects=False,
+            trust_env=False,
+        ) as client:
             response = await client.request(
                 method, f"{url}/rest/v1/{path}", headers=headers, params=params, json=body
             )
