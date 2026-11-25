@@ -3,7 +3,7 @@ from pydantic import ValidationError
 from fastapi import HTTPException, Request
 from fastapi.testclient import TestClient
 
-from allpha_api.auth import current_session_user, current_user, user_db_request
+from allpha_api.auth import current_session_user, current_user, service_db_request, user_db_request
 from allpha_api.main import OrganizationCreate, ProfileUpdate, app
 
 client = TestClient(app)
@@ -1028,3 +1028,44 @@ def test_user_db_request_disables_ambient_proxy_and_redirects(monkeypatch):
     assert captured["client_options"]["follow_redirects"] is False
     assert captured["headers"]["apikey"] == "sb_publishable_test"
     assert captured["headers"]["Authorization"] == "Bearer user-access-token"
+
+def test_service_db_request_uses_secret_key_and_disables_proxy_redirects(monkeypatch):
+    import asyncio
+
+    captured = {}
+
+    class FakeResponse:
+        status_code = 200
+        content = b"{}"
+
+        @staticmethod
+        def json():
+            return {}
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            captured["client_options"] = kwargs
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def post(self, url, *, headers, json):
+            captured.update(url=url, headers=headers, body=json)
+            return FakeResponse()
+
+    monkeypatch.setenv("SUPABASE_URL", "https://project.supabase.co")
+    monkeypatch.delenv("SUPABASE_SERVICE_ROLE_KEY", raising=False)
+    monkeypatch.setenv("SUPABASE_SECRET_KEY", "canonical-server-secret")
+    monkeypatch.setattr("allpha_api.auth.httpx.AsyncClient", FakeAsyncClient)
+
+    result = asyncio.run(service_db_request("record_account_consent_event_for_actor", body={"x": 1}))
+
+    assert result == {}
+    assert captured["client_options"]["trust_env"] is False
+    assert captured["client_options"]["follow_redirects"] is False
+    assert captured["headers"]["apikey"] == "canonical-server-secret"
+    assert captured["headers"]["Authorization"] == "Bearer canonical-server-secret"
+    assert captured["body"] == {"x": 1}
