@@ -1664,3 +1664,12 @@ This is an evidence refresh inside the existing fixed plan. It does not create a
 - **Commits:** `6e22ef1c24382b3763d1431bf1a0c4337abeff5b`, `1c3a0033cb99d16cb4a92b41df73e6b13b4a93c2`, `404a2644420cce549f6f250d1687ce65e9cda692`.
 - **Verification:** source edits committed to `main`; focused GitHub Actions and Railway deployment outcomes are pending observation. No worker activation, external provider processing, Storage derivative persistence, or production media lifecycle is claimed.
 - **Phase status:** ENG-P13 remains `in_progress`; this closes a real source correctness/security defect only.
+
+
+## 40.81 — ENG-P13 auxiliary worker activation and egress safeguards (2026-11-25)
+
+- **Implementation:** added explicit opt-in activation gates (default `false`) for the Cloudinary callback worker, Cloudinary cleanup worker, content scheduler, and retention worker. Missing provider/scanner/storage configuration now leaves these processes safely disabled instead of failing during startup or attempting unauthorised work. The scheduler's authenticated Supabase HTTP client now also disables ambient proxy discovery and redirects.
+- **Regression coverage:** the media worker HTTP-client policy test now includes the scheduler and retention worker; a new focused test verifies all four auxiliary workers remain disabled by default.
+- **Commits:** `25ccf552d10a4511f69b66ccffc651b2e9c50193`, `5b8cae05a97b9bbc4b4d6e17303df82bc613ff0e`, `37d0e5dc1c70c6f29aabf8e24370e96a869e73bf`, `ba28e482a6171dac1daae2075c547ae68cb8e4d7`, `25644a0a490fd6d5eb0c14cc56e59fff23cb61a8`.
+- **Verification:** focused CI is pending; no external scanner/provider, destructive retention, scheduler execution, or media job processing is enabled or claimed.
+- **Phase status:** ENG-P13 remains `in_progress`; worker source is more safely activatable, but production lifecycle verification is outstanding.
