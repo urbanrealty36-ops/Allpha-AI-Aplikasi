@@ -11,9 +11,11 @@ AGENT = "agent-1"
 
 
 class FakeMemoryCoordinator(MemoryCoordinator):
-    def __init__(self, *, owned=True, rows=None, policies=None):
+    def __init__(self, *, owned=True, rows=None, policies=None, conversation_participants=None, message_rows=None):
         self.owned = owned
         self.rows = rows or []
+        self.conversation_participants = conversation_participants or []
+        self.message_rows = message_rows or []
         self.policy_rows = policies or [{
             "id": "policy-1", "memory_type": "long_term", "enabled": True,
             "consent_version": CONSENT_VERSION, "consent_revoked_at": None,
@@ -31,6 +33,10 @@ class FakeMemoryCoordinator(MemoryCoordinator):
             return self.policy_rows
         if path == "agent_memory_items":
             return self.rows
+        if path == "conversation_participants":
+            return self.conversation_participants
+        if path == "messages":
+            return self.message_rows
         if path == "rpc/agent_memory_transition":
             return {"expired_count": 0}
         if path == "rpc/agent_memory_search":
@@ -200,3 +206,33 @@ def test_memory_items_projection_includes_owner_pin_state():
     call=store.calls[0]
     assert call["path"]=="agent_memory_items"
     assert "pinned_at" in call["params"]["select"].split(",")
+
+
+def test_conversation_context_is_centralized_and_participant_scoped():
+    import uuid
+    conversation = str(uuid.uuid4())
+    requester = str(uuid.uuid4())
+    agent = str(uuid.uuid4())
+    store = FakeMemoryCoordinator(
+        conversation_participants=[{"user_id": requester}, {"agent_id": agent}],
+        message_rows=[
+            {"sender_type": "agent", "sender_agent_id": agent, "body": "  Hello back  "},
+            {"sender_type": "human", "sender_user_id": requester, "body": "Hello"},
+            {"sender_type": "human", "sender_user_id": str(uuid.uuid4()), "body": "private other participant"},
+        ],
+    )
+    context = asyncio.run(store.conversation_context(conversation, requester, agent))
+    assert context == "Human: Hello\\nAgent: Hello back"
+    membership = next(call for call in store.calls if call["path"] == "conversation_participants")
+    assert membership["params"]["conversation_id"] == f"eq.{conversation}"
+    message_read = next(call for call in store.calls if call["path"] == "messages")
+    assert message_read["params"]["limit"] == "12"
+    assert message_read["params"]["delivery_status"] == "in.(sent,delivered,read)"
+
+
+def test_conversation_context_denies_when_requester_or_agent_is_not_a_participant():
+    import uuid
+    store = FakeMemoryCoordinator(conversation_participants=[{"user_id": str(uuid.uuid4())}])
+    with pytest.raises(MemoryDenied):
+        asyncio.run(store.conversation_context(str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())))
+    assert not any(call["path"] == "messages" for call in store.calls)

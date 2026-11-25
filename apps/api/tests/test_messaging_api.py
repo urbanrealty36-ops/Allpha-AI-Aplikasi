@@ -199,3 +199,18 @@ def test_dm_auto_reply_routing_precedes_legacy_inline_agent_generation():
     route = code.index("auto_reply = await _maybe_queue_social_dm_auto_reply(")
     inline = code.index("generated, evidence = await AgentRuntime().execute_skill_generation")
     assert route < inline
+
+
+def test_conversation_memory_context_delegates_to_canonical_memory_coordinator(monkeypatch):
+    import uuid
+    calls = []
+    async def context(self, conversation_id, requester_id, agent_id, *, max_messages=12, max_chars=6000):
+        calls.append((conversation_id, requester_id, agent_id, max_messages, max_chars))
+        return "Human: hi\\nAgent: hello"
+    monkeypatch.setattr(messaging_api.MemoryCoordinator, "conversation_context", context)
+    conversation = uuid.uuid4()
+    result = asyncio.run(messaging_api._conversation_memory_context(
+        conversation, "requester", "agent", max_messages=8, max_chars=3000,
+    ))
+    assert result == "Human: hi\\nAgent: hello"
+    assert calls == [(conversation, "requester", "agent", 8, 3000)]

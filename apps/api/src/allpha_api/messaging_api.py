@@ -123,39 +123,16 @@ async def _conversation_memory_context(
     max_messages: int = 12,
     max_chars: int = 6000,
 ) -> str:
-    """Build bounded, participant-scoped short-term context from persisted conversation messages."""
-    rows = await _db("GET", "messages", params={
-        "select": "sender_type,sender_user_id,sender_agent_id,body,created_at",
-        "conversation_id": f"eq.{conversation_id}",
-        "or": (
-            f"(and(sender_type.eq.human,sender_user_id.eq.{requester_id}),"
-            f"and(sender_type.eq.agent,sender_agent_id.eq.{agent_id}))"
-        ),
-        "delivery_status": "in.(sent,delivered,read)",
-        "order": "created_at.desc",
-        "limit": str(max(1, min(max_messages, 20))),
-    })
-    lines: list[str] = []
-    used = 0
-    for row in reversed(rows or []):
-        sender_type = row.get("sender_type")
-        if sender_type == "human" and str(row.get("sender_user_id") or "") == requester_id:
-            role = "Human"
-        elif sender_type == "agent" and str(row.get("sender_agent_id") or "") == agent_id:
-            role = "Agent"
-        else:
-            continue
-        body = str(row.get("body") or "").strip()
-        if not body:
-            continue
-        remaining = max_chars - used
-        if remaining <= 0:
-            break
-        body = body[:min(1600, remaining)]
-        line = f"{role}: {body}"
-        lines.append(line)
-        used += len(line)
-    return "\n".join(lines)
+    """Delegate conversation context assembly to the canonical Memory Coordinator."""
+    try:
+        return await MemoryCoordinator().conversation_context(
+            conversation_id, requester_id, agent_id,
+            max_messages=max_messages, max_chars=max_chars,
+        )
+    except MemoryDenied as exc:
+        raise HTTPException(404, detail={"code":"CONVERSATION_NOT_FOUND","message":"Percakapan tidak ditemukan."}) from exc
+    except MemoryUnavailable as exc:
+        raise HTTPException(503, detail={"code":"CONVERSATION_CONTEXT_UNAVAILABLE","message":"Konteks percakapan sementara tidak tersedia."}) from exc
 
 
 class ConversationCreate(BaseModel):

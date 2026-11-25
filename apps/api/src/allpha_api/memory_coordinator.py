@@ -1,6 +1,6 @@
 """Single canonical persistence and retrieval boundary for owner-private Agent Memory."""
 from __future__ import annotations
-import hashlib, os, re
+import hashlib, os, re, uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 import httpx
@@ -222,6 +222,82 @@ class MemoryCoordinator:
     async def expire_item(self,owner_id,item_id):
         result=await self.transition("expire_item",owner_id,item_id=item_id)
         return result if isinstance(result,dict) else None
+
+    async def conversation_context(
+        self, conversation_id, requester_id, agent_id, *, max_messages=12, max_chars=6000,
+    ):
+        """Assemble short-term context from the canonical conversation store.
+
+        Conversation messages remain owned by the Messaging domain. This coordinator
+        performs the bounded, participant-scoped read used by Agent context assembly;
+        it never copies messages into the persistent-memory tables.
+        """
+        try:
+            conversation = str(uuid.UUID(str(conversation_id)))
+            requester = str(uuid.UUID(str(requester_id)))
+            agent = str(uuid.UUID(str(agent_id)))
+        except (TypeError, ValueError, AttributeError) as exc:
+            raise MemoryDenied("Conversation context identity is invalid") from exc
+        if (not isinstance(max_messages, int) or isinstance(max_messages, bool)
+                or max_messages < 1 or not isinstance(max_chars, int)
+                or isinstance(max_chars, bool) or max_chars < 1):
+            raise MemoryDenied("Conversation context bounds are invalid")
+        max_messages = min(max_messages, 20)
+        max_chars = min(max_chars, 12000)
+
+        participants = await self.db("GET", "conversation_participants", params={
+            "select": "user_id,agent_id",
+            "conversation_id": f"eq.{conversation}",
+            "or": f"(user_id.eq.{requester},agent_id.eq.{agent})",
+            "limit": "4",
+        })
+        if not isinstance(participants, list):
+            raise MemoryUnavailable("Conversation membership lookup returned an invalid result")
+        has_requester = any(
+            isinstance(row, dict) and str(row.get("user_id") or "") == requester
+            for row in participants
+        )
+        has_agent = any(
+            isinstance(row, dict) and str(row.get("agent_id") or "") == agent
+            for row in participants
+        )
+        if not has_requester or not has_agent:
+            raise MemoryDenied("Conversation context requires both verified participants")
+
+        rows = await self.db("GET", "messages", params={
+            "select": "sender_type,sender_user_id,sender_agent_id,body,created_at",
+            "conversation_id": f"eq.{conversation}",
+            "or": (
+                f"(and(sender_type.eq.human,sender_user_id.eq.{requester}),"
+                f"and(sender_type.eq.agent,sender_agent_id.eq.{agent}))"
+            ),
+            "delivery_status": "in.(sent,delivered,read)",
+            "order": "created_at.desc",
+            "limit": str(max_messages),
+        })
+        if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+            raise MemoryUnavailable("Conversation message lookup returned an invalid result")
+
+        lines = []
+        used = 0
+        for row in reversed(rows):
+            sender_type = row.get("sender_type")
+            if sender_type == "human" and str(row.get("sender_user_id") or "") == requester:
+                role = "Human"
+            elif sender_type == "agent" and str(row.get("sender_agent_id") or "") == agent:
+                role = "Agent"
+            else:
+                continue
+            body = row.get("body")
+            if not isinstance(body, str) or not body.strip():
+                continue
+            remaining = max_chars - used
+            if remaining <= 0:
+                break
+            line = f"{role}: {body.strip()[:min(1600, remaining)]}"
+            lines.append(line)
+            used += len(line)
+        return "\\n".join(lines)
 
     async def retrieve_context(self,owner_id,agent_id,purpose="agent_generation_context",limit=12,max_chars=6000,query=None,max_sensitivity=None):
         if os.getenv("ALLPHA_MEMORY_COORDINATOR_ENABLED","false").lower()!="true":return []
