@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
+import { uploadContentMediaWithTus } from "../../lib/resumable-media-upload";
 import FeedView from "../../components/reference-ui/FeedView";
 import CreatePostModal from "../../components/reference-ui/CreatePostModal";
 import AgentSocialPresencePanel from "../../components/social/AgentSocialPresencePanel";
@@ -60,6 +61,9 @@ export default function FeedPage() {
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [composerHuman, setComposerHuman] = useState<HumanProfile | null>(null);
   const [composerAgent, setComposerAgent] = useState<AIAgentProfile | null>(null);
+  const [composerDraftIds, setComposerDraftIds] = useState<Record<string, string>>({});
+  const [composerUploadIds, setComposerUploadIds] = useState<Record<string, string>>({});
+  const [composerUploadFiles, setComposerUploadFiles] = useState<Record<string, File>>({});
   const sessionEpoch = useRef(0);
   const sessionUserId = useRef<string | null>(null);
   const feedRequestSequence = useRef(0);
@@ -155,6 +159,9 @@ export default function FeedPage() {
         setCommentsOpen({});
         setComposerHuman(null);
         setComposerAgent(null);
+        setComposerDraftIds({});
+        setComposerUploadIds({});
+        setComposerUploadFiles({});
         setBusyKey("");
         setError("");
         setNotice("");
@@ -520,18 +527,32 @@ export default function FeedPage() {
       if (post.authorshipType === "human_agent" && !attributedAgentId) {
         throw new Error("Agent co-author tidak tersedia atau bukan milik akun ini.");
       }
-      const created = await request("/v1/content", {
-        method: "POST",
-        body: JSON.stringify({ body: post.content.trim(), visibility: visibility.toLowerCase(), content_type: mediaPolicy?.contentType ?? "text", ai_agent_id: attributedAgentId }),
-      }) as { item?: { id?: string; status?: string; moderation_status?: string }; message?: string };
-      if (epoch !== sessionEpoch.current) throw new Error("Sesi berubah saat draft dibuat; proses publikasi dihentikan.");
-      const contentId = created.item?.id;
-      createdId = contentId ?? null;
-      if (!contentId) throw new Error("API tidak mengembalikan ID konten kanonis.");
-      if (mediaFile) {
-        const form = new FormData();
-        form.append("file", mediaFile, mediaFile.name);
-        await request("/v1/content/" + encodeURIComponent(contentId) + "/media", { method: "POST", body: form });
+      let contentId = composerDraftIds[post.id] ?? null;
+      let createdItem: { status?: string; moderation_status?: string } | null = null;
+      if (contentId) {
+        const mine = await request("/v1/content/mine") as { items?: { id: string; status?: string; moderation_status?: string }[] };
+        createdItem = mine.items?.find(item => item.id === contentId) ?? null;
+        if (!createdItem) throw new Error("Draft Feed yang dilanjutkan tidak ditemukan pada akun ini.");
+      } else {
+        const created = await request("/v1/content", {
+          method: "POST",
+          body: JSON.stringify({ body: post.content.trim(), visibility: visibility.toLowerCase(), content_type: mediaPolicy?.contentType ?? "text", ai_agent_id: attributedAgentId }),
+        }) as { item?: { id?: string; status?: string; moderation_status?: string }; message?: string };
+        if (epoch !== sessionEpoch.current) throw new Error("Sesi berubah saat draft dibuat; proses publikasi dihentikan.");
+        contentId = created.item?.id ?? null;
+        createdItem = created.item ?? null;
+        if (!contentId) throw new Error("API tidak mengembalikan ID konten kanonis.");
+        setComposerDraftIds(current => ({ ...current, [post.id]: contentId! }));
+      }
+      createdId = contentId;
+      if (mediaFile && contentId) {
+        let uploadKey = composerUploadIds[post.id];
+        if (!uploadKey || composerUploadFiles[post.id] !== mediaFile) {
+          uploadKey = crypto.randomUUID();
+          setComposerUploadIds(current => ({ ...current, [post.id]: uploadKey }));
+          setComposerUploadFiles(current => ({ ...current, [post.id]: mediaFile }));
+        }
+        await uploadContentMediaWithTus(request, contentId, mediaFile, uploadKey, () => undefined);
         if (epoch !== sessionEpoch.current) throw new Error("Sesi berubah saat media diunggah; draft tidak diteruskan ke publikasi.");
       }
       if (epoch !== sessionEpoch.current) throw new Error("Sesi berubah; proses publikasi dihentikan.");
@@ -540,14 +561,17 @@ export default function FeedPage() {
         message?: string;
       };
       if (epoch !== sessionEpoch.current) return { accepted: false, message: "Sesi berubah setelah permintaan publikasi; status publikasi perlu diperiksa melalui akun pemilik." };
-      const status = published.item?.status ?? created.item?.status ?? "unknown";
-      const moderation = published.item?.moderation_status ?? created.item?.moderation_status ?? "unknown";
+      const status = published.item?.status ?? createdItem?.status ?? "unknown";
+      const moderation = published.item?.moderation_status ?? createdItem?.moderation_status ?? "unknown";
       const confirmation = published.message
         ? `${published.message} Status: ${status}; moderasi: ${moderation}.`
         : status === "published" && moderation === "approved"
           ? "Konten disetujui dan dipublikasikan oleh API."
           : `Konten diterima API. Status: ${status}; moderasi: ${moderation}. Konten belum dianggap publik sampai API menyatakan published dan approved.`;
       await loadFeed(true);
+      setComposerDraftIds(current => { const next = { ...current }; delete next[post.id]; return next; });
+      setComposerUploadIds(current => { const next = { ...current }; delete next[post.id]; return next; });
+      setComposerUploadFiles(current => { const next = { ...current }; delete next[post.id]; return next; });
       setNotice(confirmation);
       return { accepted: true, message: confirmation };
     } catch (cause) {
