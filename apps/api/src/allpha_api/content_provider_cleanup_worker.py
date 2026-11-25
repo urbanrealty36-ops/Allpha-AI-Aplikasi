@@ -47,8 +47,19 @@ class CleanupWorker:
     except Exception:log.exception("provider cleanup poll failed");n=0
     if n==0:await asyncio.sleep(15)
   finally:await self.client.aclose()
+def enabled():
+ raw=os.getenv("ALLPHA_CONTENT_PROVIDER_CLEANUP_WORKER_ENABLED","false").strip().lower()
+ if raw not in {"true","false"}:raise SystemExit("ALLPHA_CONTENT_PROVIDER_CLEANUP_WORKER_ENABLED must be true or false")
+ if raw!="true":return False
+ missing=[name for name in ("SUPABASE_URL","CLOUDINARY_CLOUD_NAME","CLOUDINARY_API_KEY","CLOUDINARY_API_SECRET") if not os.getenv(name)]
+ if not (os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SECRET_KEY")):missing.append("SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SECRET_KEY")
+ if missing:raise SystemExit("Provider cleanup worker configuration missing: "+", ".join(missing))
+ return True
 def main():
  logging.basicConfig(level=os.getenv("LOG_LEVEL","INFO"))
+ if not enabled():
+  log.info("Provider cleanup worker is disabled")
+  return
  worker=CleanupWorker();loop=asyncio.new_event_loop();asyncio.set_event_loop(loop)
  for sig in (signal.SIGINT,signal.SIGTERM):loop.add_signal_handler(sig,lambda:setattr(worker,"stopping",True))
  try:loop.run_until_complete(worker.run())
