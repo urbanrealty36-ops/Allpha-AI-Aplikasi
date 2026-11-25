@@ -32,6 +32,7 @@ alter table public.content_media
   add column if not exists upload_idempotency_key text,
   add column if not exists provider_deleted_at timestamptz,
   add column if not exists provider_delete_state text not null default 'not_requested',
+  add column if not exists updated_at timestamptz not null default now(),
   add column if not exists scan_receipt jsonb;
 
 alter table public.content_media alter column content_id drop not null;
@@ -315,8 +316,8 @@ begin
   if p_media_id is null or p_owner_id is null or not exists(select 1 from auth.users where id=p_owner_id) then
     raise exception 'MEDIA_OWNER_NOT_FOUND' using errcode='23503';
   end if;
-  if coalesce(p_domain,'') not in ('content','profile','feed','reels','stories','cinema','live','agent','messaging','community','marketplace','other')
-     or coalesce(p_purpose,'') not in ('attachment','avatar','cover','post_attachment','reel','story','cinema_poster','cinema_asset','live_recording','live_replay','agent_artifact','chat_attachment','community_attachment','marketplace_attachment','other') then
+  if coalesce(p_domain,'') not in ('content','profile','feed','reels','stories','cinema','agent','messaging','community')
+     or coalesce(p_purpose,'') not in ('attachment','avatar','cover','post_attachment','reel','story','cinema_poster','cinema_asset','agent_artifact','chat_attachment','community_attachment') then
     raise exception 'MEDIA_DOMAIN_OR_PURPOSE_INVALID' using errcode='23514';
   end if;
   if (p_domain='content' and (p_content_id is null or p_resource_id is not null))
@@ -374,6 +375,9 @@ begin
   end;
   if not coalesce(v_authorized,false) then
     raise exception 'MEDIA_RESOURCE_ACCESS_DENIED' using errcode='42501';
+  end if;
+  if p_tenant_id is not null or p_session_id is not null then
+    raise exception 'MEDIA_TENANT_SESSION_AUTHORIZATION_NOT_SUPPORTED' using errcode='23514';
   end if;
   v_expected_resource:=case
     when coalesce(p_media_type,'') like 'image/%' then 'image'
