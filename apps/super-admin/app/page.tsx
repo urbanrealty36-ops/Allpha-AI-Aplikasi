@@ -28,6 +28,48 @@ type AuthPayload = {
   msg?: string;
 };
 type Operator = { id: string; email?: string; scopes: OperatorScope[] };
+type OperatorMedia = {
+  id: string;
+  content_id?: string | null;
+  domain?: string;
+  purpose?: string;
+  resource_id?: string | null;
+  filename: string;
+  media_type: string;
+  size_bytes: number;
+  status: string;
+  scan_status?: string;
+  storage_provider?: string;
+  provider_resource_type?: string | null;
+  provider_delivery_type?: string | null;
+  provider_format?: string | null;
+  provider_version?: number | null;
+  provider_width?: number | null;
+  provider_height?: number | null;
+  provider_duration?: number | null;
+  provider_bytes?: number | null;
+  provider_delete_state?: string | null;
+  upload_expires_at?: string | null;
+  upload_completed_at?: string | null;
+  provider_deleted_at?: string | null;
+  provider_callback_verified_at?: string | null;
+  created_at: string;
+  processed_at?: string | null;
+  updated_at?: string | null;
+};
+type OperatorMediaJob = {
+  id: string;
+  media_id: string;
+  job_type: string;
+  status: string;
+  attempts: number;
+  max_attempts: number;
+  run_at?: string | null;
+  last_error_code?: string | null;
+  created_at: string;
+  updated_at: string;
+  completed_at?: string | null;
+};
 type AuditEvent = {
   id: string;
   actor_user_id?: string | null;
@@ -167,6 +209,13 @@ export default function OperationsPage() {
     })),
   );
   const [audit, setAudit] = useState<AuditEvent[]>([]);
+  const [operatorMedia, setOperatorMedia] = useState<OperatorMedia[]>([]);
+  const [operatorMediaJobs, setOperatorMediaJobs] = useState<OperatorMediaJob[]>([]);
+  const [operatorMediaError, setOperatorMediaError] = useState("");
+  const [operatorMediaBusy, setOperatorMediaBusy] = useState(false);
+  const [operatorMediaOffset, setOperatorMediaOffset] = useState(0);
+  const [operatorMediaSelected, setOperatorMediaSelected] = useState<OperatorMedia | null>(null);
+  const [operatorMediaSelectedJobs, setOperatorMediaSelectedJobs] = useState<OperatorMediaJob[]>([]);
   const [grants, setGrants] = useState<Grant[]>([]);
   const [capabilities, setCapabilities] = useState<CapabilityRequest[]>([]);
   const [officialBots, setOfficialBots] = useState<OfficialBot[]>([]);
@@ -290,6 +339,18 @@ export default function OperationsPage() {
       setAgencyReconciliationRows(reconciliationItems.items ?? []); setAgencyReconciliationTotal(reconciliationItems.total ?? 0); setAgencyReconciliationOffset(0);
     } else { setAgencyDrafts([]); setAgencyDraftsTotal(0); setAgencyDraftImportStatus("restricted"); setAgencyReconciliationSummary(null); }
     if (access.operator.scopes.includes("platform:operations.read")) {
+      try {
+        const mediaResponse = await adminFetch("/v1/admin/operator/media?limit=50&offset=0", activeSession, setSession);
+        const mediaBody = await responseBody<{ items: OperatorMedia[]; jobs: OperatorMediaJob[] }>(mediaResponse);
+        setOperatorMedia(mediaBody.items ?? []);
+        setOperatorMediaJobs(mediaBody.jobs ?? []);
+        setOperatorMediaOffset(0);
+        setOperatorMediaError("");
+      } catch (cause) {
+        setOperatorMedia([]);
+        setOperatorMediaJobs([]);
+        setOperatorMediaError(cause instanceof Error ? cause.message : "Media operations belum tersedia.");
+      }
       const botResponse = await adminFetch("/v1/admin/official-bots?limit=50&offset=0", activeSession, setSession);
       const botBody = await responseBody<{ items: OfficialBot[]; total?: number }>(botResponse);
       setOfficialBots(botBody.items ?? []); setOfficialBotsTotal(botBody.total ?? (botBody.items?.length ?? 0)); setOfficialBotsOffset(0);
@@ -659,8 +720,33 @@ export default function OperationsPage() {
     }
   }
 
+  async function refreshOperatorMedia(offset = operatorMediaOffset) {
+    if (!session) return;
+    setOperatorMediaBusy(true); setOperatorMediaError("");
+    try {
+      const response = await adminFetch("/v1/admin/operator/media?limit=50&offset=" + offset, session, setSession);
+      const body = await responseBody<{ items: OperatorMedia[]; jobs: OperatorMediaJob[] }>(response);
+      setOperatorMedia(body.items ?? []); setOperatorMediaJobs(body.jobs ?? []);
+      setOperatorMediaOffset(offset); setOperatorMediaSelected(null); setOperatorMediaSelectedJobs([]);
+    } catch (cause) {
+      setOperatorMediaError(cause instanceof Error ? cause.message : "Gagal memuat media operations.");
+    } finally { setOperatorMediaBusy(false); }
+  }
+
+  async function loadOperatorMediaDetail(mediaId: string) {
+    if (!session) return;
+    setOperatorMediaBusy(true); setOperatorMediaError("");
+    try {
+      const response = await adminFetch("/v1/admin/operator/media/" + encodeURIComponent(mediaId), session, setSession);
+      const body = await responseBody<{ item: OperatorMedia; jobs: OperatorMediaJob[] }>(response);
+      setOperatorMediaSelected(body.item); setOperatorMediaSelectedJobs(body.jobs ?? []);
+    } catch (cause) {
+      setOperatorMediaError(cause instanceof Error ? cause.message : "Gagal memuat detail media.");
+    } finally { setOperatorMediaBusy(false); }
+  }
+
   function logout() {
-    setSession(null); setOperator(null); setAudit([]); setGrants([]); setCapabilities([]); setRuntimePreflight(null); setChallengeResults([]); setError(""); setNotice("");
+    setSession(null); setOperator(null); setAudit([]); setGrants([]); setCapabilities([]); setOperatorMedia([]); setOperatorMediaJobs([]); setOperatorMediaSelected(null); setOperatorMediaSelectedJobs([]); setOperatorMediaError(""); setRuntimePreflight(null); setChallengeResults([]); setError(""); setNotice("");
   }
 
   return <main className="shell">
@@ -675,6 +761,7 @@ export default function OperationsPage() {
       <Link className="nav" href="/billing-governance">◇ &nbsp; Billing & Stripe Governance</Link>
       {operator?.scopes.includes("platform:account_lifecycle.manage") && <a className="nav" href="#account-lifecycle">◇ &nbsp; Account Lifecycle Governance</a>}
       <Link className="nav" href="/community-moderation">◈ &nbsp; Moderasi komunitas</Link>
+      {operator?.scopes.includes("platform:operations.read") && <a className="nav" href="#media-operations">▣ &nbsp; Media operations</a>}
       <a className="nav" href="#operator-access">◎ &nbsp; Operator access</a>
       {canManage && <a className="nav" href="#operator-grants">◇ &nbsp; Operator grants</a>}
       {canReview && <a className="nav" href="#capability-review">◇ &nbsp; Capability review</a>}
@@ -778,6 +865,19 @@ export default function OperationsPage() {
           {!agencyReconciliationRows.length && <tr><td colSpan={4} className="emptyCell">Kandidat rekonsiliasi belum tersedia.</td></tr>}
         </tbody></table></div>
         {agencyDraftDetail && <article className="probe"><div className="probeText"><b>{agencyDraftDetail.name} · {agencyDraftDetail.version_key}</b><p>License: {agencyDraftDetail.provenance.license} · Commit: <code>{agencyDraftDetail.provenance.commit.slice(0, 12)}</code></p><p>Source: <a href={agencyDraftDetail.provenance.source_url} target="_blank" rel="noreferrer">{agencyDraftDetail.provenance.path}</a></p><p>Flags otomatis: {(agencyDraftDetail.review.security_flags || []).join(", ") || "Tidak ada pola terdeteksi; ini bukan jaminan bebas risiko."}</p><p>Checksum: <code>{agencyDraftDetail.content_sha256}</code></p><p>AI Character role: {agencyDraftDetail.character_profile.role || agencyDraftDetail.name} · Asset status: {agencyDraftDetail.character_profile.asset_status || "needs_catalog_mapping"} · asset_key: <code>{agencyDraftDetail.character_profile.asset_key || "null"}</code></p><details><summary>Instruksi adaptasi Allpha</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere",maxHeight:360,overflow:"auto"}}>{agencyDraftDetail.adapted_instructions}</pre></details><details><summary>Instruksi sumber asli</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere",maxHeight:360,overflow:"auto"}}>{agencyDraftDetail.source_instructions_markdown}</pre></details></div><button className="secondaryButton" onClick={() => setAgencyDraftDetail(null)}>Tutup</button></article>}
+      </section>}
+      {session && operator?.scopes.includes("platform:operations.read") && <section className="panel" id="media-operations">
+        <header className="panelHead"><div><h2>Media Foundation operations</h2><p>Read-only operational view dari registry media dan durable lifecycle jobs. Provider IDs, storage paths, hashes, dan scanner receipts tidak ditampilkan.</p></div><span className="pill warning">READ ONLY</span></header>
+        <div className="panelActions"><span className="muted">50 media terbaru · offset {operatorMediaOffset}</span><button className="secondaryButton" disabled={operatorMediaBusy} onClick={() => void refreshOperatorMedia(0)}>{operatorMediaBusy ? "Memuat…" : "Refresh"}</button><button className="secondaryButton" disabled={operatorMediaBusy || operatorMediaOffset === 0} onClick={() => void refreshOperatorMedia(Math.max(0, operatorMediaOffset - 50))}>Sebelumnya</button><button className="secondaryButton" disabled={operatorMediaBusy || operatorMedia.length < 50} onClick={() => void refreshOperatorMedia(operatorMediaOffset + 50)}>Berikutnya</button></div>
+        {operatorMediaError && <div className="notice errorNotice" role="status"><b>!</b><div><strong>Media registry belum tersedia</strong><p>{operatorMediaError}</p><small>Cloudinary routes and media workers remain fail-closed until the approved media schema migration and scanner configuration are ready.</small></div></div>}
+        <div className="tableWrap"><table><thead><tr><th>Media</th><th>Domain / purpose</th><th>Lifecycle</th><th>Provider</th><th>Scan</th><th>Created</th><th>Jobs</th><th>Detail</th></tr></thead><tbody>
+          {operatorMedia.map(item => {
+            const jobs = operatorMediaJobs.filter(job => job.media_id === item.id);
+            return <tr key={item.id}><td><strong>{item.filename}</strong><br/><small>{item.media_type} · {(item.size_bytes / 1048576).toFixed(2)} MB</small><br/><code>{item.id}</code></td><td>{item.domain || "—"}<br/><small>{item.purpose || "—"}</small></td><td><span className={"pill " + (item.status === "ready" ? "online" : item.status === "failed" ? "warning" : "muted")}>{item.status}</span><br/><small>Delete: {item.provider_delete_state || "—"}</small></td><td>{item.storage_provider || "—"}<br/><small>{item.provider_delivery_type || "—"} · {item.provider_format || "—"}</small></td><td>{item.scan_status || "—"}</td><td>{new Date(item.created_at).toLocaleString("id-ID")}</td><td>{jobs.length}</td><td><button className="secondaryButton" onClick={() => void loadOperatorMediaDetail(item.id)} disabled={operatorMediaBusy}>Detail</button></td></tr>;
+          })}
+          {!operatorMedia.length && !operatorMediaError && <tr><td colSpan={8} className="emptyCell">Belum ada media pada halaman ini.</td></tr>}
+        </tbody></table></div>
+        {operatorMediaSelected && <article className="probe"><div className="probeText"><b>{operatorMediaSelected.filename}</b><p><code>{operatorMediaSelected.id}</code> · {operatorMediaSelected.domain}/{operatorMediaSelected.purpose}</p><p>State: {operatorMediaSelected.status} · scan: {operatorMediaSelected.scan_status || "—"} · provider: {operatorMediaSelected.storage_provider || "—"}</p><p>Dimensions: {operatorMediaSelected.provider_width || "—"} × {operatorMediaSelected.provider_height || "—"} · duration: {operatorMediaSelected.provider_duration ?? "—"}s · bytes: {operatorMediaSelected.provider_bytes ?? operatorMediaSelected.size_bytes}</p><p>Upload completed: {operatorMediaSelected.upload_completed_at ? new Date(operatorMediaSelected.upload_completed_at).toLocaleString("id-ID") : "—"} · callback verified: {operatorMediaSelected.provider_callback_verified_at ? new Date(operatorMediaSelected.provider_callback_verified_at).toLocaleString("id-ID") : "—"} · processed: {operatorMediaSelected.processed_at ? new Date(operatorMediaSelected.processed_at).toLocaleString("id-ID") : "—"}</p><h3>Lifecycle jobs</h3><div className="tableWrap"><table><thead><tr><th>Type</th><th>Status</th><th>Attempts</th><th>Next run</th><th>Error code</th></tr></thead><tbody>{operatorMediaSelectedJobs.map(job => <tr key={job.id}><td>{job.job_type}</td><td>{job.status}</td><td>{job.attempts}/{job.max_attempts}</td><td>{job.run_at ? new Date(job.run_at).toLocaleString("id-ID") : "—"}</td><td><code>{job.last_error_code || "—"}</code></td></tr>)}{!operatorMediaSelectedJobs.length && <tr><td colSpan={5} className="emptyCell">Tidak ada lifecycle job terkait.</td></tr>}</tbody></table></div></div><button className="secondaryButton" onClick={() => {setOperatorMediaSelected(null);setOperatorMediaSelectedJobs([]);}}>Tutup detail</button></article>}
       </section>}
       {session && operator?.scopes.includes("platform:account_lifecycle.manage") && <AccountLifecycleGovernancePanel apiBase={apiBase} getAccessToken={getCurrentAccessToken}/>}
             {session && canReadAudit && <section className="panel" id="operator-audit">
