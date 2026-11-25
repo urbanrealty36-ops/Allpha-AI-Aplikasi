@@ -1587,3 +1587,11 @@ This is an evidence refresh inside the existing fixed plan. It does not create a
 - **Scope:** No schema or data changes; no client credential exposure. This closes an actual runtime failure mode in the Knowledge source lifecycle when deployments use the canonical secret key exclusively.
 - **Status:** API credential-resolution source is **implemented**; regression execution and production Knowledge lifecycle remain **not verified**. ENG-P07 remains `in_progress`.
 - **Next:** continue P07 retrieval consent/grant integration and vector persistence without reusing general legal consent as Knowledge permission or fabricating an embedding profile/dimension. Then proceed in canonical order through P08–P11 and AI Cinema.
+
+## 40.71 — ENG-P07 Knowledge REST schema failure semantics (2026-11-25)
+
+- **Implementation:** `253631c876a389c5419a2483d8ddc928f98476c1` changes `_admin_db_request()` so PostgREST HTTP 404 is no longer converted to an empty list. A missing table/RPC is a deployment/schema failure and now returns typed HTTP 503 `KNOWLEDGE_SCHEMA_UNAVAILABLE`. Legitimate empty collections remain represented by the successful PostgREST 200 response with an empty array.
+- **Focused regression coverage:** `79e42a4bf3a62ccb411d1205ba4f04c2117cc190` adds a missing-schema negative case; `45248affbb8a515073937026fe04c6a28122e974` tightens it to assert the exact FastAPI `HTTPException` type and status/code. Test execution is pending CI.
+- **Scope:** API error semantics only; no DB mutation. This removes a false-success path that could otherwise hide missing Knowledge schema contracts from clients and operators.
+- **Status:** source behavior and regression coverage are **implemented**; CI result and production integration are not yet verified. ENG-P07 remains `in_progress`.
+- **Next:** continue source-side policy/retrieval and vector lifecycle work only where decisions are already approved; keep unapproved consent/grant physical schema and vector dimension gated under the exact ADRs.
