@@ -700,3 +700,29 @@ def test_content_storage_clients_disable_ambient_proxy_and_redirects(monkeypatch
     assert len(options) == 3
     assert all(item.get("trust_env") is False for item in options)
     assert all(item.get("follow_redirects") is False for item in options)
+
+def test_ready_cloudinary_media_uses_short_lived_authenticated_provider_delivery(monkeypatch):
+    import asyncio
+    from urllib.parse import parse_qs, urlsplit
+
+    monkeypatch.setenv("CLOUDINARY_CLOUD_NAME", "allpha-test")
+    monkeypatch.setenv("CLOUDINARY_API_KEY", "server-api-key")
+    monkeypatch.setenv("CLOUDINARY_API_SECRET", "server-api-secret")
+
+    item = {
+        "id": "00000000-0000-0000-0000-000000000401",
+        "media_type": "video/mp4",
+        "provider_public_id": "allpha/00000000-0000-0000-0000-000000000401",
+        "status": "ready",
+        "storage_path": "owner-a/content/video.mp4",
+        "derivatives": [],
+    }
+    url = asyncio.run(content_api._signed_cloudinary_original_url(item))
+    parsed = urlsplit(url)
+    params = parse_qs(parsed.query)
+    assert parsed.scheme == "https"
+    assert parsed.hostname == "api.cloudinary.com"
+    assert parsed.path.endswith("/video/download")
+    assert params["public_id"] == [item["provider_public_id"]]
+    assert params["type"] == ["authenticated"]
+    assert "signature" in params and "api_secret" not in params
