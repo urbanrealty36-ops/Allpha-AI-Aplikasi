@@ -1848,3 +1848,10 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 - **Security contract:** Cloudinary Admin API identity is checked against the expected `public_id`, `resource_type`, and `type=authenticated`; provider credentials remain server-side. Non-2xx, missing assets, identity mismatch and incomplete metadata fail closed.
 - **Focused tests:** `apps/api/tests/test_cloudinary_provider.py` adds context-signature and authenticated Admin API identity tests, including rejection of a non-authenticated asset. CI verification pending.
 - **Boundary:** this is provider-adapter implementation only; it does not yet create upload intents from FastAPI or wire Web/Native uploaders. ENG-P13 remains `in_progress`.
+
+
+### 40.97.1 — P13 verifier role-boundary correction (2026-11-25)
+
+- **CI evidence:** Allpha Smoke `45647571599` passed Web, Native and Super Admin checks but the P13 disposable verifier failed because its test block ran direct `content_lifecycle_jobs` assertions under `service_role`, while the isolated fixture intentionally grants only RPC execution to that role.
+- **Correction:** the verifier now executes the upload intent/completion RPCs under `service_role`, resets to the fixture owner for direct state assertions, and then separately exercises the worker RPC under the worker role. Production grants are not broadened to make a test pass.
+- **Status:** verifier correction committed; a fresh Allpha Smoke run must pass before treating the Cloudinary registry contract as verified.

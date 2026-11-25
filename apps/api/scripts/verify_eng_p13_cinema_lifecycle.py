@@ -284,6 +284,13 @@ begin
   1,'jpg',32,32,null,1024,array['allpha'],'{{"source":"ci"}}'::jsonb
  );
  if v_result->>'idempotent_replay'<>'true' then raise exception 'Cloudinary completion retry was not idempotent'; end if;
+end
+$do$;
+reset role;
+psql(f"""
+do $do$
+declare v_media_id uuid:='{CLOUDINARY_IMAGE_MEDIA}';
+begin
  if not exists(select 1 from public.content_lifecycle_jobs where media_id=v_media_id and job_type='media_transcode' and status='awaiting_provider') then
   raise exception 'Cloudinary eager job was not fenced awaiting provider callback';
  end if;
@@ -298,7 +305,6 @@ begin
  end if;
 end
 $do$;
-reset role;
 """)
 
         psql(f"""
@@ -316,12 +322,17 @@ begin
   1,'vtt',null,null,null,128,array['allpha'],'{{"source":"ci"}}'::jsonb
  );
  if v_result->'media'->>'status'<>'processing' then raise exception 'Cloudinary subtitle did not enter validation lifecycle: %',v_result; end if;
- if not exists(select 1 from public.content_lifecycle_jobs where media_id=v_media_id and job_type='subtitle_validate' and status='pending') then
+end
+$do$;
+reset role;
+psql(f"""
+do $do$
+begin
+ if not exists(select 1 from public.content_lifecycle_jobs where media_id='{CLOUDINARY_SUBTITLE_MEDIA}' and job_type='subtitle_validate' and status='pending') then
   raise exception 'Cloudinary subtitle validation job was not queued';
  end if;
 end
 $do$;
-reset role;
 """)
 
         psql(f"""
