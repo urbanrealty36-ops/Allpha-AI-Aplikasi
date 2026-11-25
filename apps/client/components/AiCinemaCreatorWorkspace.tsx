@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Platform, Pressable, Text, TextInput, View } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import { File as ExpoFile } from "expo-file-system";
+import { fetch as expoFetch } from "expo/fetch";
 import * as SecureStore from "expo-secure-store";
 import * as Crypto from "expo-crypto";
 
@@ -75,6 +76,14 @@ async function request<T>(getAccessToken: Props["getAccessToken"], path: string,
 
 
 type NativeAuthenticatedRequest = (path: string, init?: RequestInit) => Promise<unknown>;
+export type NativeResumableUploadInit = {
+  item: { id: string };
+  already_uploaded: boolean;
+  tus_endpoint?: string;
+  upload_token?: string;
+  upload_metadata?: Record<string, string>;
+  chunk_size_bytes?: number;
+};
 type NativeCloudinaryUploadIntent = {
   item: { id: string; status: string };
   upload: {
@@ -93,6 +102,92 @@ type PersistedNativeCinemaUpload = {
   size: number;
   fingerprint: string;
 };
+
+function base64Ascii(value: string): string {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  let output = "";
+  for (let i = 0; i < value.length; i += 3) {
+    const a = value.charCodeAt(i) & 255;
+    const hasB = i + 1 < value.length;
+    const hasC = i + 2 < value.length;
+    const b = hasB ? value.charCodeAt(i + 1) & 255 : 0;
+    const c = hasC ? value.charCodeAt(i + 2) & 255 : 0;
+    output += alphabet[a >> 2];
+    output += alphabet[((a & 3) << 4) | (b >> 4)];
+    output += hasB ? alphabet[((b & 15) << 2) | (c >> 6)] : "=";
+    output += hasC ? alphabet[c & 63] : "=";
+  }
+  return output;
+}
+
+export async function uploadNativeFileWithTus(
+  file: ExpoFile,
+  init: NativeResumableUploadInit,
+  apiKey: string,
+  mediaId: string,
+  onProgress: (percent: number) => void,
+  storageKeyPrefix = "allpha:cinema:tus",
+): Promise<void> {
+  if (!init.tus_endpoint || !init.upload_token || !init.upload_metadata) {
+    throw new Error("Kontrak upload resumable dari server tidak lengkap.");
+  }
+  const urlKey = storageKeyPrefix + ":" + mediaId;
+  let uploadUrl = await SecureStore.getItemAsync(urlKey);
+  const headers = { "Tus-Resumable": "1.0.0", apikey: apiKey, "x-signature": init.upload_token };
+  const readOffset = async (target: string): Promise<number> => {
+    const response = await expoFetch(target, { method: "HEAD", headers });
+    if (response.status === 404 || response.status === 410) return -1;
+    if (!response.ok) throw new Error("Sesi resumable Storage tidak dapat dilanjutkan.");
+    const offset = Number(response.headers.get("Upload-Offset"));
+    if (!Number.isSafeInteger(offset) || offset < 0 || offset > file.size) {
+      throw new Error("Offset upload resumable dari Storage tidak valid.");
+    }
+    return offset;
+  };
+  let offset = uploadUrl ? await readOffset(uploadUrl) : -1;
+  if (offset < 0) {
+    await SecureStore.deleteItemAsync(urlKey);
+    const metadata = Object.entries(init.upload_metadata)
+      .map(([key, value]) => key + " " + base64Ascii(value)).join(",");
+    const created = await expoFetch(init.tus_endpoint, {
+      method: "POST",
+      headers: { ...headers, "Upload-Length": String(file.size), "Upload-Metadata": metadata },
+    });
+    if (created.status === 409) throw new Error("MEDIA_OBJECT_ALREADY_EXISTS");
+    if (created.status !== 201) throw new Error("Storage menolak pembuatan sesi upload resumable.");
+    const location = created.headers.get("Location");
+    if (!location) throw new Error("Storage tidak mengembalikan URL sesi resumable.");
+    uploadUrl = new URL(location, init.tus_endpoint).toString();
+    await SecureStore.setItemAsync(urlKey, uploadUrl);
+    offset = 0;
+  }
+  onProgress(Math.min(100, Math.floor((offset / file.size) * 100)));
+  const chunkSize = init.chunk_size_bytes || 6 * 1024 * 1024;
+  while (offset < file.size) {
+    const chunk = file.slice(offset, Math.min(file.size, offset + chunkSize));
+    const response = await expoFetch(uploadUrl!, {
+      method: "PATCH",
+      headers: { ...headers, "Upload-Offset": String(offset), "Content-Type": "application/offset+octet-stream" },
+      body: chunk,
+    });
+    if (response.status === 409) {
+      const refreshed = await readOffset(uploadUrl!);
+      if (refreshed < 0) throw new Error("Sesi upload resumable telah kedaluwarsa; coba lanjutkan kembali.");
+      offset = refreshed;
+      continue;
+    }
+    if (response.status !== 204) throw new Error("Chunk media gagal dikirim; sesi tersimpan untuk dilanjutkan.");
+    let nextOffset = Number(response.headers.get("Upload-Offset"));
+    if (!Number.isSafeInteger(nextOffset) || nextOffset <= offset || nextOffset > file.size) {
+      nextOffset = await readOffset(uploadUrl!);
+    }
+    if (nextOffset <= offset) throw new Error("Storage belum mengonfirmasi kemajuan chunk upload.");
+    offset = nextOffset;
+    onProgress(Math.min(100, Math.floor((offset / file.size) * 100)));
+  }
+  if (await readOffset(uploadUrl!) !== file.size) throw new Error("Storage belum mengonfirmasi seluruh byte upload.");
+  onProgress(100);
+}
 
 /** Hash locally, request a scoped FastAPI intent, upload direct to authenticated Cloudinary, then complete via FastAPI. */
 export async function uploadNativeFileWithCloudinary(
@@ -176,6 +271,41 @@ export async function uploadNativeFileWithCloudinary(
   onProgress(100);
   return { id: mediaId, status: completed.item.status };
 }
+
+export async function uploadNativeFileWithProvider(
+  file: ExpoFile,
+  contentId: string,
+  mediaId: string,
+  filename: string,
+  mediaType: string,
+  apiKey: string,
+  apiRequest: NativeAuthenticatedRequest,
+  onProgress: (percent: number) => void,
+  storageKeyPrefix = "allpha:content:tus",
+): Promise<{ id: string; status: string }> {
+  if (process.env.EXPO_PUBLIC_ALLPHA_CLOUDINARY_MEDIA_ENABLED === "true") {
+    return uploadNativeFileWithCloudinary(file, contentId, mediaId, filename, mediaType, apiRequest, onProgress);
+  }
+  if (!apiKey) throw new Error("Kunci publik Storage belum tersedia untuk upload resumable.");
+  const raw = await apiRequest("/v1/content/" + encodeURIComponent(contentId) + "/media/resumable", {
+    method: "POST",
+    headers: { "Idempotency-Key": mediaId },
+    body: JSON.stringify({ filename, media_type: mediaType, size_bytes: file.size }),
+  });
+  const init = raw as NativeResumableUploadInit;
+  if (!init.item?.id) throw new Error("API tidak mengembalikan identitas media untuk upload resumable.");
+  if (!init.already_uploaded) {
+    try {
+      await uploadNativeFileWithTus(file, init, apiKey, init.item.id, onProgress, storageKeyPrefix);
+    } catch (cause) {
+      if (!(cause instanceof Error) || cause.message !== "MEDIA_OBJECT_ALREADY_EXISTS") throw cause;
+    }
+    await apiRequest("/v1/content/" + encodeURIComponent(contentId) + "/media/" + encodeURIComponent(init.item.id) + "/complete", { method: "POST" });
+  }
+  await SecureStore.deleteItemAsync(storageKeyPrefix + ":" + init.item.id);
+  return { id: init.item.id, status: "uploaded" };
+}
+
 
 function Action({ title, onPress, disabled = false, secondary = false }: {
   title: string; onPress: () => void; disabled?: boolean; secondary?: boolean;
