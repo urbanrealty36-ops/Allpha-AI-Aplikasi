@@ -222,7 +222,7 @@ def test_conversation_context_is_centralized_and_participant_scoped():
         ],
     )
     context = asyncio.run(store.conversation_context(conversation, requester, agent))
-    assert context == "Human: Hello\\nAgent: Hello back"
+    assert context == "Human: Hello\nAgent: Hello back"
     membership = next(call for call in store.calls if call["path"] == "conversation_participants")
     assert membership["params"]["conversation_id"] == f"eq.{conversation}"
     message_read = next(call for call in store.calls if call["path"] == "messages")

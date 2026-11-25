@@ -297,7 +297,7 @@ class MemoryCoordinator:
             line = f"{role}: {body.strip()[:min(1600, remaining)]}"
             lines.append(line)
             used += len(line)
-        return "\\n".join(lines)
+        return "\n".join(lines)
 
     async def retrieve_context(self,owner_id,agent_id,purpose="agent_generation_context",limit=12,max_chars=6000,query=None,max_sensitivity=None):
         if os.getenv("ALLPHA_MEMORY_COORDINATOR_ENABLED","false").lower()!="true":return []

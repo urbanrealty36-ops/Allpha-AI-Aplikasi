@@ -206,7 +206,7 @@ def test_conversation_memory_context_delegates_to_canonical_memory_coordinator(m
     calls = []
     async def context(self, conversation_id, requester_id, agent_id, *, max_messages=12, max_chars=6000):
         calls.append((conversation_id, requester_id, agent_id, max_messages, max_chars))
-        return "Human: hi\\nAgent: hello"
+        return "Human: hi\nAgent: hello"
     monkeypatch.setattr(messaging_api.MemoryCoordinator, "conversation_context", context)
     conversation = uuid.uuid4()
     result = asyncio.run(messaging_api._conversation_memory_context(
