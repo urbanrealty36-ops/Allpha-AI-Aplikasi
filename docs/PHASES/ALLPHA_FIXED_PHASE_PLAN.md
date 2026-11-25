@@ -1616,3 +1616,10 @@ This is an evidence refresh inside the existing fixed plan. It does not create a
 - **Regression coverage:** `ef8e7fca788cb6bc9f6f8e3c5a4e76f8c282dc19` adds a secret-key-only text-generation router/metering factory test. CI execution is pending.
 - **Status:** source configuration and egress hardening are **implemented**; live provider/tariff/metering integration remains **not verified** because no provider credential/profile or active tariff evidence was used in this change. ENG-P09 remains `in_progress`.
 - **Next:** continue the ordered P07 policy/retrieval path and P08–P11 durable execution work; keep model generation disabled unless its full approved provider, model, tariff, budget and metering configuration validates.
+
+## 40.75 — ENG-P10 Agent generation worker Supabase credential and egress hardening (2026-11-25)
+
+- **Implementation:** `08156cc972bcd682808cc922f92327dacb30fcaf` updates all seven Supabase HTTP client call sites in `generation_job_worker.py` to disable ambient proxy discovery and automatic redirects. The worker's database credential resolver now accepts either `SUPABASE_SERVICE_ROLE_KEY` or `SUPABASE_SECRET_KEY`, keeping both API key and Bearer authentication bound to the same server-only key.
+- **Focused regression coverage:** `d944903d6ff3ffc58e58e19b4b54dc8fb287bfca` verifies secret-key-only resolution and parses the worker source AST to require `trust_env=False` and `follow_redirects=False` on every HTTP client. CI execution is pending.
+- **Status:** worker source hardening is **implemented**; generation worker execution lifecycle and production processing are not verified by this transport fix. ENG-P10 remains `in_progress`.
+- **Next:** continue P10 durable run processing and worker execution evidence after P07–P09 dependencies; preserve no-replay and pending-reconciliation behavior for uncertain provider outcomes.
