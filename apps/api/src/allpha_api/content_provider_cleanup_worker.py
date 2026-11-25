@@ -1,4 +1,4 @@
-"""Deletes authenticated Cloudinary intermediates after canonical derivatives are persisted in private Supabase Storage."""
+"""Deletes authenticated Cloudinary assets only for an explicit, lease-fenced media deletion request."""
 from __future__ import annotations
 import asyncio,logging,os,signal,time,uuid
 import httpx
@@ -45,13 +45,20 @@ class CleanupWorker:
     resource_type=str(payload.get("resource_type") or "")
     if resource_type not in {"image","video","raw"}:raise ValueError("PROVIDER_CLEANUP_PAYLOAD_INVALID")
     await self.delete_asset(str(payload["provider_public_id"]),resource_type)
-    completion=await self.rpc("complete_content_provider_cleanup_job",{
-     "p_job_id":job["id"],"p_lease_token":job["lease_token"],
-    })
+    if payload.get("action")=="delete_media":
+     completion=await self.rpc("complete_cloudinary_media_delete_job",{
+      "p_job_id":job["id"],"p_lease_token":job["lease_token"],"p_media_id":job["media_id"],
+     })
+    else:
+     completion=await self.rpc("complete_content_provider_cleanup_job",{
+      "p_job_id":job["id"],"p_lease_token":job["lease_token"],
+     })
     if completion!="succeeded":raise ValueError("PROVIDER_CLEANUP_LEASE_LOST")
    except Exception as exc:
     log.exception("provider cleanup failed job=%s",job["id"])
-    try:await self.rpc("fail_content_lifecycle_job",{"p_job_id":job["id"],"p_lease_token":job["lease_token"],"p_error_code":type(exc).__name__[:80]})
+    try:
+     failure_rpc="fail_cloudinary_media_delete_job" if (job.get("payload") or {}).get("action")=="delete_media" else "fail_content_lifecycle_job"
+     await self.rpc(failure_rpc,{"p_job_id":job["id"],"p_lease_token":job["lease_token"],"p_error_code":type(exc).__name__[:80]})
     except Exception:log.exception("provider cleanup failure could not be recorded")
   return len(jobs)
  async def run(self):
