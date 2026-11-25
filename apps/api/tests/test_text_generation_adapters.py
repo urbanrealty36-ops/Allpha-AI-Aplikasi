@@ -11,6 +11,7 @@ from allpha_api.model_router import (
     TextGenerationPolicy,
     TextGenerationRequest,
     TextGenerationRoute,
+    TextGenerationProviderTransient,
 )
 from allpha_api.text_generation_adapters import (
     OpenAICompatibleTextGenerationAdapter,
@@ -64,6 +65,44 @@ def test_openai_compatible_adapter_reports_usage_and_configured_cost():
     assert result.output_tokens == 4
     assert result.cost_microunits == 26
     assert result.provider_id == "provider-test"
+
+
+def test_openai_compatible_adapter_classifies_http_429_as_safe_pre_execution_failure():
+    adapter = OpenAICompatibleTextGenerationAdapter(
+        base_url="https://provider.invalid/v1", api_key="test-secret",
+        provider_id="provider-test", model_version="model-version-1",
+        pricing_version="price-v1", cost_unit="USD",
+        input_cost_microunits_per_token=3, output_cost_microunits_per_token=5,
+        transport=httpx.MockTransport(lambda req: httpx.Response(429, headers={"Retry-After": "2"})),
+    )
+
+    async def run():
+        with pytest.raises(TextGenerationProviderTransient) as caught:
+            await adapter.generate(request(), model_id="model-test")
+        assert caught.value.safe_to_retry is True
+        assert caught.value.retry_after_ms == 2000
+
+    asyncio.run(run())
+
+
+def test_openai_compatible_adapter_classifies_connect_failure_as_safe():
+    def handler(req: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused", request=req)
+
+    adapter = OpenAICompatibleTextGenerationAdapter(
+        base_url="https://provider.invalid/v1", api_key="test-secret",
+        provider_id="provider-test", model_version="model-version-1",
+        pricing_version="price-v1", cost_unit="USD",
+        input_cost_microunits_per_token=3, output_cost_microunits_per_token=5,
+        transport=httpx.MockTransport(handler),
+    )
+
+    async def run():
+        with pytest.raises(TextGenerationProviderTransient) as caught:
+            await adapter.generate(request(), model_id="model-test")
+        assert caught.value.safe_to_retry is True
+
+    asyncio.run(run())
 
 
 def test_supabase_metering_sink_persists_owner_and_skill_context():
