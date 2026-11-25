@@ -1682,3 +1682,13 @@ This is an evidence refresh inside the existing fixed plan. It does not create a
 - **Commits:** `3bde258af4b9f4b10e697221692142ada34686fa`, `f21931a35e9aa192466fe952e8427123d7ff7f26`, `2bf7fc2867e01929692aabc4e2eaeb7402a89d73`.
 - **Verification:** GitHub focused CI is pending; no provider callback or real derivative download has been executed because Cloudinary/ClamAV activation remains deferred.
 - **Phase status:** ENG-P13 remains `in_progress`; derivative contract source is implemented, but integration/production verification is not claimed.
+
+
+## 40.83 — Cloudinary connector binding and callback contract preparation (2026-11-25)
+
+- **Cloudinary binding:** live Cloudinary connector operations succeeded for usage, folders, image assets and video assets. Account cloud name confirmed as `oiqyjqeg`; current plan Free; usage endpoint reports 0/25 credits and zero stored resources in its usage snapshot. Sample assets are Cloudinary-provided test assets, not Allpha production uploads.
+- **Canonical callback URL:** confirmed from FastAPI source as `https://api.allpha.web.id/v1/content/internal/providers/cloudinary/eager-callback`. Added a focused worker-gate regression contract using that exact path and the connected cloud name.
+- **Credential boundary:** Cloudinary connector does not expose API Secret or API Key credential management. Railway OAuth variable listing is redacted (values absent), so no secret was copied, guessed, overwritten or exposed. Cloudinary API credentials and ClamAV identity/config remain required before processing workers can activate.
+- **Railway capacity:** attempt to create a dedicated `allpha-content-transcode-worker` service was rejected by Railway: `Free plan resource provision limit exceeded`. No duplicate worker service was created. The existing API/shared worker service topology is unchanged.
+- **Commits:** callback module typing import `21b59338c95614f0ae03799e30a5987b642e2a7f`; production callback/cloud contract regression `c59effa38cb792f06b1417e980cfe73b263d54fc`.
+- **Phase status:** ENG-P13 remains `in_progress`; provider binding is connected, but API Secret, ClamAV, worker capacity and end-to-end callback execution are not verified. No live processing worker is activated.
