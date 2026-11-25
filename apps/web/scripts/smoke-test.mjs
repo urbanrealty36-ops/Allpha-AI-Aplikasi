@@ -206,11 +206,20 @@ const nativeContentPath = new URL("../../client/App.tsx", import.meta.url);
 const nativeContent = existsSync(nativeContentPath) ? readFileSync(nativeContentPath, "utf8") : "";
 if (existsSync(nativeContentPath)) {
   for (const contract of [
-    "/v1/content/mine", "/v1/content", "/media", "/preview", "/publish", "/retry",
-    "Authorization", "session.access_token", "DocumentPicker", "FormData",
+    "/v1/content/mine", "/v1/content", "/preview", "/publish", "/retry",
+    "Authorization", "session.access_token", "DocumentPicker", "uploadNativeFileWithProvider",
     "Draft konten tersimpan melalui FastAPI", "Konten dikirim untuk moderasi"
   ]) assert.ok(nativeContent.includes(contract), `missing ENG-P13 Native content contract: ${contract}`);
   assert.doesNotMatch(nativeContent, /SUPABASE_SERVICE_ROLE_KEY|service_role|mockContentItems|fakeFeed/);
+}
+const nativeMediaPath = new URL("../../client/components/AiCinemaCreatorWorkspace.tsx", import.meta.url);
+const nativeMedia = existsSync(nativeMediaPath) ? readFileSync(nativeMediaPath, "utf8") : "";
+if (existsSync(nativeMediaPath)) {
+  for (const contract of [
+    "/v1/media/upload-intents", "/v1/media/complete", "uploadNativeFileWithCloudinary",
+    "uploadNativeFileWithTus", "EXPO_PUBLIC_ALLPHA_CLOUDINARY_MEDIA_ENABLED",
+    "Crypto.CryptoDigestAlgorithm.SHA256", "FormData", "Idempotency-Key"
+  ]) assert.ok(nativeMedia.includes(contract), `missing ENG-P13 Native media lifecycle contract: ${contract}`);
 }
 
 const feedPage = readFileSync(new URL("../app/feed/page.tsx", import.meta.url), "utf8");
