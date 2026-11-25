@@ -2,11 +2,13 @@
 from __future__ import annotations
 from typing import Any
 import asyncio,hashlib,logging,os,signal,uuid
-from urllib.parse import urlparse,quote
+from urllib.parse import urlparse
 import httpx
+from allpha_api.cloudinary_provider import CloudinaryConfig, build_signed_private_download_url, eager_transformations
 from allpha_api.media_scanner import require_media_scanner_configuration, scan_media_bytes_async
 log=logging.getLogger("allpha.provider_callback_worker")
 MAX_PROVIDER_DERIVATIVE_BYTES = 100 * 1024 * 1024
+MAX_PROVIDER_MEDIA_BYTES = 50 * 1024 * 1024
 
 
 def validate_eager_derivative_contract(media_type: str, eager: Any) -> None:
@@ -14,6 +16,10 @@ def validate_eager_derivative_contract(media_type: str, eager: Any) -> None:
   raise ValueError("PROVIDER_EAGER_DERIVATIVES_INVALID")
  if any(item.get("status") == "failed" for item in eager):
   raise ValueError("PROVIDER_EAGER_DERIVATIVES_INCOMPLETE")
+ expected_transformations=set((eager_transformations(media_type) or "").split("|")) - {""}
+ actual_transformations=[str(item.get("transformation") or "") for item in eager]
+ if not expected_transformations or len(actual_transformations)!=len(expected_transformations) or set(actual_transformations)!=expected_transformations:
+  raise ValueError("PROVIDER_EAGER_TRANSFORMATIONS_INVALID")
  formats=[str(item.get("format") or item.get("mime_type") or "").lower() for item in eager]
  video_count=sum(value in {"mp4","video/mp4"} for value in formats)
  poster_count=sum(value in {"jpg","jpeg","image/jpeg"} for value in formats)
@@ -74,11 +80,48 @@ async def download_provider_derivative(client: httpx.AsyncClient, url: str) -> t
    raise ValueError("PROVIDER_DERIVATIVE_EMPTY")
   return bytes(body),mime
 
+
+async def download_cloudinary_original(
+ client: httpx.AsyncClient, url: str, *, expected_media_type: str, max_bytes: int,
+) -> bytes:
+ """Download the exact authenticated original from Cloudinary for malware scanning."""
+ parsed = urlparse(url)
+ if parsed.scheme != "https" or parsed.hostname != "api.cloudinary.com" or "/download" not in parsed.path:
+  raise ValueError("PROVIDER_ORIGINAL_URL_REJECTED")
+ if max_bytes <= 0 or max_bytes > MAX_PROVIDER_MEDIA_BYTES:
+  raise ValueError("PROVIDER_ORIGINAL_SIZE_INVALID")
+ async with client.stream("GET", url) as response:
+  response.raise_for_status()
+  final_host = (urlparse(str(response.url)).hostname or "").lower()
+  if not (final_host == "api.cloudinary.com" or final_host.endswith(".cloudinary.com") or final_host.endswith(".akamaihd.net")):
+   raise ValueError("PROVIDER_ORIGINAL_REDIRECT_REJECTED")
+  mime = response.headers.get("content-type", "").split(";", 1)[0].lower()
+  if mime not in {expected_media_type, "application/octet-stream"}:
+   raise ValueError("PROVIDER_ORIGINAL_MIME_MISMATCH")
+  raw_length = response.headers.get("content-length")
+  if raw_length:
+   try:
+    if int(raw_length) > max_bytes:
+     raise ValueError("PROVIDER_ORIGINAL_TOO_LARGE")
+   except ValueError as exc:
+    if str(exc) == "PROVIDER_ORIGINAL_TOO_LARGE": raise
+    raise ValueError("PROVIDER_ORIGINAL_LENGTH_INVALID") from exc
+  body = bytearray()
+  async for chunk in response.aiter_bytes():
+   if len(body) + len(chunk) > max_bytes:
+    raise ValueError("PROVIDER_ORIGINAL_TOO_LARGE")
+   body.extend(chunk)
+  if not body:
+   raise ValueError("PROVIDER_ORIGINAL_EMPTY")
+  return bytes(body)
+
+
 class CallbackWorker:
  def __init__(self):
   self.base=os.environ["SUPABASE_URL"].rstrip("/")
   self.key=os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ["SUPABASE_SECRET_KEY"]
-  self.cloud=os.environ["CLOUDINARY_CLOUD_NAME"]
+  self.cloudinary=CloudinaryConfig.from_environment()
+  self.cloud=self.cloudinary.cloud_name
   self.scanner_mode=require_media_scanner_configuration()
   self.worker_id=f"provider-callback-{uuid.uuid4()}"
   self.client=httpx.AsyncClient(trust_env=False, follow_redirects=False, timeout=httpx.Timeout(90,connect=5),headers={"apikey":self.key,"Authorization":f"Bearer {self.key}","Content-Type":"application/json"})
@@ -104,9 +147,7 @@ class CallbackWorker:
     return
    event=callback.get("payload") or {};public_id=str(event.get("public_id",""))
    media_id=str(callback["media_id"]);transcode_job_id=str(callback["job_id"])
-   media_fields="id,content_id,owner_id,bucket_id,storage_path,media_type,status,provider_asset_id,provider_public_id,provider_batch_id"
-   if os.getenv("ALLPHA_MEDIA_STORAGE_PROVIDER","supabase").strip().lower()=="cloudinary":
-    media_fields += ",storage_provider,provider_resource_type,provider_delivery_type,provider_format,provider_version"
+   media_fields="id,content_id,owner_id,filename,media_type,size_bytes,sha256,status,storage_provider,storage_path,provider_asset_id,provider_public_id,provider_batch_id,provider_resource_type,provider_delivery_type,provider_format,provider_version"
    media_rows=await self.db("GET","content_media",{"select":media_fields,"id":f"eq.{media_id}","status":"eq.processing","limit":"1"})
    if not media_rows:raise ValueError("CALLBACK_MEDIA_NOT_PROCESSING")
    media=media_rows[0]
@@ -117,27 +158,54 @@ class CallbackWorker:
     raise ValueError("PROVIDER_CALLBACK_ASSET_OR_BATCH_MISMATCH")
    eager=event.get("eager") or []
    validate_eager_derivative_contract(str(media["media_type"]),eager)
+   if media.get("storage_provider")!="cloudinary" or media.get("provider_delivery_type")!="authenticated":
+    raise ValueError("PROVIDER_MEDIA_STORAGE_CONTRACT_INVALID")
+   resource_type=str(media.get("provider_resource_type") or "")
+   if resource_type not in {"image","video"}:
+    raise ValueError("PROVIDER_MEDIA_RESOURCE_TYPE_INVALID")
+   original_url=build_signed_private_download_url(
+    config=self.cloudinary,public_id=public_id,resource_type=resource_type,
+    format=str(media["provider_format"]),expires_in=300,
+   )
    derivatives=[]
-   async with httpx.AsyncClient(trust_env=False, follow_redirects=False, timeout=httpx.Timeout(90,connect=5)) as provider:
+   async with httpx.AsyncClient(trust_env=False, follow_redirects=True, timeout=httpx.Timeout(180,connect=5)) as provider:
+    original=await download_cloudinary_original(
+     provider,original_url,expected_media_type=str(media["media_type"]),
+     max_bytes=min(int(media["size_bytes"]),MAX_PROVIDER_MEDIA_BYTES),
+    )
+    if len(original)!=int(media["size_bytes"]) or hashlib.sha256(original).hexdigest()!=str(media["sha256"]):
+     raise ValueError("PROVIDER_ORIGINAL_DIGEST_MISMATCH")
+    scan_receipt=await self.scan(original,str(media["filename"]),str(media["media_type"]))
+    if not isinstance(scan_receipt,dict) or scan_receipt.get("sha256")!=str(media["sha256"]):
+     raise ValueError("PROVIDER_ORIGINAL_SCAN_RECEIPT_MISMATCH")
+    expected_transformations=set((eager_transformations(str(media["media_type"])) or "").split("|"))
     for index,item in enumerate(eager):
      url=item.get("secure_url");parsed=urlparse(url or "")
-     resource_type=str(media.get("provider_resource_type") or "video")
-     if resource_type not in {"image","video"} or parsed.scheme!="https" or parsed.hostname!="res.cloudinary.com" or not parsed.path.startswith(f"/{self.cloud}/{resource_type}/authenticated/"):
+     transformation=str(item.get("transformation") or "")
+     output_format=str(item.get("format") or "").lower()
+     expected_suffix={"jpeg":"jpg"}.get(output_format,output_format)
+     if (not url or transformation not in expected_transformations or
+      resource_type not in {"image","video"} or parsed.scheme!="https" or parsed.hostname!="res.cloudinary.com" or
+      not parsed.path.startswith(f"/{self.cloud}/{resource_type}/authenticated/") or
+      f"/{transformation}/v{int(media['provider_version'])}/{public_id}.{expected_suffix}" not in parsed.path):
       raise ValueError("PROVIDER_DERIVATIVE_URL_REJECTED")
      binary,mime=await download_provider_derivative(provider,url)
      kind,suffix=provider_derivative_identity(index,mime,str(media["media_type"]))
      await self.scan(binary,f"{kind}.{suffix}",mime)
-     path=f"{media['storage_path']}.derived/{kind}.{suffix}"
-     storage=f"{self.base}/storage/v1/object/{quote(media['bucket_id'],safe='')}/{quote(path,safe='/')}"
-     uploaded=await self.client.post(storage,content=binary,headers={"Content-Type":mime,"x-upsert":"true"})
-     uploaded.raise_for_status()
-     derivatives.append({"kind":kind,"storage_path":path,"mime_type":mime,"size_bytes":len(binary),
-      "sha256":hashlib.sha256(binary).hexdigest(),"width":item.get("width"),"height":item.get("height"),"duration":item.get("duration")})
-   completed=await self.rpc("complete_content_provider_job",{
+     if expected_suffix!=suffix:
+      raise ValueError("PROVIDER_DERIVATIVE_FORMAT_MISMATCH")
+     derivatives.append({
+      "kind":kind,"provider":"cloudinary","resource_type":resource_type,
+      "delivery_type":"authenticated","format":suffix,"transformation":transformation,
+      "version":int(media["provider_version"]),"mime_type":mime,"size_bytes":len(binary),
+      "sha256":hashlib.sha256(binary).hexdigest(),"width":item.get("width"),
+      "height":item.get("height"),"duration":item.get("duration"),
+     })
+   completed=await self.rpc("complete_cloudinary_content_provider_job",{
     "p_job_id":transcode_job_id,"p_media_id":media_id,"p_provider":"cloudinary",
     "p_provider_asset_id":media["provider_asset_id"],"p_provider_public_id":public_id,
     "p_provider_event_id":event_id,"p_payload_sha256":callback["payload_sha256"],
-    "p_derivatives":derivatives,"p_scan_status":"clean",
+    "p_derivatives":derivatives,"p_scan_status":"clean","p_scan_receipt":scan_receipt,
    })
    if not isinstance(completed,dict) or completed.get("outcome")!="completed":raise ValueError("PROVIDER_MEDIA_COMPLETION_CONFLICT")
    done=await self.rpc("complete_content_lifecycle_job",{"p_job_id":jid,"p_lease_token":token})
