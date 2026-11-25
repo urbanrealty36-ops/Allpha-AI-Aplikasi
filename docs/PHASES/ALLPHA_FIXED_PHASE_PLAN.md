@@ -6,6 +6,23 @@
 
 > Dokumen ini adalah satu-satunya acuan operasional untuk urutan ENG phase, status, cakupan empat aplikasi, dependensi, aset 3D, dan pekerjaan berikutnya. Master PRD tetap menjadi sumber kebenaran produk. Jangan membuat phase baru, roadmap paralel, status board terpisah, atau dokumen phase rutin lainnya.
 
+## 0. Canonical ADR path resolution — ENG-P07 to ENG-P09 (2026-11-25)
+
+ADR numeric identifiers are not globally unique across the repository. Resolve the Knowledge/embedding references by their exact canonical paths; do not use the unrelated UI ADR under `docs/ADR` as a substitute:
+
+| Decision scope | Canonical document | Authority / boundary |
+|---|---|---|
+| Knowledge sensitivity and fail-closed policy | `docs/architecture/ADR-0003-agent-knowledge-sensitivity-policy.md` | Source implementation direction accepted; Privacy/Security and isolated verification remain required before activation. |
+| Embedding contract and vector-index open decisions | `docs/architecture/ADR-0003-knowledge-embedding-vector-index.md` | Proposed contract; no provider, immutable model version, dimension, metric, index parameters or relevance thresholds are selected. |
+| Model Router and Knowledge job runtime | `docs/architecture/ADR-0004-model-router-and-knowledge-job-runtime.md` | Source implementation accepted; use the canonical Postgres-backed job lifecycle and Railway worker boundary already present; do not invent a provider/broker. |
+| Canonical pgvector generation and retrieval | `docs/architecture/ADR-0004-agent-knowledge-vector-index.md` | pgvector target direction accepted; physical vector schema/activation remains blocked until embedding profile/dimension and Data Platform/AI Platform approvals are evidenced. |
+| Knowledge consent and Agent access grants | `docs/architecture/ADR-0005-knowledge-consent-and-agent-access-grants.md` | Option C direction accepted; physical schema/provider requires object-level reconciliation and Privacy/Security + Data Platform review. |
+| Web reference UI/PWA only | `docs/ADR/ADR-0003-reference-ui-ux-parity-pwa-web.md` | UI/PWA exception only; it is not a Knowledge or vector decision. |
+| Production-only WP-07 migration/recovery procedure | `docs/ADR/ADR-0024-wp07-production-only-migration-and-recovery-gate.md` | Production-only migration path is authorized, but every DDL apply remains gated by independently verified recovery preflight and per-migration checks. |
+| Backup retention/deletion evidence | `docs/ADR/ADR-WP04-003-backup-retention-and-deletion-evidence.md` | Remains applicable to deletion and backup-expiry claims; not waived by ADR-0024. |
+
+Historical shorthand such as “ADR-0003/0004” must be interpreted using the exact scope above. Do not renumber or overwrite historical ADRs to remove the duplicate numeric identifiers. Source implementation may continue where the decision is already established; provider/model/dimension/index selection, physical Knowledge grant schema activation, and production DDL remain deferred until their explicitly named external evidence/review gates are satisfied.
+
 ## 1. Aturan tetap
 1. PRD product phase dan engineering phase adalah namespace berbeda. Pertahankan pemetaan yang eksplisit; jangan mengganti nomor untuk menyamarkan pekerjaan yang terlewat.
 2. Engineering phase kanonis ENG-P00–ENG-P37. ENG-P37 hanya validasi lintas-domain dan release, bukan implementasi fitur yang belum ada.
