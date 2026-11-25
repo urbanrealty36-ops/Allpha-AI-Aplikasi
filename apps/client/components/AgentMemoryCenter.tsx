@@ -212,7 +212,7 @@ export function AgentMemoryCenter({apiBase,agentId,getAccessToken,onBack}:Props)
   </View>
   <View style={card}>
    <Text style={{color:"#FFFFFF",fontWeight:"800",fontSize:15}}>Retrieval preview</Text>
-   <Text style={{color:"#AAB5CA",fontSize:12,marginTop:5}}>Preview hanya mencari Memory aktif dalam Agent dan batas sensitivitas internal.</Text>
+   <Text style={{color:"#AAB5CA",fontSize:12,marginTop:5}}>Preview mencari persistent Memory aktif. Conversation context dipakai Agent Runtime dari Messaging setelah consent Conversation aktif; pesan tidak disalin ke daftar Memory items.</Text>
    <TextInput value={query} onChangeText={setQuery} placeholder="Cari konteks Memory..." placeholderTextColor="#72809A" style={field}/>
    <View style={{marginTop:10}}>{button("Cari Memory",()=>void retrieve(),busy)}</View>
    {retrieved.map(item=><Text key={item.id} style={{color:"#C7D0E0",fontSize:12,lineHeight:18,marginTop:10}}>{item.content}</Text>)}
