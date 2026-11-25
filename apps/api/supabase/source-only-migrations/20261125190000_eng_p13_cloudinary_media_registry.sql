@@ -597,7 +597,7 @@ begin
   if not found then
     return jsonb_build_object('outcome','media_not_found');
   end if;
-  if v_media.storage_provider<>'cloudinary' then
+  if v_media.storage_provider not in ('cloudinary','supabase') then
     return jsonb_build_object('outcome','legacy_provider_requires_domain_delete');
   end if;
   if v_media.domain<>'content' or v_media.content_id is null then
@@ -608,6 +608,9 @@ begin
   end if;
   if v_media.provider_delete_state in ('queued','deleting') then
     return jsonb_build_object('outcome','already_queued','media',to_jsonb(v_media));
+  end if;
+  if v_media.status not in ('uploaded','processing','ready','failed') then
+    return jsonb_build_object('outcome','media_state_invalid');
   end if;
   if exists(
     select 1 from public.content_retention_holds h
@@ -621,7 +624,15 @@ begin
   ) then
     return jsonb_build_object('outcome','media_in_use');
   end if;
-  if v_media.provider_public_id is null or v_media.provider_resource_type is null or v_media.provider_resource_type not in ('image','video','raw') then
+  if v_media.storage_provider='cloudinary' and (
+    v_media.provider_public_id is null or v_media.provider_asset_id is null
+    or v_media.provider_resource_type is null or v_media.provider_resource_type not in ('image','video','raw')
+  ) then
+    return jsonb_build_object('outcome','provider_identity_missing');
+  end if;
+  if v_media.storage_provider='supabase' and (
+    v_media.bucket_id<>'content-media' or coalesce(v_media.storage_path,'')=''
+  ) then
     return jsonb_build_object('outcome','provider_identity_missing');
   end if;
 
