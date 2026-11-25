@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
+import { uploadContentMediaWithTus } from "../../lib/resumable-media-upload";
 
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 type CreatedContent = { id: string; status: string; moderation_status: string };
@@ -24,6 +25,9 @@ export default function CreatePage() {
   const [body, setBody] = useState("");
   const [visibility, setVisibility] = useState<"public" | "followers" | "private">("public");
   const [file, setFile] = useState<File | null>(null);
+  const [draftId, setDraftId] = useState("");
+  const [uploadId, setUploadId] = useState("");
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -58,8 +62,8 @@ export default function CreatePage() {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!session || saving) return;
-    if (!body.trim() && !file) { setError("Tulis konten atau pilih file media terlebih dahulu."); return; }
-    setSaving(true); setError(""); setNotice("");
+    if (!body.trim() && !file && !draftId) { setError("Tulis konten atau pilih file media terlebih dahulu."); return; }
+    setSaving(true); setError(""); setNotice(""); setUploadProgress(0);
     let created: CreatedContent | null = null;
     try {
       const allowedMedia: Record<string, { contentType: "image" | "video" | "audio"; maxBytes: number }> = {
@@ -82,19 +86,26 @@ export default function CreatePage() {
         throw new Error(`Ukuran file melewati batas ${limit} MB untuk format ini.`);
       }
       const contentType = mediaPolicy?.contentType ?? "text";
-      const result = await request("/v1/content", {
-        method: "POST",
-        body: JSON.stringify({ body: body.trim(), visibility, content_type: contentType }),
-      }) as ContentResponse;
-      created = result.item;
-      if (!created?.id) throw new Error("Draft tersimpan tetapi ID konten tidak dikembalikan API. Buka konten Anda untuk memeriksa statusnya.");
-      if (file) {
-        const form = new FormData();
-        form.append("file", file, file.name);
-        await request("/v1/content/" + encodeURIComponent(created.id) + "/media", { method: "POST", body: form });
+      if (draftId) {
+        const mine = await request("/v1/content/mine") as { items?: CreatedContent[] };
+        created = mine.items?.find(item => item.id === draftId) ?? null;
+        if (!created) throw new Error("Draft yang sedang dilanjutkan tidak ditemukan pada akun ini.");
+      } else {
+        const result = await request("/v1/content", {
+          method: "POST",
+          body: JSON.stringify({ body: body.trim(), visibility, content_type: contentType }),
+        }) as ContentResponse;
+        created = result.item;
+        if (!created?.id) throw new Error("Draft tersimpan tetapi ID konten tidak dikembalikan API. Buka konten Anda untuk memeriksa statusnya.");
+        setDraftId(created.id);
+      }
+      if (file && created) {
+        const key = uploadId || crypto.randomUUID();
+        setUploadId(key);
+        await uploadContentMediaWithTus(request, created.id, file, key, setUploadProgress);
       }
       const published = await request("/v1/content/" + encodeURIComponent(created.id) + "/publish", { method: "POST" }) as ContentResponse;
-      setBody(""); setFile(null);
+      setBody(""); setFile(null); setDraftId(""); setUploadId(""); setUploadProgress(0);
       const status = published.item?.status ?? created.status;
       const moderation = published.item?.moderation_status ?? created.moderation_status;
       const apiMessage = published.message;
@@ -140,14 +151,15 @@ export default function CreatePage() {
             </select>
           </label>
           <label className="block text-sm font-medium">Lampirkan media (opsional)
-            <input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,audio/mpeg,audio/mp4,audio/aac,audio/ogg,audio/wav,audio/webm" onChange={event => setFile(event.target.files?.[0] ?? null)} className="mt-2 block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:font-medium dark:file:bg-slate-800" />
+            <input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,audio/mpeg,audio/mp4,audio/aac,audio/ogg,audio/wav,audio/webm" onChange={event => { const next = event.target.files?.[0] ?? null; const same = Boolean(file && next && file.name === next.name && file.size === next.size && file.type === next.type); setFile(next); if (!next) setUploadId(""); else if (!same) setUploadId(crypto.randomUUID()); }} className="mt-2 block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:font-medium dark:file:bg-slate-800" />
             <span className="mt-1 block text-xs text-slate-500">Format dan ukuran akhir divalidasi oleh API. Media opsional; draft bisa tersimpan jika unggahan gagal.</span>
           </label>
+          {uploadProgress > 0 && <p className="text-xs text-slate-500">Unggah resumable: {uploadProgress}%</p>}
           {file && <div className="rounded-xl bg-slate-50 p-3 text-sm dark:bg-slate-800"><p className="font-medium">{file.name}</p><p className="text-xs text-slate-500">{file.type || "Tipe tidak diketahui"} · {(file.size / (1024 * 1024)).toFixed(2)} MB</p><button type="button" onClick={() => setFile(null)} className="mt-2 text-xs font-semibold text-red-600">Hapus lampiran</button></div>}
           {error && <p role="alert" className="rounded-xl border border-red-300 p-3 text-sm text-red-700 dark:text-red-300">{error}</p>}
           {notice && <p role="status" className="rounded-xl border border-emerald-300 p-3 text-sm text-emerald-800 dark:text-emerald-200">{notice}</p>}
           <div className="flex flex-wrap gap-3">
-            <button type="submit" disabled={saving || (!body.trim() && !file)} className="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900">{saving ? "Mengirim…" : "Kirim untuk moderasi"}</button>
+            <button type="submit" disabled={saving || (!body.trim() && !file)} className="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900">{saving ? "Mengirim…" : draftId ? "Lanjutkan draft & kirim untuk moderasi" : "Kirim untuk moderasi"}</button>
             <Link href="/feed" className="rounded-xl border border-slate-300 px-5 py-3 text-sm font-medium dark:border-slate-600">Kembali ke Feed</Link>
           </div>
         </form>
