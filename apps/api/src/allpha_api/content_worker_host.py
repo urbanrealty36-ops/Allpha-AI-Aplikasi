@@ -28,6 +28,7 @@ class _Consumer:
     worker: Any
     batch: Callable[[], Awaitable[int]]
     poll_seconds: float
+    schema_ready: bool = False
 
 
 def _poll_seconds(name: str, default: float) -> float:
@@ -114,8 +115,27 @@ def _build_consumers() -> list[_Consumer]:
 
 async def _run_consumer(consumer: _Consumer, stop_event: asyncio.Event) -> None:
     log.info("%s media consumer started; poll_seconds=%s", consumer.name, consumer.poll_seconds)
+    readiness = getattr(consumer.worker, "assert_schema_ready", None)
     try:
+        if not callable(readiness):
+            log.error("%s media consumer has no schema-readiness gate; refusing to claim jobs", consumer.name)
+            return
         while not stop_event.is_set():
+            if not consumer.schema_ready:
+                try:
+                    await readiness()
+                    consumer.schema_ready = True
+                    log.info("%s media consumer schema readiness verified", consumer.name)
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    log.warning("%s media consumer schema is not ready; no jobs will be claimed", consumer.name, exc_info=True)
+                    if not stop_event.is_set():
+                        try:
+                            await asyncio.wait_for(stop_event.wait(), timeout=consumer.poll_seconds)
+                        except asyncio.TimeoutError:
+                            pass
+                    continue
             try:
                 processed = await consumer.batch()
             except asyncio.CancelledError:
