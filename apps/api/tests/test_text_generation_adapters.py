@@ -514,3 +514,30 @@ def test_router_factory_fails_closed_on_partial_fallback_configuration(monkeypat
     for key, value in values.items():
         monkeypatch.setenv(key, value)
     assert build_text_generation_router_from_environment() is None
+
+def test_text_generation_router_factory_accepts_supabase_secret_key_only(monkeypatch):
+    values = {
+        "ALLPHA_TEXTGEN_BASE_URL": "https://provider.invalid/v1",
+        "ALLPHA_TEXTGEN_API_KEY": "provider-secret",
+        "ALLPHA_TEXTGEN_PROVIDER_ID": "provider-test",
+        "ALLPHA_TEXTGEN_MODEL_ID": "model-test",
+        "ALLPHA_TEXTGEN_MODEL_VERSION": "model-v1",
+        "ALLPHA_TEXTGEN_POLICY_ID": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "ALLPHA_TEXTGEN_POLICY_VERSION": "policy-v1",
+        "ALLPHA_TEXTGEN_PRICING_VERSION": "pricing-v1",
+        "ALLPHA_TEXTGEN_COST_UNIT": "USD",
+        "ALLPHA_TEXTGEN_INPUT_MICRO_COST_PER_TOKEN": "1",
+        "ALLPHA_TEXTGEN_OUTPUT_MICRO_COST_PER_TOKEN": "2",
+        "ALLPHA_TEXTGEN_MAX_COST_MICROUNITS": "1000",
+        "SUPABASE_URL": "https://db.invalid",
+        "SUPABASE_SECRET_KEY": "canonical-server-secret",
+    }
+    for key, value in values.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.delenv("SUPABASE_SERVICE_ROLE_KEY", raising=False)
+
+    router = build_text_generation_router_from_environment()
+    sink = SupabaseTextGenerationMeteringSink.from_environment()
+
+    assert router is not None
+    assert sink._key == "canonical-server-secret"
