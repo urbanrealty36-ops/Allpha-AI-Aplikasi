@@ -527,7 +527,7 @@ export default function FeedPage() {
       if (post.authorshipType === "human_agent" && !attributedAgentId) {
         throw new Error("Agent co-author tidak tersedia atau bukan milik akun ini.");
       }
-      let contentId = composerDraftIds[post.id] ?? null;
+      let contentId: string | null = composerDraftIds[post.id] ?? null;
       let createdItem: { status?: string; moderation_status?: string } | null = null;
       if (contentId) {
         const mine = await request("/v1/content/mine") as { items?: { id: string; status?: string; moderation_status?: string }[] };
