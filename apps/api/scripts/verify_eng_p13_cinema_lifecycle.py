@@ -344,7 +344,8 @@ begin
 end
 $do$;
 reset role;
-psql(f"""
+""")
+        psql(f"""
 do $do$
 begin
  if not exists(select 1 from public.content_lifecycle_jobs where media_id='{CLOUDINARY_SUBTITLE_MEDIA}' and job_type='subtitle_validate' and status='pending') then
