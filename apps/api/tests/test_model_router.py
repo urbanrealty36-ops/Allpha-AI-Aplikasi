@@ -95,7 +95,7 @@ def test_canonical_router_selects_configured_route_and_records_metering():
         meter = Meter()
         adapter = FakeAdapter([response(usage_units=5, cost_microunits=20)])
         router = CanonicalModelRouter(
-            routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1")},
+            routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1", dimensions=2)},
             adapters={"router-policy": adapter},
             metering_sink=meter,
         )
@@ -122,7 +122,7 @@ def test_canonical_router_retries_only_transient_adapter_failures():
     async def scenario():
         adapter = FakeAdapter([ModelRouterTransient("temporary", safe_to_retry=True), response()])
         router = CanonicalModelRouter(
-            routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1", max_attempts=2)},
+            routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1", max_attempts=2, dimensions=2)},
             adapters={"router-policy": adapter},
             retry_delay_seconds=0,
         )
@@ -136,7 +136,7 @@ def test_canonical_router_rejects_wrong_model_identity_without_retry():
     async def scenario():
         adapter = FakeAdapter([response(model_id="unapproved-model"), response()])
         router = CanonicalModelRouter(
-            routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1", max_attempts=2)},
+            routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1", max_attempts=2, dimensions=2)},
             adapters={"router-policy": adapter},
             retry_delay_seconds=0,
         )
@@ -158,7 +158,7 @@ def test_canonical_router_times_out_and_returns_retryable_failure():
                 return response()
         adapter = HangingAdapter()
         router = CanonicalModelRouter(
-            routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1", max_attempts=3)},
+            routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1", max_attempts=3, dimensions=2)},
             adapters={"router-policy": adapter},
             retry_delay_seconds=0,
         )
@@ -179,7 +179,7 @@ def test_canonical_router_does_not_retry_terminal_provider_rejection():
             )
         )])
         router = CanonicalModelRouter(
-            routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1", max_attempts=3)},
+            routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1", max_attempts=3, dimensions=2)},
             adapters={"router-policy": adapter},
             retry_delay_seconds=0,
         )
@@ -202,7 +202,7 @@ def test_canonical_router_cost_policy_denies_missing_estimate_before_provider_ca
     async def scenario():
         adapter = FakeAdapter([response()])
         router = CanonicalModelRouter(
-            routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1")},
+            routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1", dimensions=2)},
             adapters={"router-policy": adapter},
             cost_budgets={"internal": CostBudget("internal", 100, 1000, "embedding_input_unit", "policy_cost_microunit", "test-pricing-v1")},
             cost_estimates={},
@@ -219,7 +219,7 @@ def test_canonical_router_cost_policy_rejects_actual_cost_over_reservation():
     async def scenario():
         adapter = FakeAdapter([response(usage_units=100, cost_microunits=1200)])
         router = CanonicalModelRouter(
-            routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1")},
+            routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1", dimensions=2)},
             adapters={"router-policy": adapter},
             cost_budgets={"internal": CostBudget("internal", 100, 1000, "embedding_input_unit", "policy_cost_microunit", "test-pricing-v1")},
             cost_estimates={"internal": CostEstimate("router-policy", "selected-model", "version-1", 100, 900, "embedding_input_unit", "policy_cost_microunit", "test-pricing-v1")},
@@ -236,7 +236,7 @@ def test_canonical_router_cost_policy_requires_matching_route_version():
     async def scenario():
         adapter = FakeAdapter([response()])
         router = CanonicalModelRouter(
-            routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1")},
+            routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1", dimensions=2)},
             adapters={"router-policy": adapter},
             cost_budgets={"internal": CostBudget("internal", 100, 1000, "embedding_input_unit", "policy_cost_microunit", "test-pricing-v1")},
             cost_estimates={"internal": CostEstimate("router-policy", "selected-model", "other-version", 10, 100, "embedding_input_unit", "policy_cost_microunit", "test-pricing-v1")},
@@ -249,10 +249,21 @@ def test_canonical_router_cost_policy_requires_matching_route_version():
     asyncio.run(scenario())
 
 
-def test_runtime_router_requires_explicit_cost_policy_and_durable_metering():
+def test_embedding_router_fails_closed_when_dimension_is_not_pinned():
     async def scenario():
         router = CanonicalModelRouter(
             routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1")},
+            adapters={"router-policy": FakeAdapter([])},
+        )
+        with pytest.raises(ModelRouterUnavailable, match="explicit vector dimension"):
+            await router.embed(request())
+    asyncio.run(scenario())
+
+
+def test_runtime_router_requires_explicit_cost_policy_and_durable_metering():
+    async def scenario():
+        router = CanonicalModelRouter(
+            routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1", dimensions=2)},
             adapters={"router-policy": FakeAdapter([])},
         )
         with pytest.raises(ModelRouterUnavailable, match="cost budgets"):
@@ -263,7 +274,7 @@ def test_runtime_router_requires_explicit_cost_policy_and_durable_metering():
                 return None
 
         configured = CanonicalModelRouter(
-            routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1")},
+            routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1", dimensions=2)},
             adapters={"router-policy": FakeAdapter([])},
             cost_budgets={"internal": CostBudget("internal", 100, 1000, "embedding_input_unit", "policy_cost_microunit", "test-pricing-v1")},
             cost_estimates={"internal": CostEstimate("router-policy", "selected-model", "version-1", 10, 100, "embedding_input_unit", "policy_cost_microunit", "test-pricing-v1")},
@@ -280,7 +291,7 @@ def test_runtime_router_requires_explicit_cost_policy_and_durable_metering():
 def test_runtime_router_rejects_callable_only_non_durable_metering_sink():
     async def scenario():
         router = CanonicalModelRouter(
-            routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1")},
+            routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1", dimensions=2)},
             adapters={"router-policy": FakeAdapter([])},
             cost_budgets={"internal": CostBudget("internal", 100, 1000, "embedding_input_unit", "policy_cost_microunit", "test-pricing-v1")},
             cost_estimates={"internal": CostEstimate("router-policy", "selected-model", "version-1", 10, 100, "embedding_input_unit", "policy_cost_microunit", "test-pricing-v1")},
@@ -304,7 +315,7 @@ def test_runtime_router_fails_closed_when_cost_policy_approval_is_not_verified()
                 return False
 
         router = CanonicalModelRouter(
-            routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1")},
+            routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1", dimensions=2)},
             adapters={"router-policy": FakeAdapter([])},
             cost_budgets={"internal": CostBudget("internal", 100, 1000, "embedding_input_unit", "policy_cost_microunit", "test-pricing-v1")},
             cost_estimates={"internal": CostEstimate("router-policy", "selected-model", "version-1", 10, 100, "embedding_input_unit", "policy_cost_microunit", "test-pricing-v1")},
@@ -327,7 +338,7 @@ def test_canonical_router_does_not_retry_transient_failure_with_unknown_provider
             response(),
         ])
         router = CanonicalModelRouter(
-            routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1", max_attempts=3)},
+            routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1", max_attempts=3, dimensions=2)},
             adapters={"router-policy": adapter},
             retry_delay_seconds=0,
         )
@@ -354,7 +365,7 @@ def test_canonical_router_honors_bounded_retry_after_for_explicit_rate_limit(mon
             response(),
         ])
         router = CanonicalModelRouter(
-            routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1", max_attempts=2)},
+            routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1", max_attempts=2, dimensions=2)},
             adapters={"router-policy": adapter},
             retry_delay_seconds=0,
         )
