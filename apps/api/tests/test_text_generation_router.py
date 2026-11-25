@@ -121,6 +121,38 @@ def test_text_generation_rejects_cost_over_approved_policy():
         asyncio.run(router.generate(request()))
 
 
+def test_completed_over_budget_generation_is_metered_before_result_rejection():
+    adapter = FakeAdapter(cost=11)
+    sink = MemorySink()
+    router = CanonicalTextGenerationRouter(
+        routes={"private": TextGenerationRoute("provider-a", "model-a", "version-a")},
+        adapters={"provider-a": adapter},
+        policies={"private": TextGenerationPolicy(
+            policy_id="policy-test", policy_version="v1", approved=True,
+            max_prompt_bytes=1024, max_output_tokens=100, max_cost_microunits=10,
+            max_latency_ms=5000, cost_unit="approved-unit", pricing_version="pricing-v1",
+        )},
+        metering_sink=sink,
+    )
+    with pytest.raises(TextGenerationRouterRejected, match="cost"):
+        asyncio.run(router.generate(request()))
+    assert adapter.calls == 1
+    assert len(sink.rows) == 1
+    assert next(iter(sink.rows.values())).cost_microunits == 11
+
+
+def test_production_router_requires_owner_agent_skill_attribution_before_provider_call():
+    adapter = FakeAdapter()
+
+    async def verify(sensitivity, route, policy):
+        return None
+
+    router = make_router(adapter, preflight=verify)
+    with pytest.raises(TextGenerationRouterRejected, match="trusted owner, Agent and Skill"):
+        asyncio.run(router.generate(request()))
+    assert adapter.calls == 0
+
+
 def test_text_generation_rejects_unapproved_policy():
     with pytest.raises(ValueError, match="must be approved"):
         TextGenerationPolicy(
