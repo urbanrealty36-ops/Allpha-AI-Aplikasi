@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import ast
+from pathlib import Path
+
 import pytest
 
 from allpha_api import content_media_worker, content_transcode_worker
@@ -113,3 +116,28 @@ def test_subtitle_validation_rejects_malformed_or_active_content(data, media_typ
     from allpha_api.content_media_worker import validate_subtitle_bytes
     with pytest.raises(ValueError, match=error):
         validate_subtitle_bytes(data, media_type)
+
+
+def test_content_media_workers_disable_ambient_proxy_and_redirects():
+    package_dir = Path(__file__).parents[1] / "src" / "allpha_api"
+    worker_files = (
+        "content_media_worker.py",
+        "content_transcode_worker.py",
+        "content_provider_callback_worker.py",
+        "content_provider_cleanup_worker.py",
+    )
+    for filename in worker_files:
+        tree = ast.parse((package_dir / filename).read_text(encoding="utf-8"))
+        clients = [
+            node for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "AsyncClient"
+        ]
+        assert clients, f"{filename} must declare its HTTP clients"
+        for client in clients:
+            options = {keyword.arg: keyword.value for keyword in client.keywords}
+            assert "trust_env" in options, f"{filename} must disable ambient proxy discovery"
+            assert isinstance(options["trust_env"], ast.Constant) and options["trust_env"].value is False
+            assert "follow_redirects" in options, f"{filename} must disable authenticated redirects"
+            assert isinstance(options["follow_redirects"], ast.Constant) and options["follow_redirects"].value is False
