@@ -1,0 +1,321 @@
+"""ENG-P13 disposable PostgreSQL 17 verification for Cinema assets, playback and subtitles."""
+from __future__ import annotations
+
+from pathlib import Path
+import subprocess
+import time
+import uuid
+
+ROOT = Path(__file__).resolve().parents[3]
+ASSET_MIGRATION = ROOT / "apps/api/supabase/source-only-migrations/20261120100000_wp11_cinema_production_workspace.sql"
+PLAYBACK_MIGRATION = ROOT / "apps/api/supabase/migrations/20261125010000_eng_p13_cinema_playback_watchlist_lifecycle.sql"
+SUBTITLE_MIGRATION = ROOT / "apps/api/supabase/migrations/20261125020000_eng_p13_subtitle_media_processing.sql"
+NAME = "allpha-p13-cinema-" + uuid.uuid4().hex[:8]
+OWNER = "11111111-1111-4111-8111-111111111111"
+OTHER = "99999999-9999-4999-8999-999999999999"
+TITLE = "22222222-2222-4222-8222-222222222222"
+EPISODE = "33333333-3333-4333-8333-333333333333"
+VIDEO_MEDIA = "44444444-4444-4444-8444-444444444444"
+IMAGE_MEDIA = "55555555-5555-4555-8555-555555555555"
+ENTITLEMENT = "66666666-6666-4666-8666-666666666666"
+SESSION = "77777777-7777-4777-8777-777777777777"
+HEARTBEAT_EVENT = "88888888-8888-4888-8888-888888888888"
+FINISH_EVENT = "99999999-9999-4999-8999-999999999998"
+SUBTITLE_MEDIA = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+INVALID_SUBTITLE_MEDIA = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+TOKEN_HASH = "a" * 64
+
+
+def run(args: list[str], sql: str | None = None, check: bool = True) -> subprocess.CompletedProcess[str]:
+    result = subprocess.run(args, input=sql, text=True, capture_output=True)
+    if check and result.returncode:
+        raise RuntimeError(result.stdout + "\n" + result.stderr)
+    return result
+
+
+def psql(sql: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+    result = run(
+        ["docker", "exec", "-i", NAME, "psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", "postgres"],
+        sql,
+        check=False,
+    )
+    if check and result.returncode:
+        logs = run(["docker", "logs", NAME], check=False)
+        raise RuntimeError(result.stdout + "\n" + result.stderr + "\nPostgreSQL logs:\n" + logs.stdout + logs.stderr)
+    return result
+
+
+def main() -> None:
+    for migration in (ASSET_MIGRATION, PLAYBACK_MIGRATION, SUBTITLE_MIGRATION):
+        if not migration.is_file():
+            raise RuntimeError(f"Missing Cinema migration: {migration}")
+    run(["docker", "run", "-d", "--rm", "--name", NAME, "-e", "POSTGRES_PASSWORD=ci-only", "postgres:17-alpine"])
+    try:
+        ready = False
+        streak = 0
+        for _ in range(90):
+            probe = run(["docker", "exec", NAME, "psql", "-X", "-A", "-t", "-U", "postgres", "-d", "postgres", "-c", "select 1"], check=False)
+            if probe.returncode == 0:
+                streak += 1
+                if streak >= 3:
+                    ready = True
+                    break
+            else:
+                streak = 0
+            time.sleep(1)
+        if not ready:
+            raise RuntimeError("PostgreSQL 17 did not reach stable SQL readiness")
+
+        psql("""
+create role anon nologin;
+create role authenticated nologin;
+create role service_role nologin bypassrls;
+create schema auth;
+create schema storage;
+create schema extensions;
+create extension if not exists pgcrypto with schema extensions;
+create function auth.uid() returns uuid language sql stable as $uid$
+ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid
+$uid$;
+create table auth.users(id uuid primary key);
+create table public.cinema_titles(
+ id uuid primary key, owner_id uuid not null references auth.users(id) on delete cascade,
+ title text not null, status text not null default 'draft', moderation_status text not null default 'pending',
+ rights_status text not null default 'pending', version integer not null default 1,
+ credits jsonb not null default '[]'::jsonb,
+ unique(id,owner_id)
+);
+create table public.cinema_episodes(
+ id uuid primary key, title_id uuid not null references public.cinema_titles(id) on delete cascade,
+ episode_number integer not null, title text not null, unique(title_id,episode_number)
+);
+create table public.playback_entitlements(
+ id uuid primary key, owner_user_id uuid not null references auth.users(id) on delete cascade,
+ status text not null default 'active'
+);
+create table public.content_media(
+ id uuid primary key, content_id uuid not null, owner_id uuid not null references auth.users(id),
+ bucket_id text not null, storage_path text not null, filename text not null,
+ media_type text not null constraint content_media_media_type_check check(media_type in (
+  'image/jpeg','image/png','image/webp','video/mp4','video/webm',
+  'audio/mpeg','audio/mp4','audio/aac','audio/ogg','audio/wav','audio/webm'
+ )),
+ size_bytes bigint not null check(size_bytes>0), sha256 text not null,
+ status text not null default 'uploaded' check(status in ('uploaded','processing','ready','failed')),
+ scan_status text not null default 'pending' check(scan_status in ('pending','clean','failed')),
+ processed_at timestamptz, processing_attempt integer not null default 0,
+ processing_version integer not null default 0, derivatives jsonb not null default '[]'::jsonb,
+ created_at timestamptz not null default now(), updated_at timestamptz not null default now()
+);
+create table public.content_lifecycle_jobs(
+ id uuid primary key default gen_random_uuid(),
+ job_type text not null constraint content_lifecycle_jobs_job_type_check
+  check(job_type in ('image_process','media_transcode','scheduled_publish','retention_purge','provider_cleanup','provider_callback')),
+ content_id uuid not null, media_id uuid references public.content_media(id) on delete cascade,
+ owner_id uuid not null references auth.users(id), idempotency_key text not null unique,
+ payload jsonb not null default '{}'::jsonb, run_at timestamptz not null default now(),
+ attempts integer not null default 0, max_attempts integer not null default 5,
+ status text not null default 'pending' check(status in ('pending','processing','succeeded','failed','cancelled')),
+ lease_token uuid, lease_expires_at timestamptz, created_at timestamptz not null default now(),
+ updated_at timestamptz not null default now(), completed_at timestamptz, last_error_code text
+);
+create table public.content_lifecycle_events(
+ id uuid primary key default gen_random_uuid(), event_key text not null unique,
+ event_type text not null, content_id uuid not null, media_id uuid references public.content_media(id),
+ owner_id uuid not null references auth.users(id), payload jsonb not null default '{}'::jsonb,
+ created_at timestamptz not null default now()
+);
+create table storage.buckets(id text primary key, allowed_mime_types text[] not null default '{}');
+insert into storage.buckets(id,allowed_mime_types) values('content-media',array['image/jpeg','image/png','image/webp','video/mp4','video/webm']);
+grant usage on schema public,auth,storage,extensions to anon,authenticated,service_role;
+""")
+
+        # Validate the source-only Creator Asset Library DDL in disposable PostgreSQL only.
+        psql(ASSET_MIGRATION.read_text(encoding="utf-8"))
+        psql(PLAYBACK_MIGRATION.read_text(encoding="utf-8"))
+        psql(SUBTITLE_MIGRATION.read_text(encoding="utf-8"))
+
+        psql(f"""
+insert into auth.users(id) values('{OWNER}'),('{OTHER}');
+insert into public.cinema_titles(id,owner_id,title,status,moderation_status,rights_status)
+ values('{TITLE}','{OWNER}','CI Cinema Title','published','approved','cleared');
+insert into public.cinema_episodes(id,title_id,episode_number,title)
+ values('{EPISODE}','{TITLE}',1,'Episode 1');
+insert into public.playback_entitlements(id,owner_user_id,status)
+ values('{ENTITLEMENT}','{OWNER}','active');
+insert into public.content_media(
+ id,content_id,owner_id,bucket_id,storage_path,filename,media_type,size_bytes,sha256,status,scan_status,
+ processed_at,processing_version,derivatives
+) values(
+ '{VIDEO_MEDIA}','aaaaaaaa-0000-4000-8000-000000000001','{OWNER}','content-media','ci/video/master.mp4',
+ 'master.mp4','video/mp4',1024,repeat('b',64),'ready','clean',now(),1,'[{{"kind":"hls_manifest"}}]'::jsonb
+);
+insert into public.cinema_assets(title_id,owner_id,media_id,asset_role,display_name,created_by)
+ values('{TITLE}','{OWNER}','{VIDEO_MEDIA}','trailer','CI Trailer','{OWNER}');
+insert into public.cinema_playback_sessions(
+ id,owner_user_id,title_id,episode_id,media_id,entitlement_id,access_policy_version,
+ session_token_hash,status,duration_seconds,last_position_seconds,max_position_seconds,
+ idempotency_key,expires_at
+) values(
+ '{SESSION}','{OWNER}','{TITLE}','{EPISODE}','{VIDEO_MEDIA}','{ENTITLEMENT}','ci-policy-v1',
+ '{TOKEN_HASH}','active',600,0,0,'ci-session-idempotency',now()+interval '1 hour'
+);
+insert into public.cinema_watchlist_items(owner_user_id,title_id) values('{OWNER}','{TITLE}');
+""")
+
+        psql(f"""
+set role service_role;
+do $do$
+declare v_result jsonb;
+begin
+ v_result:=public.cinema_record_playback_heartbeat('{SESSION}','{OWNER}','{TOKEN_HASH}','{HEARTBEAT_EVENT}',120);
+ if v_result->>'duplicate'<>'false' or (v_result->>'last_position_seconds')::integer<>120 then
+  raise exception 'first playback heartbeat did not advance progress';
+ end if;
+ v_result:=public.cinema_record_playback_heartbeat('{SESSION}','{OWNER}','{TOKEN_HASH}','{HEARTBEAT_EVENT}',120);
+ if v_result->>'duplicate'<>'true' then raise exception 'heartbeat retry was not idempotent'; end if;
+ v_result:=public.cinema_finish_playback_session('{SESSION}','{OWNER}','{TOKEN_HASH}','{FINISH_EVENT}',300);
+ if v_result->>'status'<>'completed' or v_result->>'duplicate'<>'false' then
+  raise exception 'playback finish did not complete session';
+ end if;
+ v_result:=public.cinema_finish_playback_session('{SESSION}','{OWNER}','{TOKEN_HASH}','{FINISH_EVENT}',300);
+ if v_result->>'duplicate'<>'true' then raise exception 'finish retry was not idempotent'; end if;
+end
+$do$;
+reset role;
+do $do$
+begin
+ if not exists(select 1 from public.cinema_playback_sessions where id='{SESSION}' and status='completed'
+  and last_position_seconds=300 and max_position_seconds=300) then
+  raise exception 'playback session progress was not persisted';
+ end if;
+ if (select count(*) from public.cinema_playback_session_events where session_id='{SESSION}')<>2 then
+  raise exception 'playback event receipts are not idempotent';
+ end if;
+ if not exists(select 1 from public.cinema_watchlist_items where owner_user_id='{OWNER}' and title_id='{TITLE}') then
+  raise exception 'watchlist item was not persisted';
+ end if;
+ if not exists(select 1 from public.cinema_assets where title_id='{TITLE}' and media_id='{VIDEO_MEDIA}' and asset_role='trailer') then
+  raise exception 'Creator Asset Library did not persist the title media link';
+ end if;
+ if not exists(select 1 from public.cinema_titles where id='{TITLE}' and production_document->>'schema_version'='1') then
+  raise exception 'Creator production document default is missing';
+ end if;
+ if not (select relrowsecurity from pg_class where oid='public.cinema_playback_sessions'::regclass)
+  or not (select relrowsecurity from pg_class where oid='public.cinema_watchlist_items'::regclass)
+  or not (select relrowsecurity from pg_class where oid='public.cinema_assets'::regclass) then
+  raise exception 'Cinema private tables must have RLS enabled';
+ end if;
+ if has_table_privilege('anon','public.cinema_playback_sessions','select')
+  or has_table_privilege('authenticated','public.cinema_watchlist_items','select')
+  or has_table_privilege('anon','public.cinema_assets','insert') then
+  raise exception 'Cinema private tables must not grant direct client access';
+ end if;
+ if has_function_privilege('authenticated','public.cinema_record_playback_heartbeat(uuid,uuid,text,uuid,integer)','execute')
+  or has_function_privilege('anon','public.complete_content_subtitle_job(uuid,uuid,uuid,jsonb,integer)','execute') then
+  raise exception 'Cinema lifecycle RPCs must be service-role only';
+ end if;
+end
+$do$;
+""")
+
+        unauthorized = psql(f"""
+set role service_role;
+select public.cinema_record_playback_heartbeat('{SESSION}','{OTHER}','{TOKEN_HASH}','cccccccc-cccc-4ccc-8ccc-cccccccccccc',121);
+""", check=False)
+        if unauthorized.returncode == 0 or "playback session not found" not in unauthorized.stderr:
+            raise RuntimeError("cross-owner playback heartbeat was not rejected")
+
+        conflict = psql(f"""
+set role service_role;
+select public.cinema_record_playback_heartbeat('{SESSION}','{OWNER}','{TOKEN_HASH}','{HEARTBEAT_EVENT}',121);
+""", check=False)
+        if conflict.returncode == 0 or "playback event idempotency conflict" not in conflict.stderr:
+            raise RuntimeError("conflicting playback event replay was not rejected")
+
+        duplicate_watchlist = psql(f"""
+insert into public.cinema_watchlist_items(owner_user_id,title_id) values('{OWNER}','{TITLE}');
+""", check=False)
+        if duplicate_watchlist.returncode == 0 or "cinema_watchlist_owner_title_uq" not in duplicate_watchlist.stderr:
+            raise RuntimeError("duplicate owner watchlist entry was not rejected")
+
+        psql(f"""
+create trigger content_media_enqueue_lifecycle_job
+after insert or update of status on public.content_media
+for each row execute function public.enqueue_content_media_processing();
+""")
+        psql(f"""
+insert into public.content_media(
+ id,content_id,owner_id,bucket_id,storage_path,filename,media_type,size_bytes,sha256,status,scan_status
+) values(
+ '{SUBTITLE_MEDIA}','bbbbbbbb-0000-4000-8000-000000000002','{OWNER}','content-media','ci/subtitles/id.vtt',
+ 'id.vtt','text/vtt',128,encode(extensions.digest(convert_to('WEBVTT' || chr(10) || chr(10) || '00:00:00.000 --> 00:00:02.000' || chr(10) || 'Hello' || chr(10),'UTF8'),'sha256'),'hex'),
+ 'uploaded','pending'
+);
+insert into public.content_media(
+ id,content_id,owner_id,bucket_id,storage_path,filename,media_type,size_bytes,sha256,status,scan_status
+) values(
+ '{INVALID_SUBTITLE_MEDIA}','cccccccc-0000-4000-8000-000000000003','{OWNER}','content-media','ci/subtitles/bad.vtt',
+ 'bad.vtt','text/vtt',32,repeat('c',64),'uploaded','pending'
+);
+""")
+        psql(f"""
+set role service_role;
+do $do$
+declare v_job public.content_lifecycle_jobs%rowtype; v_receipt jsonb; v_result jsonb; v_sha text;
+begin
+ select * into v_job from public.claim_content_lifecycle_jobs('ci-subtitle-worker',10,60,'subtitle_validate')
+ where media_id='{SUBTITLE_MEDIA}' limit 1;
+ if not found then raise exception 'subtitle validation job was not claimed'; end if;
+ select sha256 into v_sha from public.content_media where id='{SUBTITLE_MEDIA}';
+ v_receipt:=jsonb_build_object(
+  'scanner_id','clamav-local','contract_version','allpha.local-clamav.v1',
+  'sha256',v_sha,'engine_version','ci-clamav-engine','signature_version','ci-signature-set',
+  'validation',jsonb_build_object('sha256',v_sha,'format','webvtt','cue_count','1')
+ );
+ v_result:=public.complete_content_subtitle_job(v_job.id,v_job.lease_token,'{SUBTITLE_MEDIA}',v_receipt,1);
+ if v_result->>'outcome'<>'completed' then raise exception 'subtitle job did not complete: %',v_result; end if;
+
+ select * into v_job from public.claim_content_lifecycle_jobs('ci-subtitle-worker',10,60,'subtitle_validate')
+ where media_id='{INVALID_SUBTITLE_MEDIA}' limit 1;
+ if not found then raise exception 'invalid subtitle validation job was not claimed'; end if;
+ select sha256 into v_sha from public.content_media where id='{INVALID_SUBTITLE_MEDIA}';
+ v_receipt:=jsonb_build_object(
+  'scanner_id','untrusted-scanner','contract_version','allpha.local-clamav.v1',
+  'sha256',v_sha,'engine_version','ci-clamav-engine','signature_version','ci-signature-set',
+  'validation',jsonb_build_object('sha256',v_sha,'format','webvtt','cue_count','1')
+ );
+ v_result:=public.complete_content_subtitle_job(v_job.id,v_job.lease_token,'{INVALID_SUBTITLE_MEDIA}',v_receipt,1);
+ if v_result->>'outcome'<>'scan_receipt_invalid' then raise exception 'invalid scanner receipt was not rejected'; end if;
+end
+$do$;
+reset role;
+do $do$
+begin
+ if not exists(select 1 from public.content_media where id='{SUBTITLE_MEDIA}' and status='ready'
+  and scan_status='clean' and processed_at is not null and media_type='text/vtt') then
+  raise exception 'validated subtitle media was not marked ready';
+ end if;
+ if not exists(select 1 from public.content_lifecycle_jobs where media_id='{SUBTITLE_MEDIA}' and job_type='subtitle_validate' and status='succeeded') then
+  raise exception 'subtitle lifecycle job was not completed';
+ end if;
+ if not exists(select 1 from public.content_lifecycle_jobs where media_id='{INVALID_SUBTITLE_MEDIA}' and job_type='subtitle_validate' and status='processing') then
+  raise exception 'invalid scanner receipt must not complete subtitle job';
+ end if;
+ if not exists(select 1 from storage.buckets where id='content-media' and allowed_mime_types @> array['text/vtt','application/x-subrip']) then
+  raise exception 'subtitle MIME types were not enabled in the private media bucket';
+ end if;
+end
+$do$;
+""")
+        print("PASS: ENG-P13 PostgreSQL 17 Creator Asset Library, primary media metadata schema, owner-scoped playback heartbeat/finish idempotency, Watchlist uniqueness/RLS, subtitle MIME/job claim/ClamAV receipt validation and service-role-only RPCs.")
+    finally:
+        run(["docker", "rm", "-f", NAME], check=False)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as exc:
+        print(f"FAIL: ENG-P13 Cinema lifecycle verification: {exc}", file=sys.stderr)
+        raise
