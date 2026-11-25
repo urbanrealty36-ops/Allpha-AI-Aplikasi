@@ -1840,3 +1840,11 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 
 - The P13 PostgreSQL 17 verifier now exercises the Cloudinary canonical registry contract in addition to Cinema playback and subtitle lifecycle. The CI step name is updated to reflect that expanded scope.
 - The prior verifier attempt failed on fixture-only missing provider columns; the source migration now adds the missing columns idempotently. The next Allpha Smoke run is the authoritative result for this correction.
+
+
+## 40.97 — Cloudinary provider adapter hardening (2026-11-25)
+
+- **Provider adapter:** `apps/api/src/allpha_api/cloudinary_provider.py` now binds Allpha media identity into the signed upload context, fetches authoritative asset metadata from the authenticated Cloudinary Admin API after upload, rejects public/upload delivery types, and supports transformation/version-bound authenticated private download URLs.
+- **Security contract:** Cloudinary Admin API identity is checked against the expected `public_id`, `resource_type`, and `type=authenticated`; provider credentials remain server-side. Non-2xx, missing assets, identity mismatch and incomplete metadata fail closed.
+- **Focused tests:** `apps/api/tests/test_cloudinary_provider.py` adds context-signature and authenticated Admin API identity tests, including rejection of a non-authenticated asset. CI verification pending.
+- **Boundary:** this is provider-adapter implementation only; it does not yet create upload intents from FastAPI or wire Web/Native uploaders. ENG-P13 remains `in_progress`.

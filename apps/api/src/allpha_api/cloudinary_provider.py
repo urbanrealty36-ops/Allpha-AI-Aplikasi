@@ -163,7 +163,8 @@ def build_signed_private_download_url(
         "type": "authenticated",
     }
     signature = sign_api_params(params, config.api_secret)
-    query = urlencode({**params, "api_key": config.api_key, "signature": signature})
+    query_params = {key: value for key, value in params.items() if value is not None}
+    query = urlencode({**query_params, "api_key": config.api_key, "signature": signature})
     return (
         f"https://api.cloudinary.com/v1_1/{config.cloud_name}/"
         f"{resource_type}/download?{query}"

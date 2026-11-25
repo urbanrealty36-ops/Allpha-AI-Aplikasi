@@ -8,7 +8,9 @@ import pytest
 from allpha_api.cloudinary_provider import (
     CloudinaryConfig,
     CloudinaryConfigurationError,
+    CloudinaryProviderError,
     build_signed_private_download_url,
+    fetch_cloudinary_resource,
     build_signed_upload_intent,
     resource_type_for_media_type,
     sign_api_params,
@@ -140,3 +142,77 @@ def test_cloudinary_config_fails_closed_when_credentials_are_missing(monkeypatch
         monkeypatch.delenv(name, raising=False)
     with pytest.raises(CloudinaryConfigurationError):
         CloudinaryConfig.from_environment()
+
+
+def test_cloudinary_upload_intent_binds_media_context():
+    intent = build_signed_upload_intent(
+        config=_config(),
+        media_id="12345678-1234-4234-9234-123456789abc",
+        media_type="image/jpeg",
+        now=1_800_000_000,
+        context={"allpha_media_id": "12345678-1234-4234-9234-123456789abc"},
+    )
+    params = intent["params"]
+    assert params["context"] == "allpha_media_id=12345678-1234-4234-9234-123456789abc"
+    assert params["signature"] == sign_api_params(
+        {k: v for k, v in params.items() if k not in {"api_key", "signature"}},
+        "api-secret",
+    )
+
+
+@pytest.mark.asyncio
+async def test_fetch_cloudinary_resource_verifies_authenticated_identity():
+    import httpx
+
+    requested = {}
+
+    def handler(request):
+        requested["url"] = str(request.url)
+        requested["authorization"] = request.headers.get("authorization")
+        return httpx.Response(200, json={
+            "asset_id": "asset-123",
+            "public_id": "allpha/12345678-1234-4234-9234-123456789abc",
+            "resource_type": "image",
+            "type": "authenticated",
+            "version": 4,
+            "format": "jpg",
+            "bytes": 1024,
+            "width": 32,
+            "height": 32,
+        })
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        asset = await fetch_cloudinary_resource(
+            config=_config(),
+            public_id="allpha/12345678-1234-4234-9234-123456789abc",
+            resource_type="image",
+            client=client,
+        )
+    assert asset["asset_id"] == "asset-123"
+    assert "/resources/image/authenticated/allpha/" in requested["url"]
+    assert requested["authorization"] is not None
+
+
+@pytest.mark.asyncio
+async def test_fetch_cloudinary_resource_rejects_non_authenticated_asset():
+    import httpx
+
+    def handler(request):
+        return httpx.Response(200, json={
+            "asset_id": "asset-123",
+            "public_id": "allpha/12345678-1234-4234-9234-123456789abc",
+            "resource_type": "image",
+            "type": "upload",
+            "version": 4,
+            "format": "jpg",
+            "bytes": 1024,
+        })
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(CloudinaryProviderError, match="CLOUDINARY_ASSET_NOT_AUTHENTICATED"):
+            await fetch_cloudinary_resource(
+                config=_config(),
+                public_id="allpha/12345678-1234-4234-9234-123456789abc",
+                resource_type="image",
+                client=client,
+            )
