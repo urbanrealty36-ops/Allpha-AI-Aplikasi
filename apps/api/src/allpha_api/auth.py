@@ -289,7 +289,7 @@ async def service_db_request(function_name: str, *, body: dict[str, Any]) -> Any
             "reserve_cloudinary_media_upload", "complete_cloudinary_content_media_upload",
             "complete_cloudinary_content_provider_job", "request_cloudinary_content_media_delete",
             "complete_cloudinary_media_delete_job", "fail_cloudinary_media_delete_job",
-            "enqueue_content_provider_callback",
+            "enqueue_content_provider_callback", "cloudinary_media_schema_readiness",
         ))
         if is_media_rpc and sqlstate in ("PGRST202", "PGRST204", "42883"):
             raise HTTPException(status_code=503, detail={"code": "MEDIA_SCHEMA_NOT_READY", "message": "Kontrak database Media Foundation belum tersedia."})
