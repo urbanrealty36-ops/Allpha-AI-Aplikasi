@@ -15,6 +15,9 @@ on:
       - apps/api/supabase/migrations/20261123192200_eng_p03_deletion_legal_hold_governance_worker.sql
       - apps/api/supabase/migrations/20261123191900_eng_p04_interest_ontology_and_discovery_index.sql
       - apps/api/supabase/migrations/20261123200000_eng_p04_passion_habit_recommendation_engine.sql
+      - apps/api/supabase/source-only-migrations/20261125190000_eng_p13_cloudinary_media_registry.sql
+      - apps/api/supabase/source-only-migrations/20261126110000_eng_p09_usage_token_details.sql
+      - docs/ADR/ADR-0024-wp07-production-only-migration-and-recovery-gate.md
 
 permissions:
   contents: read

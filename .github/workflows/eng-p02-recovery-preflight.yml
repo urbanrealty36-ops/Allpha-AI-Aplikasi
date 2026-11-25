@@ -7,6 +7,12 @@ on:
     branches: [main]
     paths:
       - .github/workflows/eng-p02-recovery-preflight.yml
+      - .github/workflows/eng-p02-create-restore-point.yml
+      - .github/workflows/eng-p02-backup-restore-verification.yml
+      - docs/ADR/ADR-0024-wp07-production-only-migration-and-recovery-gate.md
+      - apps/api/supabase/source-only-migrations/20261125190000_eng_p13_cloudinary_media_registry.sql
+      - apps/api/supabase/source-only-migrations/20261126110000_eng_p09_usage_token_details.sql
+      - docs/PHASES/ALLPHA_FIXED_PHASE_PLAN.md
 
 permissions:
   contents: read
