@@ -544,8 +544,9 @@ export default function FeedPage() {
         if (!contentId) throw new Error("API tidak mengembalikan ID konten kanonis.");
         setComposerDraftIds(current => ({ ...current, [post.id]: contentId! }));
       }
+      if (!contentId) throw new Error("Draft Feed tidak memiliki ID konten kanonis.");
       createdId = contentId;
-      if (mediaFile && contentId) {
+      if (mediaFile) {
         let uploadKey = composerUploadIds[post.id];
         if (!uploadKey || composerUploadFiles[post.id] !== mediaFile) {
           uploadKey = crypto.randomUUID();
