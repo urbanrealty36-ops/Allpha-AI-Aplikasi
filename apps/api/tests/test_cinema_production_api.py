@@ -377,7 +377,8 @@ def test_cinema_database_client_disables_ambient_proxy_and_redirects(monkeypatch
             return FakeResponse()
 
     monkeypatch.setenv("SUPABASE_URL", "https://project.supabase.co")
-    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "server-only-test-key")
+    monkeypatch.delenv("SUPABASE_SERVICE_ROLE_KEY", raising=False)
+    monkeypatch.setenv("SUPABASE_SECRET_KEY", "server-only-test-key")
     monkeypatch.setattr(cinema_api.httpx, "AsyncClient", FakeClient)
 
     result = asyncio.run(cinema_api._db("GET", "cinema_titles"))
@@ -385,3 +386,5 @@ def test_cinema_database_client_disables_ambient_proxy_and_redirects(monkeypatch
     assert result == []
     assert captured["trust_env"] is False
     assert captured["follow_redirects"] is False
+    assert captured["headers"]["apikey"] == "server-only-test-key"
+    assert captured["headers"]["Authorization"] == "Bearer server-only-test-key"
