@@ -310,7 +310,7 @@ create or replace function public.reserve_cloudinary_media_upload(
 ) returns jsonb
 language plpgsql security definer set search_path=pg_catalog,public
 as $function$
-declare v_existing public.content_media%rowtype; v_media public.content_media%rowtype; v_expected_resource text;
+declare v_existing public.content_media%rowtype; v_media public.content_media%rowtype; v_expected_resource text; v_authorized boolean;
 begin
   if p_media_id is null or p_owner_id is null or not exists(select 1 from auth.users where id=p_owner_id) then
     raise exception 'MEDIA_OWNER_NOT_FOUND' using errcode='23503';
@@ -319,11 +319,61 @@ begin
      or coalesce(p_purpose,'') not in ('attachment','avatar','cover','post_attachment','reel','story','cinema_poster','cinema_asset','live_recording','live_replay','agent_artifact','chat_attachment','community_attachment','marketplace_attachment','other') then
     raise exception 'MEDIA_DOMAIN_OR_PURPOSE_INVALID' using errcode='23514';
   end if;
-  if (p_domain='content' and p_content_id is null) or (p_domain<>'content' and (p_content_id is not null or p_resource_id is null)) then
+  if (p_domain='content' and (p_content_id is null or p_resource_id is not null))
+     or (p_domain<>'content' and (p_content_id is not null or p_resource_id is null)) then
     raise exception 'MEDIA_DOMAIN_RESOURCE_INVALID' using errcode='23514';
   end if;
-  if p_domain='content' and not exists(select 1 from public.content_items where id=p_content_id and owner_id=p_owner_id) then
-    raise exception 'MEDIA_CONTENT_OWNERSHIP_INVALID' using errcode='42501';
+  if (p_domain='content' and p_purpose not in ('attachment','post_attachment'))
+     or (p_domain='profile' and p_purpose not in ('avatar','cover'))
+     or (p_domain='feed' and p_purpose<>'post_attachment')
+     or (p_domain='reels' and p_purpose<>'reel')
+     or (p_domain='stories' and p_purpose<>'story')
+     or (p_domain='cinema' and p_purpose not in ('cinema_poster','cinema_asset'))
+     or (p_domain='live' and p_purpose not in ('live_recording','live_replay'))
+     or (p_domain='agent' and p_purpose<>'agent_artifact')
+     or (p_domain='messaging' and p_purpose<>'chat_attachment')
+     or (p_domain='community' and p_purpose<>'community_attachment')
+     or (p_domain='marketplace' and p_purpose<>'marketplace_attachment')
+     or (p_domain='other' and p_purpose<>'other') then
+    raise exception 'MEDIA_DOMAIN_PURPOSE_MISMATCH' using errcode='23514';
+  end if;
+
+  v_authorized := case
+    when p_domain='content' then exists(
+      select 1 from public.content_items c
+      where c.id=p_content_id and c.owner_id=p_owner_id and c.status in ('draft','failed')
+    )
+    when p_domain in ('feed','reels','stories') then exists(
+      select 1 from public.content_items c
+      where c.id=p_resource_id and c.owner_id=p_owner_id and c.status in ('draft','failed')
+    )
+    when p_domain='profile' then p_resource_id=p_owner_id and exists(
+      select 1 from public.profiles p where p.id=p_owner_id
+    )
+    when p_domain='cinema' and p_purpose='cinema_poster' then exists(
+      select 1 from public.cinema_titles t where t.id=p_resource_id and t.owner_id=p_owner_id
+    )
+    when p_domain='cinema' and p_purpose='cinema_asset' then exists(
+      select 1 from public.cinema_episodes e where e.id=p_resource_id and e.owner_id=p_owner_id
+    )
+    when p_domain='agent' then (
+      exists(select 1 from public.ai_agents a where a.id=p_resource_id and a.created_by=p_owner_id)
+      or exists(select 1 from public.agent_runtime_tasks t where t.id=p_resource_id and t.owner_user_id=p_owner_id)
+    )
+    when p_domain='messaging' then exists(
+      select 1 from public.conversation_participants cp
+      where cp.conversation_id=p_resource_id and cp.user_id=p_owner_id
+    )
+    when p_domain='community' then exists(
+      select 1 from public.community_posts p
+      join public.community_memberships m on m.community_id=p.community_id
+      where p.id=p_resource_id and p.author_id=p_owner_id
+        and m.user_id=p_owner_id and m.status='active'
+    )
+    else false
+  end;
+  if not coalesce(v_authorized,false) then
+    raise exception 'MEDIA_RESOURCE_ACCESS_DENIED' using errcode='42501';
   end if;
   v_expected_resource:=case
     when coalesce(p_media_type,'') like 'image/%' then 'image'
@@ -346,8 +396,13 @@ begin
   where owner_id=p_owner_id and domain=p_domain and upload_idempotency_key=p_idempotency_key for update;
   if found then
     if v_existing.id<>p_media_id or v_existing.content_id is distinct from p_content_id
-       or v_existing.resource_id is distinct from p_resource_id or v_existing.sha256<>p_sha256
-       or v_existing.media_type<>p_media_type or v_existing.size_bytes<>p_size_bytes then
+       or v_existing.resource_id is distinct from p_resource_id or v_existing.purpose is distinct from p_purpose
+       or v_existing.tenant_id is distinct from p_tenant_id or v_existing.session_id is distinct from p_session_id
+       or v_existing.filename is distinct from p_filename or v_existing.sha256<>p_sha256
+       or v_existing.media_type<>p_media_type or v_existing.size_bytes<>p_size_bytes
+       or v_existing.provider_public_id is distinct from p_public_id
+       or v_existing.provider_resource_type is distinct from p_resource_type
+       or v_existing.provider_delivery_type is distinct from p_delivery_type then
       raise exception 'MEDIA_IDEMPOTENCY_CONFLICT' using errcode='23505';
     end if;
     return jsonb_build_object('media',to_jsonb(v_existing),'idempotent_replay',true);
