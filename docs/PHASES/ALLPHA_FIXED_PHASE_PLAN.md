@@ -1855,3 +1855,13 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 - **CI evidence:** Allpha Smoke `45647571599` passed Web, Native and Super Admin checks but the P13 disposable verifier failed because its test block ran direct `content_lifecycle_jobs` assertions under `service_role`, while the isolated fixture intentionally grants only RPC execution to that role.
 - **Correction:** the verifier now executes the upload intent/completion RPCs under `service_role`, resets to the fixture owner for direct state assertions, and then separately exercises the worker RPC under the worker role. Production grants are not broadened to make a test pass.
 - **Status:** verifier correction committed; a fresh Allpha Smoke run must pass before treating the Cloudinary registry contract as verified.
+
+
+### 40.98 — P13 generic media API foundation and Cloudinary upload contract (2026-11-25)
+
+- **Commits:** `ba4a8624b7d2b302a67fa8239e15df40709b8b8a` (authenticated media API foundation), `01b9249de4d127eca6ae42d4aba9b515ae212619` (FastAPI router registration), `6f0d3abf47d83568c6a0410c35b5a3eea8a64576` (Cloudinary upload intent and completion endpoints), `5b3b5b7edeb6170fd4b0ab49db84eae53a90e18c` (route dependencies and media projection).
+- **Implemented:** owner-scoped media status read; generic `POST /v1/media/upload-intents` validates media type/size, requires UUID Idempotency-Key, checks authenticated owner access to a draft/failed content resource, issues a short-lived Cloudinary authenticated multipart signature, and reserves the canonical `content_media` row through the existing service-only `reserve_cloudinary_media_upload` RPC. `POST /v1/media/complete` verifies Cloudinary Admin API asset identity, authenticated delivery type, and exact byte count before invoking `complete_cloudinary_content_media_upload`.
+- **Security boundary:** API secret remains server-side; upload signature is scoped to reserved media ID; client cannot select a foreign content resource; database schema/RPC errors fail closed; no synthetic media rows or provider success.
+- **Integration:** router import and `app.include_router(media_router)` are present in FastAPI `main.py`; Railway API deployment was triggered by main-branch commits.
+- **Not complete:** callback/webhook endpoint, derivative persistence/delivery, deletion and cleanup lifecycle, Web/Native client upload integration, scanner operational readiness, and worker activation remain open. P13 stays `in_progress`; do not interpret these commits as phase completion.
+- **Verification:** Railway deployments for the latest API commits were still BUILDING/DEPLOYING at the time of this note; await terminal deployment status and runtime verification. No production DDL was applied.
