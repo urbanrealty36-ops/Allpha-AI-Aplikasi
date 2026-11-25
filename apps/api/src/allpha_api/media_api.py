@@ -231,6 +231,12 @@ async def cloudinary_callback(
         jobs = job_response.json()
     if not jobs:
         raise HTTPException(503, detail={"code":"MEDIA_TRANSCODE_NOT_WAITING","message":"Handoff transcode belum tersedia; callback akan dicoba kembali."}, headers={"Retry-After":"5"})
+    confirmed = await service_db_request("confirm_cloudinary_provider_callback_identity", body={
+        "p_media_id":str(media["id"]),"p_provider_asset_id":asset_id,
+        "p_provider_public_id":public_id,"p_provider_batch_id":batch_id,
+    })
+    if confirmed != "confirmed":
+        raise HTTPException(409, detail={"code":"MEDIA_CALLBACK_IDENTITY_REJECTED","message":"Identitas callback tidak cocok dengan media yang direservasi."})
     event_id = hashlib.sha256(raw).hexdigest()
     queued = await service_db_request("enqueue_content_provider_callback", body={
         "p_provider_event_id":event_id,"p_media_id":media["id"],"p_transcode_job_id":jobs[0]["id"],
