@@ -273,7 +273,10 @@ def test_image_eager_contract_requires_two_jpeg_derivatives():
         {"transformation": "c_fill,w_320,h_320,g_auto,f_jpg,q_auto", "format": "jpg", "status": "success"},
     ])
     with pytest.raises(ValueError, match="PROVIDER_IMAGE_RENDITION_CONTRACT_INVALID"):
-        validate_eager_derivative_contract("image/jpeg", [{"transformation": "c_limit,w_1600,f_jpg,q_auto", "format": "jpg", "status": "success"}])
+        validate_eager_derivative_contract("image/jpeg", [
+            {"transformation": "c_limit,w_1600,f_jpg,q_auto", "format": "png", "status": "success"},
+            {"transformation": "c_fill,w_320,h_320,g_auto,f_jpg,q_auto", "format": "jpg", "status": "success"},
+        ])
 
 
 @pytest.mark.parametrize(("resource_type", "path"), [
