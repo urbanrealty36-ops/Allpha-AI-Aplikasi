@@ -203,19 +203,15 @@ class MediaWorker:
             log.exception("subtitle validation failed job_id=%s media_id=%s", job_id, media_id)
 
     async def process_batch(self) -> int:
-        image_jobs = await self.rpc("claim_content_lifecycle_jobs", {
-            "p_worker_id": self.worker_id, "p_limit": self.batch_size,
-            "p_lease_seconds": self.lease_seconds, "p_job_type": "image_process",
-        }) or []
+        # Binary image/video/audio jobs are owned by the Cloudinary transcode
+        # dispatcher. This worker retains the independent subtitle validation job.
         subtitle_jobs = await self.rpc("claim_content_lifecycle_jobs", {
             "p_worker_id": self.worker_id, "p_limit": self.batch_size,
             "p_lease_seconds": self.lease_seconds, "p_job_type": "subtitle_validate",
         }) or []
-        for job in image_jobs:
-            await self.process(job)
         for job in subtitle_jobs:
             await self.process_subtitle(job)
-        return len(image_jobs) + len(subtitle_jobs)
+        return len(subtitle_jobs)
 
     async def assert_schema_ready(self) -> None:
         result = await self.rpc("cloudinary_media_schema_readiness", {})
