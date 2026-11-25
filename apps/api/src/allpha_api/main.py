@@ -36,6 +36,7 @@ from allpha_api.skill_challenge_execution_api import router as skill_challenge_e
 from allpha_api.supabase_credit_ledger_store import CreditLedgerPersistenceError, SupabaseCreditLedgerStore
 from allpha_api.tool_registry import ToolInputError, UnknownToolError, execute_tool, list_tools, validate_tool_dependencies
 from allpha_api.operator_security import (router as operator_security_router, privileged_rest_request, require_operator_scope, write_operator_audit)
+from allpha_api.admin_media_api import router as admin_media_router
 from allpha_api.knowledge import router as knowledge_router
 from allpha_api.knowledge_retrieval import router as knowledge_retrieval_router
 from allpha_api.skill_catalog import search_skill_catalog
@@ -1930,6 +1931,7 @@ async def decide_agent_capability(
 
 # Dedicated platform operator API: every route enforces a live grant, exact scope, and durable audit.
 app.include_router(operator_security_router)
+app.include_router(admin_media_router)
 app.include_router(knowledge_router)
 app.include_router(knowledge_retrieval_router)
 app.include_router(agent_runtime_router)
