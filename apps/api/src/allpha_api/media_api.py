@@ -7,7 +7,7 @@ from allpha_api.auth import user_db_request, service_db_request
 from allpha_api.cloudinary_provider import CloudinaryConfig, CloudinaryConfigurationError, build_signed_upload_intent
 from typing import Any
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from allpha_api.auth import current_user
 router = APIRouter(prefix="/v1/media", tags=["media"])
 class UploadIntent(BaseModel):
@@ -98,7 +98,7 @@ async def complete_upload(payload: UploadCompletion,user:dict[str,Any]=Depends(c
 async def get_media(media_id:uuid.UUID,user:dict[str,Any]=Depends(current_user)):
     base,key=_config()
     async with httpx.AsyncClient(timeout=12,trust_env=False,follow_redirects=False) as client:
-        response=await client.get(f"{base}/rest/v1/content_media",params={"select":"id,owner_id,status,storage_provider,provider_public_id,provider_resource_type,provider_format,provider_asset_id","id":f"eq.{media_id}","owner_id":f"eq.{user['id']}","limit":"1"},headers={"apikey":key,"Authorization":f"Bearer {key}"})
+        response=await client.get(f"{base}/rest/v1/content_media",params={"select":"id,content_id,owner_id,filename,media_type,size_bytes,sha256,status,scan_status,storage_provider,storage_path,provider_public_id,provider_resource_type,provider_delivery_type,provider_format,provider_version,provider_width,provider_height,provider_duration,provider_bytes,provider_delete_state,derivatives,created_at,processed_at,provider_asset_id","id":f"eq.{media_id}","owner_id":f"eq.{user['id']}","limit":"1"},headers={"apikey":key,"Authorization":f"Bearer {key}"})
     if response.status_code>=300:
         raise HTTPException(503,detail={"code":"MEDIA_DB_UNAVAILABLE","message":"Media status unavailable."})
     rows=response.json()
