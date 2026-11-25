@@ -398,6 +398,23 @@ class AgentRuntime:
                 raise AgentRuntimeBlocked("external Consumer grant must match the exact pinned Skill tool set")
             if set(skill_tool_inputs or {}) != set(preflight_dependencies):
                 raise AgentRuntimeBlocked("external Consumer must provide typed inputs for every granted Skill tool")
+        if request is None:
+            raise AgentRuntimeBlocked("a canonical generation request is required")
+        if (request.owner_id not in (None, owner_id)
+                or request.agent_id not in (None, agent_id)
+                or request.source_id not in (None, skill_id)
+                or request.source_version not in (1, skill_version)):
+            raise AgentRuntimeBlocked("generation billing and attribution context does not match the pinned Agent/Skill")
+        if requester_id == owner_id:
+            billing_account_id = owner_id
+        else:
+            billing_account_id = request.billing_account_id
+            if billing_account_id not in {requester_id, owner_id}:
+                raise AgentRuntimeBlocked("consumer billing account must be resolved from the approved grant payer role")
+        request = replace(
+            request, owner_id=owner_id, agent_id=agent_id, source_id=skill_id,
+            source_version=skill_version, billing_account_id=billing_account_id,
+        )
         if request.task_id == "" or not request.idempotency_key or not request.trace_id:
             raise AgentRuntimeBlocked("generation task, trace and idempotency identities are required")
         try:
