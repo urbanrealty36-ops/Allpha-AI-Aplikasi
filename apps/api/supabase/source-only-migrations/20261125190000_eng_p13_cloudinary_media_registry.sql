@@ -468,6 +468,65 @@ begin
 end;
 $function$;
 
+create or replace function public.handoff_cloudinary_content_provider_job(
+  p_job_id uuid,p_lease_token uuid,p_media_id uuid,p_provider_asset_id text,
+  p_provider_public_id text,p_provider_batch_id text,p_resource_type text,
+  p_delivery_type text,p_version bigint,p_format text,p_width integer,
+  p_height integer,p_duration numeric,p_bytes bigint,p_tags text[],p_provider_metadata jsonb
+) returns jsonb
+language plpgsql security definer set search_path=pg_catalog,public
+as $function$
+declare
+  v_job public.content_lifecycle_jobs%rowtype;
+  v_media public.content_media%rowtype;
+  v_legacy_storage jsonb;
+begin
+  if coalesce(p_provider_asset_id,'')='' or p_provider_public_id<>'allpha/'||p_media_id::text
+     or p_resource_type not in ('image','video','raw') or p_delivery_type<>'authenticated'
+     or coalesce(p_version,0)<=0 or coalesce(p_format,'')='' or coalesce(p_bytes,0)<=0 then
+    raise exception 'CLOUDINARY_HANDOFF_PROVIDER_IDENTITY_INVALID' using errcode='23514';
+  end if;
+
+  select * into v_job from public.content_lifecycle_jobs
+  where id=p_job_id and status='processing' and lease_token=p_lease_token
+    and lease_expires_at>now() and job_type='media_transcode' and media_id=p_media_id
+  for update;
+  if not found then return jsonb_build_object('outcome','lease_lost'); end if;
+
+  select * into v_media from public.content_media
+  where id=p_media_id and status='processing' and storage_provider='supabase'
+  for update;
+  if not found then return jsonb_build_object('outcome','media_not_processing'); end if;
+  if p_bytes<>v_media.size_bytes then
+    raise exception 'CLOUDINARY_HANDOFF_BYTE_COUNT_MISMATCH' using errcode='23514';
+  end if;
+
+  v_legacy_storage:=jsonb_build_object('bucket_id',v_media.bucket_id,'storage_path',v_media.storage_path);
+  update public.content_media
+  set storage_provider='cloudinary',bucket_id='cloudinary',storage_path=p_provider_public_id,
+    provider_asset_id=p_provider_asset_id,provider_public_id=p_provider_public_id,
+    provider_batch_id=p_provider_batch_id,provider_resource_type=p_resource_type,
+    provider_delivery_type=p_delivery_type,provider_version=p_version,provider_format=p_format,
+    provider_width=p_width,provider_height=p_height,provider_duration=p_duration,
+    provider_bytes=p_bytes,provider_tags=coalesce(p_tags,'{}'::text[]),
+    provider_metadata=coalesce(provider_metadata,'{}'::jsonb)||coalesce(p_provider_metadata,'{}'::jsonb)
+      ||jsonb_build_object('legacy_storage',v_legacy_storage),
+    updated_at=now()
+  where id=p_media_id returning * into v_media;
+
+  update public.content_lifecycle_jobs
+  set status='awaiting_provider',lease_token=null,lease_expires_at=null,
+    payload=coalesce(payload,'{}'::jsonb)||jsonb_build_object(
+      'provider','cloudinary','provider_asset_id',p_provider_asset_id,
+      'provider_public_id',p_provider_public_id,'provider_batch_id',p_provider_batch_id,
+      'legacy_storage',v_legacy_storage
+    ),updated_at=now()
+  where id=p_job_id returning * into v_job;
+
+  return jsonb_build_object('outcome','handed_off','job',to_jsonb(v_job),'media',to_jsonb(v_media));
+end;
+$function$;
+
 create or replace function public.complete_cloudinary_content_provider_job(
   p_job_id uuid,p_media_id uuid,p_provider text,p_provider_asset_id text,p_provider_public_id text,
   p_provider_event_id text,p_payload_sha256 text,p_derivatives jsonb,p_scan_status text,p_scan_receipt jsonb
@@ -712,6 +771,7 @@ begin
     ('public.reserve_cloudinary_media_upload(uuid,uuid,uuid,text,text,uuid,uuid,uuid,text,text,bigint,text,text,text,text,timestamptz,text)'),
     ('public.complete_cloudinary_content_media_upload(uuid,uuid,text,text,text,text,text,bigint,text,integer,integer,numeric,bigint,text[],jsonb)'),
     ('public.complete_cloudinary_content_provider_job(uuid,uuid,text,text,text,text,text,jsonb,text,jsonb)'),
+    ('public.handoff_cloudinary_content_provider_job(uuid,uuid,uuid,text,text,text,text,text,bigint,text,integer,integer,numeric,bigint,text[],jsonb)'),
     ('public.request_cloudinary_content_media_delete(uuid,uuid)'),
     ('public.complete_cloudinary_media_delete_job(uuid,uuid,uuid)'),
     ('public.fail_cloudinary_media_delete_job(uuid,uuid,text)')
@@ -776,6 +836,8 @@ where id='content-media';
 
 revoke all on function public.reserve_cloudinary_media_upload(uuid,uuid,uuid,text,text,uuid,uuid,uuid,text,text,bigint,text,text,text,text,timestamptz,text) from public,anon,authenticated;
 revoke all on function public.complete_cloudinary_content_media_upload(uuid,uuid,text,text,text,text,text,bigint,text,integer,integer,numeric,bigint,text[],jsonb) from public,anon,authenticated;
+revoke all on function public.handoff_cloudinary_content_provider_job(uuid,uuid,uuid,text,text,text,text,text,bigint,text,integer,integer,numeric,bigint,text[],jsonb) from public,anon,authenticated;
+grant execute on function public.handoff_cloudinary_content_provider_job(uuid,uuid,uuid,text,text,text,text,text,bigint,text,integer,integer,numeric,bigint,text[],jsonb) to service_role;
 revoke all on function public.complete_cloudinary_content_provider_job(uuid,uuid,text,text,text,text,text,jsonb,text,jsonb) from public,anon,authenticated;
 
 revoke all on function public.request_cloudinary_content_media_delete(uuid,uuid) from public,anon,authenticated;
