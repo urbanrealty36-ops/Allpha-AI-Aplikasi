@@ -1865,3 +1865,12 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 - **Integration:** router import and `app.include_router(media_router)` are present in FastAPI `main.py`; Railway API deployment was triggered by main-branch commits.
 - **Not complete:** callback/webhook endpoint, derivative persistence/delivery, deletion and cleanup lifecycle, Web/Native client upload integration, scanner operational readiness, and worker activation remain open. P13 stays `in_progress`; do not interpret these commits as phase completion.
 - **Verification:** Railway deployments for the latest API commits were still BUILDING/DEPLOYING at the time of this note; await terminal deployment status and runtime verification. No production DDL was applied.
+
+
+### 40.99 — P13 Cloudinary callback receiver and private original delivery (2026-11-25)
+
+- **Implementation:** FastAPI now exposes `POST /v1/media/cloudinary/callback`. It bounds the raw payload, verifies Cloudinary's timestamped signature against the configured webhook/API secret, accepts only eager notifications, validates the Allpha public-ID namespace and provider asset identity against the canonical media row, resolves the existing `media_transcode` job in `awaiting_provider`, and invokes the existing atomic `enqueue_content_provider_callback` RPC. The raw-body SHA-256 is the deterministic event key, so identical callback retries are idempotent and altered replays cannot silently replace an event.
+- **Delivery:** owner-scoped media status now returns a 5-minute authenticated Cloudinary download URL for ready Cloudinary originals. Provider secrets remain server-side.
+- **No schema/deployment bypass:** this uses the existing `content_provider_callbacks` and `content_lifecycle_jobs` contracts. No migration was applied and no production media rows were created.
+- **Commit:** `7d6b0da7bd238d456e4f328f06ecf348eeb3076d`. Railway API deployment was BUILDING at the time of this entry; GitHub combined checks for API and shared worker were pending. Do not call the callback path integration-verified until the deployment is healthy and a real Cloudinary callback is exercised.
+- **Remaining P13:** callback URL must resolve to this route in Cloudinary/Railway configuration; verify callback signature against a real provider delivery; Cloudinary-only derivative persistence/delivery, deletion API, Web UI call-site wiring, Native Client upload, remote scanner configuration and worker activation remain open. P13 remains `in_progress`.
