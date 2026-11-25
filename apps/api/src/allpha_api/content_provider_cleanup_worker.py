@@ -10,7 +10,7 @@ class CleanupWorker:
   self.key=os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ["SUPABASE_SECRET_KEY"]
   self.cloud=os.environ["CLOUDINARY_CLOUD_NAME"];self.api_key=os.environ["CLOUDINARY_API_KEY"];self.secret=os.environ["CLOUDINARY_API_SECRET"]
   self.worker_id=f"cloudinary-cleanup-{uuid.uuid4()}"
-  self.client=httpx.AsyncClient(timeout=httpx.Timeout(30,connect=5),headers={"apikey":self.key,"Authorization":f"Bearer {self.key}","Content-Type":"application/json"})
+  self.client=httpx.AsyncClient(trust_env=False, follow_redirects=False, timeout=httpx.Timeout(30,connect=5),headers={"apikey":self.key,"Authorization":f"Bearer {self.key}","Content-Type":"application/json"})
   self.stopping=False
  async def rpc(self,name,payload):
   r=await self.client.post(f"{self.base}/rest/v1/rpc/{name}",json=payload);r.raise_for_status();return r.json() if r.content else None
@@ -20,7 +20,7 @@ class CleanupWorker:
   serialized="&".join(f"{k}={params[k]}" for k in sorted(params))
   signature=hashlib.sha1((serialized+self.secret).encode()).hexdigest()
   form={**params,"api_key":self.api_key,"signature":signature}
-  async with httpx.AsyncClient(timeout=httpx.Timeout(30,connect=5)) as provider:
+  async with httpx.AsyncClient(trust_env=False, follow_redirects=False, timeout=httpx.Timeout(30,connect=5)) as provider:
    response=await provider.post(f"https://api.cloudinary.com/v1_1/{self.cloud}/video/destroy",data=form)
   response.raise_for_status();result=response.json().get("result")
   if result not in ("ok","not found"):raise ValueError("CLOUDINARY_DESTROY_UNCONFIRMED")
