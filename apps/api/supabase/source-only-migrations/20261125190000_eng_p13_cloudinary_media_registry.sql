@@ -638,9 +638,12 @@ begin
     'provider_cleanup',v_media.content_id,v_media.id,v_media.owner_id,
     'provider-cleanup:media-delete:'||v_media.id::text,
     jsonb_build_object(
-      'provider','cloudinary','action','delete_media','media_id',v_media.id,
+      'provider',case when v_media.storage_provider='cloudinary' then 'cloudinary' else 'supabase_storage' end,
+      'action','delete_media','media_id',v_media.id,
       'provider_public_id',v_media.provider_public_id,
       'resource_type',v_media.provider_resource_type,
+      'bucket_id',case when v_media.storage_provider='supabase' then v_media.bucket_id else null end,
+      'storage_path',case when v_media.storage_provider='supabase' then v_media.storage_path else null end,
       'legacy_storage',v_media.provider_metadata->'legacy_storage'
     ),
     v_media.domain,v_media.resource_id,v_media.purpose,v_media.tenant_id,v_media.session_id
