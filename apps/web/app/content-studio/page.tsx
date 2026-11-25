@@ -3,7 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import Link from "next/link";
-import { getBrowserSupabase } from "../../lib/supabase";
+import { getBrowserSupabase, getBrowserSupabasePublishableKey } from "../../lib/supabase";
 
 type Media = { id: string; filename: string; media_type: string; size_bytes: number; status: string; preview_url?: string | null };
 type Item = { id: string; body: string; content_type: string; visibility: string; status: string; moderation_status: string; version: number; created_at: string; updated_at: string; media?: Media[] };
@@ -14,6 +14,129 @@ async function responseError(response: Response) {
   catch { return `Permintaan gagal (HTTP ${response.status}).`; }
 }
 
+type ResumableUploadInit = {
+  item: Media;
+  already_uploaded: boolean;
+  tus_endpoint?: string;
+  upload_token?: string;
+  upload_metadata?: Record<string, string>;
+  chunk_size_bytes?: number;
+};
+
+type ResumableUploadRequest = (path: string, init?: RequestInit) => Promise<unknown>;
+
+function encodeTusMetadata(value: string): string {
+  const bytes = new TextEncoder().encode(value);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+async function uploadContentMediaWithTus(
+  request: ResumableUploadRequest,
+  contentId: string,
+  file: File,
+  idempotencyKey: string,
+  onProgress: (percent: number) => void,
+): Promise<Media> {
+  const initialized = await request(`/v1/content/${contentId}/media/resumable`, {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify({ filename: file.name, media_type: file.type, size_bytes: file.size }),
+  });
+  const init = initialized as ResumableUploadInit;
+  if (init.already_uploaded) return init.item;
+  if (!init.item?.id || !init.tus_endpoint || !init.upload_token || !init.upload_metadata) {
+    throw new Error("Kontrak upload resumable dari server tidak lengkap.");
+  }
+  const apiKey = getBrowserSupabasePublishableKey();
+  if (!apiKey) throw new Error("Konfigurasi Storage publik belum tersedia pada aplikasi.");
+  const headers = {
+    "Tus-Resumable": "1.0.0",
+    apikey: apiKey,
+    "x-signature": init.upload_token,
+  };
+  const sessionKey = `allpha:content:tus:${contentId}:${init.item.id}`;
+  let uploadUrl: string | null = null;
+  try { uploadUrl = sessionStorage.getItem(sessionKey); } catch { /* Chunked upload still works without tab persistence. */ }
+
+  const readOffset = async (target: string): Promise<number> => {
+    const response = await fetch(target, { method: "HEAD", headers, cache: "no-store" });
+    if (response.status === 404 || response.status === 410) return -1;
+    if (!response.ok) throw new Error(await responseError(response));
+    const offset = Number(response.headers.get("Upload-Offset"));
+    if (!Number.isSafeInteger(offset) || offset < 0 || offset > file.size) {
+      throw new Error("Offset upload resumable dari Storage tidak valid.");
+    }
+    return offset;
+  };
+
+  let offset = uploadUrl ? await readOffset(uploadUrl) : -1;
+  if (offset < 0) {
+    try { sessionStorage.removeItem(sessionKey); } catch { /* Ignore unavailable session storage. */ }
+    const metadata = Object.entries(init.upload_metadata)
+      .map(([key, value]) => key + " " + encodeTusMetadata(value))
+      .join(",");
+    const created = await fetch(init.tus_endpoint, {
+      method: "POST",
+      headers: {
+        ...headers,
+        "Upload-Length": String(file.size),
+        "Upload-Metadata": metadata,
+      },
+      cache: "no-store",
+    });
+    if (created.status === 409) {
+      const completed = await request(`/v1/content/${contentId}/media/${init.item.id}/complete`, { method: "POST" }) as { item: Media };
+      return completed.item;
+    }
+    if (created.status !== 201) throw new Error(await responseError(created));
+    const location = created.headers.get("Location");
+    if (!location) throw new Error("Storage tidak mengembalikan URL sesi resumable.");
+    uploadUrl = new URL(location, init.tus_endpoint).toString();
+    try { sessionStorage.setItem(sessionKey, uploadUrl); } catch { /* Resume remains available while this page is open. */ }
+    offset = 0;
+  }
+
+  onProgress(Math.min(100, Math.floor((offset / file.size) * 100)));
+  const chunkSize = init.chunk_size_bytes || 6 * 1024 * 1024;
+  while (offset < file.size) {
+    const chunk = file.slice(offset, Math.min(file.size, offset + chunkSize));
+    const response = await fetch(uploadUrl!, {
+      method: "PATCH",
+      headers: {
+        ...headers,
+        "Upload-Offset": String(offset),
+        "Content-Type": "application/offset+octet-stream",
+      },
+      body: chunk,
+      cache: "no-store",
+    });
+    if (response.status === 409) {
+      const refreshed = await readOffset(uploadUrl!);
+      if (refreshed <= offset) throw new Error("Sesi upload berubah tanpa kemajuan byte; lanjutkan kembali setelah memuat ulang status.");
+      offset = refreshed;
+      continue;
+    }
+    if (response.status !== 204) throw new Error(await responseError(response));
+    let nextOffset = Number(response.headers.get("Upload-Offset"));
+    if (!Number.isSafeInteger(nextOffset) || nextOffset <= offset || nextOffset > file.size) {
+      nextOffset = await readOffset(uploadUrl!);
+    }
+    if (nextOffset <= offset) throw new Error("Storage belum mengonfirmasi kemajuan chunk upload.");
+    offset = nextOffset;
+    onProgress(Math.min(100, Math.floor((offset / file.size) * 100)));
+  }
+
+  if (await readOffset(uploadUrl!) !== file.size) {
+    throw new Error("Storage belum mengonfirmasi seluruh byte upload.");
+  }
+  onProgress(100);
+  const completed = await request(`/v1/content/${contentId}/media/${init.item.id}/complete`, { method: "POST" }) as { item: Media };
+  try { sessionStorage.removeItem(sessionKey); } catch { /* Ignore unavailable session storage. */ }
+  return completed.item;
+}
+
 export default function ContentStudioPage() {
   const supabase = useMemo(() => getBrowserSupabase(), []);
   const [session, setSession] = useState<Session | null>(null);
@@ -22,6 +145,7 @@ export default function ContentStudioPage() {
   const [visibility, setVisibility] = useState("public");
   const [file, setFile] = useState<File | null>(null);
   const [uploadId, setUploadId] = useState("");
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [editingId, setEditingId] = useState("");
   const [editBody, setEditBody] = useState("");
   const [editVisibility, setEditVisibility] = useState("public");
@@ -79,36 +203,42 @@ export default function ContentStudioPage() {
   }, [session, request]);
 
   async function createDraft(event: FormEvent) {
-    event.preventDefault(); setBusy(true); setError(""); setNotice("");
+    event.preventDefault(); setBusy(true); setError(""); setNotice(""); setUploadProgress(0);
+    let createdId = "";
     try {
       const created = await request("/v1/content", { method: "POST", body: JSON.stringify({
         body: body.trim(), visibility, content_type: file ? (file.type.startsWith("video/") ? "video" : file.type.startsWith("audio/") ? "audio" : "image") : "text"
       }) });
       const id = created.item.id as string;
+      createdId = id;
       setSelected(id);
       await refresh();
       if (file) {
-        const data = new FormData(); data.append("file", file);
         const key = uploadId || crypto.randomUUID();
         setUploadId(key);
-        await request(`/v1/content/${id}/media`, { method: "POST", headers: { "Idempotency-Key": key }, body: data });
+        await uploadContentMediaWithTus(request, id, file, key, setUploadProgress);
       }
-      setBody(""); setFile(null); setUploadId(""); setModal(null);
+      setBody(""); setFile(null); setUploadId(""); setUploadProgress(0); setModal(null);
       setNotice(file ? "Draft tersimpan dan media berhasil diunggah." : "Draft konten berhasil disimpan.");
       await refresh();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Draft gagal disimpan."); }
-    finally { setBusy(false); }
+    } catch (cause) {
+      if (createdId) {
+        setEditingId(createdId); setEditBody(body.trim()); setEditVisibility(visibility); setModal("edit");
+        setError("Draft sudah tersimpan, tetapi unggah media belum selesai. Gunakan tombol Unggah media untuk melanjutkan sesi resumable. " + (cause instanceof Error ? cause.message : "Unggah gagal."));
+      } else {
+        setError(cause instanceof Error ? cause.message : "Draft gagal disimpan.");
+      }
+    } finally { setBusy(false); }
   }
 
   async function uploadToSelectedDraft() {
     if (!selected || !file) return;
-    setBusy(true); setError(""); setNotice("");
+    setBusy(true); setError(""); setNotice(""); setUploadProgress(0);
     try {
-      const data = new FormData(); data.append("file", file);
       const key = uploadId || crypto.randomUUID();
       setUploadId(key);
-      await request(`/v1/content/${selected}/media`, { method: "POST", headers: { "Idempotency-Key": key }, body: data });
-      setFile(null); setUploadId(""); setNotice("Media berhasil diunggah ke draft.");
+      await uploadContentMediaWithTus(request, selected, file, key, setUploadProgress);
+      setFile(null); setUploadId(""); setUploadProgress(0); setNotice("Media berhasil diunggah ke draft.");
       await refresh(); await showPreview(selected);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Unggah gagal. Draft tetap tersimpan dan dapat dicoba lagi."); }
     finally { setBusy(false); }
@@ -250,7 +380,8 @@ export default function ContentStudioPage() {
             {modal === "schedule" && selectedItem ? <div className="space-y-4"><p className="text-sm text-slate-600 dark:text-slate-300">Seluruh media harus berstatus siap. Menyimpan jadwal akan otomatis mengirim konten ke antrean moderasi; publikasi hanya terjadi setelah moderator menyetujui konten. Waktu disimpan sebagai UTC dengan zona waktu pembuat.</p><label className="block text-sm font-medium">Tanggal dan waktu publikasi<input type="datetime-local" value={scheduleLocal} onChange={event => setScheduleLocal(event.target.value)} min={new Date(Date.now()+60000).toISOString().slice(0,16)} className="mt-2 w-full rounded-xl border border-slate-300 bg-transparent p-3 text-sm dark:border-slate-600"/></label><label className="block text-sm font-medium">IANA timezone<input value={scheduleTimezone} onChange={event => setScheduleTimezone(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-300 bg-transparent p-3 text-sm dark:border-slate-600" placeholder="Asia/Jakarta"/></label><p className="text-xs text-slate-500">Dengan melanjutkan, Anda menyatakan memiliki hak atas konten dan telah memberikan disclosure yang diwajibkan.</p><div className="flex gap-2"><button onClick={() => void saveSchedule(selectedItem)} disabled={busy || !scheduleLocal} className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{busy ? "Menyimpan…" : "Simpan jadwal"}</button><button onClick={closeModal} disabled={busy} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm dark:border-slate-600">Batal</button></div></div> : null}
             {modal === "appeal" ? <div className="space-y-4"><p className="text-sm text-slate-600 dark:text-slate-300">Jelaskan alasan peninjauan ulang. Banding akan diperiksa operator manusia dan tidak otomatis mempublikasikan konten.</p><textarea value={appealReason} onChange={event => setAppealReason(event.target.value)} minLength={8} maxLength={2000} rows={5} placeholder="Tuliskan alasan banding (minimal 8 karakter)" className="w-full rounded-xl border border-slate-300 bg-transparent p-3 text-sm dark:border-slate-600" /><button disabled={busy || appealReason.trim().length < 8 || !selectedItem} onClick={() => { if (!selectedItem) return; setBusy(true); setError(""); setNotice(""); void request(`/v1/content/${selectedItem.id}/appeals`, { method: "POST", body: JSON.stringify({ reason: appealReason.trim(), expected_version: selectedItem.version }) }).then(result => { setNotice(result.message || "Banding diajukan."); setModal(null); return refresh(); }).catch(cause => setError(cause instanceof Error ? cause.message : "Banding gagal diajukan.")).finally(() => setBusy(false)); }} className="rounded-xl bg-violet-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">Kirim banding</button></div> : null}\n            {modal === "archive" ? <div><p className="text-sm text-slate-600 dark:text-slate-300">Konten tidak lagi tampil di Feed publik. Media privat tetap tersimpan.</p><div className="mt-5 flex gap-2"><button onClick={() => void archive(pendingContentId, true)} disabled={busy} className="rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white">Ya, arsipkan</button><button onClick={closeModal} disabled={busy} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm dark:border-slate-600">Batal</button></div></div> : null}
             {modal === "delete" ? <div><p className="text-sm text-slate-600 dark:text-slate-300">Konten dihapus secara soft-delete. Media tidak langsung dihapus; masa pemulihan mengikuti kebijakan retensi yang telah disetujui.</p><div className="mt-5 flex gap-2"><button onClick={() => void deleteContent(pendingContentId, true)} disabled={busy} className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white">Ya, hapus konten</button><button onClick={closeModal} disabled={busy} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm dark:border-slate-600">Batal</button></div></div> : null}
-            {busy ? <p role="status" className="mt-4 text-xs text-slate-500">Memproses permintaan ke API…</p> : null}
+            {busy ? <p role="status" className="mt-4 text-xs text-slate-500">{uploadProgress > 0 ? `Mengunggah media: ${uploadProgress}%` : "Memproses permintaan ke API…"}</p> : null}
+            {busy && uploadProgress > 0 ? <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700" role="progressbar" aria-label="Kemajuan unggah media" aria-valuemin={0} aria-valuemax={100} aria-valuenow={uploadProgress}><div className="h-full rounded-full bg-blue-600 transition-[width]" style={{ width: `${uploadProgress}%` }} /></div> : null}
           </div>
         </section>
       </div> : null}
