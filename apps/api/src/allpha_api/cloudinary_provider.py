@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import httpx
 import os
 import re
 import time
@@ -22,6 +23,14 @@ _ALLOWED_RESOURCE_TYPES = {"image", "video", "raw"}
 
 class CloudinaryConfigurationError(RuntimeError):
     pass
+
+
+class CloudinaryProviderError(RuntimeError):
+    """Safe provider lookup failure; the message is a stable error code."""
+
+    def __init__(self, code: str):
+        super().__init__(code)
+        self.code = code
 
 
 @dataclass(frozen=True)
@@ -103,6 +112,7 @@ def build_signed_upload_intent(
     callback_url: str | None = None,
     now: int | None = None,
     ttl_seconds: int = 600,
+    context: dict[str, str] | None = None,
 ) -> dict[str, object]:
     """Create a scoped signed multipart upload target; never returns API secret."""
     if not re.fullmatch(r"[0-9a-fA-F-]{36}", media_id):
@@ -120,6 +130,20 @@ def build_signed_upload_intent(
         "unique_filename": "false",
         "use_filename": "false",
     }
+    if context is not None:
+        if not isinstance(context, dict) or len(context) > 10:
+            raise ValueError("CLOUDINARY_CONTEXT_INVALID")
+        serialized_context: list[str] = []
+        for key, value in sorted(context.items()):
+            if not isinstance(key, str) or not re.fullmatch(r"[A-Za-z0-9_]{1,64}", key):
+                raise ValueError("CLOUDINARY_CONTEXT_INVALID")
+            if not isinstance(value, str) or not 1 <= len(value) <= 255:
+                raise ValueError("CLOUDINARY_CONTEXT_INVALID")
+            if any(ord(char) < 32 or char in "|=" for char in value):
+                raise ValueError("CLOUDINARY_CONTEXT_INVALID")
+            serialized_context.append(f"{key}={value}")
+        if serialized_context:
+            params["context"] = "|".join(serialized_context)
     eager = eager_transformations(media_type)
     target_callback = callback_url or config.callback_url
     if eager:
@@ -137,6 +161,50 @@ def build_signed_upload_intent(
         "expires_at": timestamp + ttl_seconds,
         "params": {**params, "api_key": config.api_key, "signature": signature},
     }
+
+
+async def fetch_cloudinary_resource(
+    *,
+    config: CloudinaryConfig,
+    public_id: str,
+    resource_type: str,
+    client: httpx.AsyncClient,
+) -> dict[str, object]:
+    """Fetch one Cloudinary asset using server credentials and verify its immutable identity."""
+    if resource_type not in _ALLOWED_RESOURCE_TYPES:
+        raise ValueError("CLOUDINARY_RESOURCE_TYPE_INVALID")
+    if (
+        not isinstance(public_id, str)
+        or not re.fullmatch(r"allpha/[A-Za-z0-9_./-]{1,180}", public_id)
+        or ".." in public_id
+        or "//" in public_id
+    ):
+        raise ValueError("CLOUDINARY_ASSET_IDENTITY_INVALID")
+    url = (
+        f"https://api.cloudinary.com/v1_1/{config.cloud_name}/resources/"
+        f"{resource_type}/authenticated/{quote(public_id, safe='/')}"
+    )
+    try:
+        response = await client.get(url, auth=(config.api_key, config.api_secret))
+    except httpx.HTTPError as exc:
+        raise CloudinaryProviderError("CLOUDINARY_RESOURCE_LOOKUP_UNAVAILABLE") from exc
+    if response.status_code == 404:
+        raise CloudinaryProviderError("CLOUDINARY_ASSET_NOT_FOUND")
+    if response.status_code >= 300:
+        raise CloudinaryProviderError("CLOUDINARY_RESOURCE_LOOKUP_UNAVAILABLE")
+    try:
+        asset = response.json()
+    except (ValueError, TypeError) as exc:
+        raise CloudinaryProviderError("CLOUDINARY_RESOURCE_RESPONSE_INVALID") from exc
+    if not isinstance(asset, dict):
+        raise CloudinaryProviderError("CLOUDINARY_RESOURCE_RESPONSE_INVALID")
+    if asset.get("type") != "authenticated":
+        raise CloudinaryProviderError("CLOUDINARY_ASSET_NOT_AUTHENTICATED")
+    if asset.get("public_id") != public_id or asset.get("resource_type") != resource_type:
+        raise CloudinaryProviderError("CLOUDINARY_ASSET_IDENTITY_MISMATCH")
+    if not isinstance(asset.get("asset_id"), str) or not asset["asset_id"]:
+        raise CloudinaryProviderError("CLOUDINARY_ASSET_IDENTITY_MISMATCH")
+    return asset
 
 
 def build_signed_private_download_url(
