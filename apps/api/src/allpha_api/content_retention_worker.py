@@ -12,7 +12,7 @@ class RetentionWorker:
   self.base=os.environ["SUPABASE_URL"].rstrip("/")
   self.key=os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ["SUPABASE_SECRET_KEY"]
   self.worker_id=f"content-retention-{uuid.uuid4()}"
-  self.client=httpx.AsyncClient(timeout=httpx.Timeout(60,connect=5),headers={"apikey":self.key,"Authorization":f"Bearer {self.key}","Content-Type":"application/json"})
+  self.client=httpx.AsyncClient(trust_env=False, follow_redirects=False, timeout=httpx.Timeout(60,connect=5),headers={"apikey":self.key,"Authorization":f"Bearer {self.key}","Content-Type":"application/json"})
   self.enabled = all(
    os.getenv(name, "false").strip().lower() in ("1", "true", "yes")
    for name in (
