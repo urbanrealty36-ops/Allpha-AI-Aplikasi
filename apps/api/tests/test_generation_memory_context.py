@@ -2,7 +2,7 @@ import hashlib
 
 import pytest
 
-from allpha_api.generation_job_worker import _build_memory_context_evidence
+from allpha_api.generation_job_worker import _build_memory_context_evidence, _database
 
 
 def test_generation_memory_evidence_preserves_full_and_bounded_excerpt_digests():
@@ -44,3 +44,31 @@ def test_generation_memory_evidence_rejects_modified_excerpt():
 
     with pytest.raises(ValueError, match="memory_context_item_integrity_invalid"):
         _build_memory_context_evidence([item], "query")
+
+def test_generation_worker_resolves_secret_key_and_hardens_every_http_client(monkeypatch):
+    import ast
+    from pathlib import Path
+
+    monkeypatch.setenv("SUPABASE_URL", "https://project.supabase.co")
+    monkeypatch.delenv("SUPABASE_SERVICE_ROLE_KEY", raising=False)
+    monkeypatch.setenv("SUPABASE_SECRET_KEY", "canonical-server-secret")
+    assert _database() == ("https://project.supabase.co", "canonical-server-secret")
+
+    source_path = (
+        Path(__file__).resolve().parents[1]
+        / "src" / "allpha_api" / "generation_job_worker.py"
+    )
+    tree = ast.parse(source_path.read_text(encoding="utf-8"))
+    clients = [
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "AsyncClient"
+    ]
+    assert clients
+    for client in clients:
+        options = {keyword.arg: keyword.value for keyword in client.keywords}
+        assert isinstance(options.get("trust_env"), ast.Constant)
+        assert options["trust_env"].value is False
+        assert isinstance(options.get("follow_redirects"), ast.Constant)
+        assert options["follow_redirects"].value is False
