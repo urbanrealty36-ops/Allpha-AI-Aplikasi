@@ -422,3 +422,34 @@ def test_knowledge_admin_rest_request_sends_matching_bearer_and_apikey(monkeypat
     assert captured["headers"]["apikey"] == "server-only-key"
     assert captured["headers"]["Authorization"] == "Bearer server-only-key"
     assert captured["url"] == "https://project.supabase.co/rest/v1/agent_knowledge_sources"
+
+def test_knowledge_admin_rest_request_does_not_masquerade_missing_schema_as_empty(monkeypatch):
+    import asyncio
+
+    monkeypatch.setenv("SUPABASE_URL", "https://project.supabase.co")
+    monkeypatch.setenv("SUPABASE_SECRET_KEY", "server-only-key")
+
+    class Response:
+        status_code = 404
+        content = b'{"code":"PGRST205"}'
+
+    class FakeAsyncClient:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def request(self, *_args, **_kwargs):
+            return Response()
+
+    monkeypatch.setattr(knowledge.httpx, "AsyncClient", FakeAsyncClient)
+
+    with pytest.raises(Exception) as error:
+        asyncio.run(knowledge._admin_db_request("GET", "agent_knowledge_sources"))
+
+    assert getattr(error.value, "status_code", None) == 503
+    assert error.value.detail["code"] == "KNOWLEDGE_SCHEMA_UNAVAILABLE"
