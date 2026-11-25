@@ -186,6 +186,41 @@ async def cloudinary_callback(
     return {"accepted":True,"outcome":outcome,"event_id":event_id}
 
 
+@router.delete("/{media_id}", status_code=202)
+async def delete_media(media_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)):
+    """Queue owner-scoped provider deletion; bytes are removed by the durable worker."""
+    item = await _owned(media_id, str(user["id"]))
+    if item.get("storage_provider") != "cloudinary":
+        raise HTTPException(
+            409,
+            detail={"code": "MEDIA_LEGACY_PROVIDER_DELETE_UNSUPPORTED",
+                    "message": "Media lama harus dihapus melalui lifecycle domain asal."},
+        )
+    result = await service_db_request(
+        "request_cloudinary_content_media_delete",
+        body={"p_media_id": str(media_id), "p_owner_id": str(user["id"])},
+    )
+    if not isinstance(result, dict):
+        raise HTTPException(503, detail={"code": "MEDIA_DELETE_NOT_CONFIRMED",
+                                         "message": "Permintaan penghapusan belum terkonfirmasi."})
+    outcome = result.get("outcome")
+    if outcome in {"queued", "already_queued", "already_deleted"}:
+        return {
+            "item": result.get("media") or item,
+            "outcome": outcome,
+            "idempotent_replay": outcome != "queued",
+        }
+    if outcome == "media_not_found":
+        raise HTTPException(404, detail={"code": "MEDIA_NOT_FOUND", "message": "Media tidak ditemukan."})
+    if outcome == "legacy_provider_requires_domain_delete":
+        raise HTTPException(409, detail={"code": "MEDIA_LEGACY_PROVIDER_DELETE_UNSUPPORTED",
+                                         "message": "Media lama harus dihapus melalui lifecycle domain asal."})
+    if outcome == "provider_identity_missing":
+        raise HTTPException(409, detail={"code": "MEDIA_PROVIDER_IDENTITY_MISSING",
+                                         "message": "Identitas asset provider tidak lengkap."})
+    raise HTTPException(409, detail={"code": "MEDIA_DELETE_REJECTED", "message": "Media tidak dapat dihapus pada status saat ini."})
+
+
 @router.get("/{media_id}")
 async def get_media(media_id:uuid.UUID,user:dict[str,Any]=Depends(current_user)):
     base,key=_config()
