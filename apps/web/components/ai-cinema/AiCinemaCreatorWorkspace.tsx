@@ -73,6 +73,15 @@ async function authorizedRequest<T>(path: string, init: RequestInit = {}): Promi
 }
 
 
+type CloudinaryUploadIntent = {
+  item: { id: string; status: string };
+  upload: {
+    upload_url: string; resource_type: string; delivery_type: string;
+    public_id: string; expires_at: number;
+    params: Record<string, string | number | boolean>;
+  };
+};
+
 type ResumableUploadInit = {
   item: CreatorMedia;
   already_uploaded: boolean;
@@ -180,6 +189,51 @@ async function uploadFileWithTus(
   const finalOffset = await readOffset(uploadUrl!);
   if (finalOffset !== file.size) throw new Error("Storage belum mengonfirmasi seluruh byte upload.");
   onProgress(100);
+}
+
+async function uploadFileWithCloudinary(
+  file: File,
+  intent: CloudinaryUploadIntent,
+  onProgress: (percent: number) => void,
+): Promise<void> {
+  if (!intent.upload?.upload_url || !intent.upload.params || !intent.item?.id) {
+    throw new Error("Kontrak upload Cloudinary dari FastAPI tidak lengkap.");
+  }
+  if (["processing", "ready"].includes(intent.item.status)) { onProgress(95); return; }
+  if (intent.upload.expires_at <= Math.floor(Date.now() / 1000)) {
+    throw new Error("Intent upload Cloudinary sudah kedaluwarsa. Silakan mulai ulang upload.");
+  }
+  const form = new FormData();
+  form.append("file", file);
+  for (const [key, value] of Object.entries(intent.upload.params)) form.append(key, String(value));
+  const result = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", intent.upload.upload_url);
+    xhr.timeout = 180000;
+    xhr.upload.onprogress = event => {
+      if (event.lengthComputable && event.total > 0) onProgress(Math.min(90, Math.floor(event.loaded / event.total * 90)));
+    };
+    xhr.onload = () => resolve({ status: xhr.status, body: xhr.responseText || "" });
+    xhr.onerror = () => reject(new Error("Koneksi ke Cloudinary terputus. Upload dapat dicoba kembali."));
+    xhr.ontimeout = () => reject(new Error("Upload Cloudinary melewati batas waktu."));
+    xhr.send(form);
+  });
+  if (result.status >= 200 && result.status < 300) {
+    let asset: Record<string, unknown>;
+    try { asset = JSON.parse(result.body) as Record<string, unknown>; }
+    catch { throw new Error("Respons upload Cloudinary tidak valid."); }
+    if (asset.public_id !== intent.upload.public_id || asset.resource_type !== intent.upload.resource_type
+      || asset.type !== "authenticated" || Number(asset.bytes) !== file.size) {
+      throw new Error("Identitas asset Cloudinary tidak sesuai dengan upload intent.");
+    }
+  } else {
+    let message = "";
+    try { message = String((JSON.parse(result.body) as { error?: { message?: string } }).error?.message || ""); }
+    catch { /* retain HTTP status */ }
+    const duplicate = result.status === 409 || /already exists|already uploaded/i.test(message);
+    if (!duplicate) throw new Error(message || ("Cloudinary menolak upload (HTTP " + result.status + ")."));
+  }
+  onProgress(95);
 }
 
 export default function AiCinemaCreatorWorkspace() {
@@ -718,27 +772,44 @@ export default function AiCinemaCreatorWorkspace() {
         const next: PersistedCinemaUpload = { contentId, mediaId, filename: file.name, size: file.size, sha256: digest };
         window.localStorage.setItem(sessionKey, JSON.stringify(next));
       }
-      const init = await authorizedRequest<ResumableUploadInit>(
-        "/v1/content/" + encodeURIComponent(contentId) + "/media/resumable",
-        {
+      const cloudinaryEnabled = process.env.NEXT_PUBLIC_ALLPHA_CLOUDINARY_MEDIA_ENABLED === "true" && !subtitle;
+      if (cloudinaryEnabled) {
+        const intent = await authorizedRequest<CloudinaryUploadIntent>("/v1/media/upload-intents", {
           method: "POST",
           headers: { "Idempotency-Key": mediaId },
-          body: JSON.stringify({ filename: file.name, media_type: mediaType, size_bytes: file.size, sha256: digest }),
-        },
-      );
-      if (!init.already_uploaded) {
-        const supabase = getBrowserSupabase();
-        const publishableKey = getBrowserSupabasePublishableKey();
-        if (!supabase || !publishableKey) throw new Error("Autentikasi Storage belum tersedia.");
-        try {
-          await uploadFileWithTus(file, init, publishableKey, mediaId, setUploadProgress);
-        } catch (cause) {
-          if (!(cause instanceof Error) || cause.message !== "MEDIA_OBJECT_ALREADY_EXISTS") throw cause;
-        }
-        await authorizedRequest(
-          "/v1/content/" + encodeURIComponent(contentId) + "/media/" + encodeURIComponent(mediaId) + "/complete",
-          { method: "POST" },
+          body: JSON.stringify({
+            content_id: contentId, domain: "content", purpose: "attachment",
+            filename: file.name, media_type: mediaType, size_bytes: file.size, sha256: digest,
+          }),
+        });
+        if (intent.item?.id !== mediaId) throw new Error("Identitas media dari FastAPI tidak sesuai.");
+        await uploadFileWithCloudinary(file, intent, setUploadProgress);
+        await authorizedRequest("/v1/media/complete", {
+          method: "POST", body: JSON.stringify({ media_id: mediaId }),
+        });
+      } else {
+        const init = await authorizedRequest<ResumableUploadInit>(
+          "/v1/content/" + encodeURIComponent(contentId) + "/media/resumable",
+          {
+            method: "POST",
+            headers: { "Idempotency-Key": mediaId },
+            body: JSON.stringify({ filename: file.name, media_type: mediaType, size_bytes: file.size, sha256: digest }),
+          },
         );
+        if (!init.already_uploaded) {
+          const supabase = getBrowserSupabase();
+          const publishableKey = getBrowserSupabasePublishableKey();
+          if (!supabase || !publishableKey) throw new Error("Autentikasi Storage belum tersedia.");
+          try {
+            await uploadFileWithTus(file, init, publishableKey, mediaId, setUploadProgress);
+          } catch (cause) {
+            if (!(cause instanceof Error) || cause.message !== "MEDIA_OBJECT_ALREADY_EXISTS") throw cause;
+          }
+          await authorizedRequest(
+            "/v1/content/" + encodeURIComponent(contentId) + "/media/" + encodeURIComponent(mediaId) + "/complete",
+            { method: "POST" },
+          );
+        }
       }
       window.localStorage.removeItem(sessionKey);
       window.localStorage.removeItem("allpha:cinema:tus:" + mediaId);
