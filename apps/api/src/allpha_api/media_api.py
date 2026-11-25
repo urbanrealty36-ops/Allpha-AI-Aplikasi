@@ -342,7 +342,7 @@ async def get_media(media_id:uuid.UUID,user:dict[str,Any]=Depends(current_user))
     raw_item=rows[0]
     item=media_item_response(raw_item)
     delivery=None
-    if raw_item.get("status")=="ready" and raw_item.get("storage_provider")=="cloudinary":
+    if raw_item.get("status")=="ready" and raw_item.get("scan_status")=="clean" and raw_item.get("storage_provider")=="cloudinary":
         try:
             cfg=CloudinaryConfig.from_environment()
             delivery=build_signed_private_download_url(config=cfg,public_id=str(raw_item["provider_public_id"]),
@@ -366,7 +366,7 @@ async def get_media(media_id:uuid.UUID,user:dict[str,Any]=Depends(current_user))
                 })
         except (CloudinaryConfigurationError,ValueError,KeyError,TypeError):
             raise HTTPException(503,detail={"code":"MEDIA_DELIVERY_NOT_READY","message":"Private media delivery belum siap."})
-    elif raw_item.get("status")=="ready" and raw_item.get("storage_provider")=="supabase":
+    elif raw_item.get("status")=="ready" and raw_item.get("scan_status")=="clean" and raw_item.get("storage_provider")=="supabase":
         delivery=await _signed_supabase_storage_url(str(raw_item.get("bucket_id") or ""),str(raw_item.get("storage_path") or ""))
         for derivative in raw_item.get("derivatives") or []:
             if not isinstance(derivative,dict) or not derivative.get("storage_path"):continue
