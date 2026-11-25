@@ -649,3 +649,11 @@ def test_resumable_media_complete_replaces_reservation_fingerprint_with_server_s
         app.dependency_overrides.clear()
     assert response.status_code == 200
     assert captured["body"] == {"status": "uploaded", "sha256": actual}
+
+
+def test_subtitle_mime_types_are_signature_checked_and_allowlisted():
+    assert content_api.ALLOWED_MEDIA["text/vtt"] == (".vtt", content_api.SUBTITLE_LIMIT)
+    assert content_api.ALLOWED_MEDIA["application/x-subrip"] == (".srt", content_api.SUBTITLE_LIMIT)
+    assert content_api._media_signature_valid("text/vtt", b"WEBVTT\\n\\n00:00:00.000 --> 00:00:02.000")
+    assert content_api._media_signature_valid("application/x-subrip", b"1\\n00:00:00,000 --> 00:00:02,000\\nHello")
+    assert not content_api._media_signature_valid("text/vtt", b"not a subtitle")

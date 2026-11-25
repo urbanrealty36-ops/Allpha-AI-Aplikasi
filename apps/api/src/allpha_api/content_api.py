@@ -22,6 +22,7 @@ TEXT_LIMIT = 10_000
 IMAGE_LIMIT = 10 * 1024 * 1024
 VIDEO_LIMIT = 50 * 1024 * 1024
 AUDIO_LIMIT = 50 * 1024 * 1024
+SUBTITLE_LIMIT = 10 * 1024 * 1024
 ALLOWED_MEDIA = {
     "image/jpeg": (".jpg", IMAGE_LIMIT),
     "image/png": (".png", IMAGE_LIMIT),
@@ -34,6 +35,8 @@ ALLOWED_MEDIA = {
     "audio/ogg": (".ogg", AUDIO_LIMIT),
     "audio/wav": (".wav", AUDIO_LIMIT),
     "audio/webm": (".weba", AUDIO_LIMIT),
+    "text/vtt": (".vtt", SUBTITLE_LIMIT),
+    "application/x-subrip": (".srt", SUBTITLE_LIMIT),
 }
 CONTENT_FIELDS = "id,owner_id,ai_agent_id,content_type,body,visibility,status,moderation_status,version,created_at,updated_at,published_at,deleted_at,purge_started_at"
 MEDIA_FIELDS = "id,content_id,owner_id,bucket_id,storage_path,filename,media_type,size_bytes,sha256,status,scan_status,processed_at,derivatives,created_at"
@@ -294,6 +297,8 @@ def _media_signature_valid(media_type: str, data: bytes) -> bool:
         "audio/ogg": lambda b: b.startswith(b"OggS"),
         "audio/wav": lambda b: len(b) >= 12 and b[:4] == b"RIFF" and b[8:12] == b"WAVE",
         "audio/webm": lambda b: b.startswith(bytes.fromhex("1a45dfa3")),
+        "text/vtt": lambda b: b.lstrip(b"\\xef\\xbb\\xbf \\t\\r\\n").startswith(b"WEBVTT"),
+        "application/x-subrip": lambda b: re.match(rb"^\\s*\\d+\\s*\\r?\\n\\d{2}:\\d{2}:\\d{2}[,.]\\d{3}\\s+-->\\s+\\d{2}:\\d{2}:\\d{2}[,.]\\d{3}", b) is not None,
     }
     checker = signatures.get(media_type)
     return bool(checker and checker(data))
@@ -479,6 +484,7 @@ async def complete_resumable_media_upload(
         "story" if content.get("content_type") == "story"
         else "video" if str(media["media_type"]).startswith("video/")
         else "audio" if str(media["media_type"]).startswith("audio/")
+        else "text" if str(media["media_type"]) in {"text/vtt", "application/x-subrip"}
         else "image"
     )
     if content.get("status") == "draft" and content.get("content_type") == content_type:
@@ -547,6 +553,8 @@ async def upload_media(content_id: uuid.UUID, request: Request, file: UploadFile
         "audio/ogg": lambda b: b.startswith(b"OggS"),
         "audio/wav": lambda b: len(b) >= 12 and b[:4] == b"RIFF" and b[8:12] == b"WAVE",
         "audio/webm": lambda b: b.startswith(bytes.fromhex("1a45dfa3")),
+        "text/vtt": lambda b: b.lstrip(b"\\xef\\xbb\\xbf \\t\\r\\n").startswith(b"WEBVTT"),
+        "application/x-subrip": lambda b: re.match(rb"^\\s*\\d+\\s*\\r?\\n\\d{2}:\\d{2}:\\d{2}[,.]\\d{3}\\s+-->\\s+\\d{2}:\\d{2}:\\d{2}[,.]\\d{3}", b) is not None,
     }
     if not signatures[media_type](data):
         raise HTTPException(422, detail={"code": "MEDIA_SIGNATURE_INVALID", "message": "Isi file tidak sesuai dengan format media yang dipilih."})
@@ -625,7 +633,7 @@ async def upload_media(content_id: uuid.UUID, request: Request, file: UploadFile
             "id": f"eq.{content_id}", "owner_id": f"eq.{user['id']}",
             "status": "in.(draft,failed)", "select": CONTENT_FIELDS,
         }, body={
-            "status": "draft", "content_type": "story" if content.get("content_type") == "story" else "video" if media_type.startswith("video/") else "audio" if media_type.startswith("audio/") else "image",
+            "status": "draft", "content_type": "story" if content.get("content_type") == "story" else "video" if media_type.startswith("video/") else "audio" if media_type.startswith("audio/") else "text" if media_type in {"text/vtt", "application/x-subrip"} else "image",
             "version": int(content.get("version") or 1) + 1,
         }, prefer="return=representation")
         if not updated:

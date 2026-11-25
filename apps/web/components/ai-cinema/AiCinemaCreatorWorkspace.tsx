@@ -191,8 +191,9 @@ export default function AiCinemaCreatorWorkspace() {
   const [creatorMedia, setCreatorMedia] = useState<CreatorMedia[]>([]);
   const [featureFilmFile, setFeatureFilmFile] = useState<File | null>(null);
   const [episodePartFile, setEpisodePartFile] = useState<File | null>(null);
+  const [assetFile, setAssetFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploadingKind, setUploadingKind] = useState<"feature" | "episode" | null>(null);
+  const [uploadingKind, setUploadingKind] = useState<"feature" | "episode" | "asset" | null>(null);
   const [selectedMediaId, setSelectedMediaId] = useState("");
   const [selectedTitleId, setSelectedTitleId] = useState("");
   const [title, setTitle] = useState("");
@@ -622,33 +623,54 @@ export default function AiCinemaCreatorWorkspace() {
     } finally { setGenerationBusy(false); }
   }
 
-  async function uploadCinemaMedia(file: File | null, kind: "feature" | "episode") {
-    if (!file || !file.type.startsWith("video/")) { setError("Pilih file video MP4 atau WebM terlebih dahulu."); return; }
-    if (file.size <= 0 || file.size > 50 * 1024 * 1024) { setError("Ukuran video harus lebih dari 0 dan maksimal 50 MiB."); return; }
+  async function uploadCinemaMedia(file: File | null, kind: "feature" | "episode" | "asset") {
+    if (!file) { setError("Pilih file terlebih dahulu."); return; }
+    const extension = file.name.toLowerCase().split(".").pop() || "";
+    const extensionMime: Record<string,string> = { vtt: "text/vtt", srt: "application/x-subrip" };
+    const mediaType = extensionMime[extension] || file.type.toLowerCase().split(";")[0].trim();
+    const video = mediaType.startsWith("video/");
+    const image = mediaType.startsWith("image/");
+    const audio = mediaType.startsWith("audio/");
+    const subtitle = mediaType === "text/vtt" || mediaType === "application/x-subrip";
+    const roleAllowed = kind !== "asset" ? video
+      : assetRole === "subtitle" ? subtitle
+      : ["cover","storyboard","generated_image"].includes(assetRole) ? image
+      : ["trailer","source_video","generated_video"].includes(assetRole) ? video
+      : ["source_audio","music"].includes(assetRole) ? audio
+      : assetRole === "reference" ? (image || video || audio)
+      : false;
+    if (!roleAllowed) {
+      setError(kind === "asset"
+        ? "Format file tidak sesuai peran asset. Poster gunakan JPG/PNG/WebP, trailer gunakan MP4/WebM, subtitle gunakan VTT/SRT."
+        : "Pilih file video MP4 atau WebM terlebih dahulu.");
+      return;
+    }
+    const maxBytes = image || subtitle ? 10 * 1024 * 1024 : 50 * 1024 * 1024;
+    if (file.size <= 0 || file.size > maxBytes) {
+      setError("Ukuran file melewati batas untuk tipe media ini.");
+      return;
+    }
+    const contentType = video ? "video" : audio ? "audio" : image ? "image" : "text";
     setSaving(true); setError(""); setNotice(""); setUploadProgress(0); setUploadingKind(kind);
     try {
       const digest = await sha256File(file);
-      const sessionKey = "allpha:cinema:upload:" + kind + ":current";
+      const sessionKey = "allpha:cinema:upload:" + kind + ":" + (kind === "asset" ? assetRole : "current");
       let saved: PersistedCinemaUpload | null = null;
       try {
         const raw = window.localStorage.getItem(sessionKey);
         saved = raw ? JSON.parse(raw) as PersistedCinemaUpload : null;
       } catch { saved = null; }
-      const sameSavedFile = Boolean(
-        saved && saved.filename === file.name && saved.size === file.size && saved.sha256 === digest,
-      );
+      const sameSavedFile = Boolean(saved && saved.filename === file.name && saved.size === file.size && saved.sha256 === digest);
       let contentId = sameSavedFile ? saved!.contentId : "";
       let mediaId = sameSavedFile ? saved!.mediaId : "";
       if (!contentId) {
         const draft = await authorizedRequest<{ item: { id: string } }>("/v1/content", {
           method: "POST",
-          body: JSON.stringify({ body: "", visibility: "private", content_type: "video" }),
+          body: JSON.stringify({ body: "", visibility: "private", content_type: contentType }),
         });
         contentId = draft.item.id;
         mediaId = crypto.randomUUID();
-        const next: PersistedCinemaUpload = {
-          contentId, mediaId, filename: file.name, size: file.size, sha256: digest,
-        };
+        const next: PersistedCinemaUpload = { contentId, mediaId, filename: file.name, size: file.size, sha256: digest };
         window.localStorage.setItem(sessionKey, JSON.stringify(next));
       }
       const init = await authorizedRequest<ResumableUploadInit>(
@@ -656,12 +678,7 @@ export default function AiCinemaCreatorWorkspace() {
         {
           method: "POST",
           headers: { "Idempotency-Key": mediaId },
-          body: JSON.stringify({
-            filename: file.name,
-            media_type: file.type,
-            size_bytes: file.size,
-            sha256: digest,
-          }),
+          body: JSON.stringify({ filename: file.name, media_type: mediaType, size_bytes: file.size, sha256: digest }),
         },
       );
       if (!init.already_uploaded) {
@@ -680,11 +697,14 @@ export default function AiCinemaCreatorWorkspace() {
       }
       window.localStorage.removeItem(sessionKey);
       window.localStorage.removeItem("allpha:cinema:tus:" + mediaId);
-      if (kind === "feature") setFeatureFilmFile(null); else setEpisodePartFile(null); setUploadProgress(100);
-      setNotice("Upload resumable tersimpan. Media masuk pipeline scan dan transcode; pilih media setelah status ready dan scan clean.");
+      if (kind === "feature") setFeatureFilmFile(null);
+      else if (kind === "episode") setEpisodePartFile(null);
+      else setAssetFile(null);
+      setUploadProgress(100);
+      setNotice("Upload asset tersimpan. File dipindai dan diproses oleh pipeline media; tautkan setelah status ready dan scan clean.");
       await loadCreatorMedia();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Upload video AI Cinema gagal. Sesi tersimpan untuk dicoba kembali.");
+      setError(cause instanceof Error ? cause.message : "Upload AI Cinema gagal. Sesi tersimpan untuk dicoba kembali.");
     } finally { setSaving(false); setUploadingKind(null); }
   }
 
@@ -838,8 +858,14 @@ export default function AiCinemaCreatorWorkspace() {
                     {["reference","storyboard","source_video","source_audio","music","subtitle","generated_image","generated_video","cover","trailer"].map(role => <option key={role} value={role}>{role}</option>)}
                   </select>
                 </label>
+                <label className="min-w-[180px] flex-1 text-xs font-semibold text-slate-700">Upload asset
+                  <input type="file" accept={assetRole === "subtitle" ? ".vtt,.srt,text/vtt,application/x-subrip" : ["cover","storyboard","generated_image"].includes(assetRole) ? "image/jpeg,image/png,image/webp" : ["trailer","source_video","generated_video"].includes(assetRole) ? "video/mp4,video/webm" : ["source_audio","music"].includes(assetRole) ? "audio/mpeg,audio/mp4,audio/aac,audio/ogg,audio/wav,audio/webm" : "image/jpeg,image/png,image/webp,video/mp4,video/webm,audio/mpeg,audio/mp4,audio/aac,audio/ogg,audio/wav,audio/webm"} onChange={event => setAssetFile(event.target.files?.[0] || null)} className="mt-1 block w-full rounded-lg border border-slate-300 p-2 text-xs" />
+                </label>
+                <button type="button" onClick={() => void uploadCinemaMedia(assetFile,"asset")} disabled={saving || !assetFile || !selectedTitleId} className="rounded-lg border-2 border-slate-900 bg-emerald-100 px-3 py-2 text-xs font-black text-slate-950 disabled:opacity-40">{uploadingKind === "asset" ? "Mengunggah…" : "Upload & proses"}</button>
                 <button type="button" onClick={() => void attachCinemaAsset()} disabled={saving || !selectedMediaId} className="rounded-lg border-2 border-slate-900 bg-violet-100 px-3 py-2 text-xs font-black text-slate-950 disabled:opacity-40">Tautkan asset</button>
               </div>
+              <p className="mb-2 text-xs text-slate-500">Peran asset menentukan format yang diterima. Subtitle VTT/SRT masuk validasi teks dan ClamAV sebelum dapat ditautkan.</p>
+              {uploadingKind === "asset" && <p className="mb-2 text-xs font-semibold text-slate-700">Upload asset {uploadProgress}%</p>}
               <div className="space-y-2">
                 {productionAssets.map(asset => (
                   <div key={asset.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-300 p-2 text-xs">

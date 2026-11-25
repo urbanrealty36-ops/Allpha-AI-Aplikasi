@@ -6,6 +6,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import signal
 import uuid
 from io import BytesIO
@@ -21,11 +22,70 @@ log = logging.getLogger("allpha.content_media_worker")
 Image.MAX_IMAGE_PIXELS = 40_000_000
 
 
+def validate_subtitle_bytes(data: bytes, media_type: str) -> dict[str, Any]:
+    if not data or len(data) > 10 * 1024 * 1024:
+        raise ValueError("SUBTITLE_SIZE_INVALID")
+    try:
+        text = data.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise ValueError("SUBTITLE_UTF8_INVALID") from exc
+    if "\\x00" in text or re.search(r"<\\s*(script|iframe|object|embed)\\b", text, re.IGNORECASE):
+        raise ValueError("SUBTITLE_ACTIVE_CONTENT_REJECTED")
+    normalized = text.replace("\\r\\n", "\\n").replace("\\r", "\\n")
+    time_pattern = re.compile(r"(?:(\\d{2}):)?(\\d{2}):(\\d{2})[,.](\\d{3})")
+
+    def parse_time(value: str) -> int:
+        match = time_pattern.fullmatch(value.strip())
+        if not match:
+            raise ValueError("SUBTITLE_TIMESTAMP_INVALID")
+        hours = int(match.group(1) or 0)
+        minutes = int(match.group(2))
+        seconds = int(match.group(3))
+        millis = int(match.group(4))
+        if minutes > 59 or seconds > 59:
+            raise ValueError("SUBTITLE_TIMESTAMP_INVALID")
+        return ((hours * 60 + minutes) * 60 + seconds) * 1000 + millis
+
+    def validate_timing(line: str) -> None:
+        if "-->" not in line:
+            raise ValueError("SUBTITLE_TIMING_MISSING")
+        left, right = line.split("-->", 1)
+        right_time = right.strip().split()[0]
+        if parse_time(left) >= parse_time(right_time):
+            raise ValueError("SUBTITLE_TIMING_ORDER_INVALID")
+
+    if media_type == "text/vtt":
+        lines = normalized.splitlines()
+        first = next((line.strip() for line in lines if line.strip()), "")
+        if first != "WEBVTT":
+            raise ValueError("WEBVTT_HEADER_INVALID")
+        timing_lines = [line for line in lines if "-->" in line]
+        for line in timing_lines:
+            validate_timing(line)
+        subtitle_format = "webvtt"
+        cue_count = len(timing_lines)
+    elif media_type == "application/x-subrip":
+        blocks = [block for block in re.split(r"\\n\\s*\\n", normalized.strip()) if block.strip()]
+        cue_count = 0
+        for block in blocks:
+            lines = [line.strip() for line in block.splitlines() if line.strip()]
+            if len(lines) < 3 or not lines[0].isdigit():
+                raise ValueError("SUBRIP_CUE_INVALID")
+            validate_timing(lines[1])
+            cue_count += 1
+        subtitle_format = "subrip"
+    else:
+        raise ValueError("SUBTITLE_MEDIA_TYPE_UNSUPPORTED")
+    if cue_count < 1:
+        raise ValueError("SUBTITLE_CUES_MISSING")
+    return {"format": subtitle_format, "cue_count": cue_count, "sha256": hashlib.sha256(data).hexdigest()}
+
+
 class MediaWorker:
     def __init__(self) -> None:
         self.base = os.environ["SUPABASE_URL"].rstrip("/")
         self.key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ["SUPABASE_SECRET_KEY"]
-        self.worker_id = f"content-image-{uuid.uuid4()}"
+        self.worker_id = f"content-media-{uuid.uuid4()}"
         self.batch_size = max(1, min(int(os.getenv("CONTENT_IMAGE_BATCH_SIZE", "1")), 10))
         self.lease_seconds = max(30, min(int(os.getenv("CONTENT_IMAGE_LEASE_SECONDS", "300")), 300))
         self.poll_seconds = max(1.0, float(os.getenv("CONTENT_IMAGE_POLL_SECONDS", "3")))
@@ -115,14 +175,48 @@ class MediaWorker:
                 log.exception("could not record image job failure job_id=%s", job_id)
             log.exception("image processing failed job_id=%s media_id=%s", job_id, media_id)
 
+    async def process_subtitle(self, job: dict[str, Any]) -> None:
+        token, job_id = str(job["lease_token"]), str(job["id"])
+        payload = job.get("payload") or {}
+        media_id = str(job["media_id"])
+        try:
+            source = await self.download_source(str(payload["bucket_id"]), str(payload["storage_path"]))
+            digest = hashlib.sha256(source).hexdigest()
+            if digest != payload["sha256"]:
+                raise ValueError("MEDIA_SOURCE_HASH_MISMATCH")
+            scan_receipt = await asyncio.to_thread(self.scan, source)
+            validation = await asyncio.to_thread(validate_subtitle_bytes, source, str(payload["media_type"]))
+            receipt = {**scan_receipt, "validation": validation}
+            result = await self.rpc("complete_content_subtitle_job", {
+                "p_job_id": job_id, "p_lease_token": token, "p_media_id": media_id,
+                "p_scan_receipt": receipt, "p_processing_version": 1,
+            })
+            if not isinstance(result, dict) or result.get("outcome") != "completed":
+                raise ValueError("SUBTITLE_COMPLETION_LEASE_LOST")
+        except Exception as exc:
+            code = str(exc)[:80] if isinstance(exc, ValueError) else type(exc).__name__.upper()[:80]
+            try:
+                await self.rpc("fail_content_lifecycle_job", {
+                    "p_job_id": job_id, "p_lease_token": token, "p_error_code": code,
+                })
+            except Exception:
+                log.exception("could not record subtitle job failure job_id=%s", job_id)
+            log.exception("subtitle validation failed job_id=%s media_id=%s", job_id, media_id)
+
     async def process_batch(self) -> int:
-        jobs = await self.rpc("claim_content_lifecycle_jobs", {
+        image_jobs = await self.rpc("claim_content_lifecycle_jobs", {
             "p_worker_id": self.worker_id, "p_limit": self.batch_size,
             "p_lease_seconds": self.lease_seconds, "p_job_type": "image_process",
         }) or []
-        for job in jobs:
+        subtitle_jobs = await self.rpc("claim_content_lifecycle_jobs", {
+            "p_worker_id": self.worker_id, "p_limit": self.batch_size,
+            "p_lease_seconds": self.lease_seconds, "p_job_type": "subtitle_validate",
+        }) or []
+        for job in image_jobs:
             await self.process(job)
-        return len(jobs)
+        for job in subtitle_jobs:
+            await self.process_subtitle(job)
+        return len(image_jobs) + len(subtitle_jobs)
 
     async def run(self) -> None:
         try:
