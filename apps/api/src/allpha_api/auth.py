@@ -254,14 +254,18 @@ async def require_organization_membership(
 async def service_db_request(function_name: str, *, body: dict[str, Any]) -> Any:
     """Invoke a server-only Supabase RPC using the backend service-role secret."""
     url = os.getenv("SUPABASE_URL", "").rstrip("/")
-    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip() or os.getenv("SUPABASE_SECRET_KEY", "").strip()
     if not url or not service_key:
         raise HTTPException(status_code=503, detail={"code": "SERVICE_DATABASE_NOT_CONFIGURED", "message": "Layanan data server belum dikonfigurasi."})
     if not function_name.isidentifier():
         raise HTTPException(status_code=500, detail={"code": "SERVICE_RPC_INVALID", "message": "Kontrak RPC internal tidak valid."})
     headers = {"apikey": service_key, "Authorization": f"Bearer {service_key}", "Content-Type": "application/json"}
     try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        async with httpx.AsyncClient(
+            timeout=_TIMEOUT,
+            follow_redirects=False,
+            trust_env=False,
+        ) as client:
             response = await client.post(f"{url}/rest/v1/rpc/{function_name}", headers=headers, json=body)
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=503, detail={"code": "SERVICE_DATABASE_UNAVAILABLE", "message": "Layanan data server sementara tidak tersedia."}) from exc
