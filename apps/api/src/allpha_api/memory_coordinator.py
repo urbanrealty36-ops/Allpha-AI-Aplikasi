@@ -79,9 +79,31 @@ class MemoryCoordinator:
     async def expire(self,owner_id,agent_id):
         return await self.transition("expire",owner_id,agent_id)
 
-    async def expire_all(self):
-        if os.getenv("ALLPHA_MEMORY_COORDINATOR_ENABLED","false").lower()!="true":return {"expired_count":0}
-        return await self.transition("expire_all",None)
+    async def expire_all(self, batch_limit: int = 500):
+        """Expire one bounded global batch through the canonical retention RPC.
+
+        The legacy agent_memory_transition expire_all action updates every due
+        row in one transaction. Never invoke it from a recurring worker: use
+        the lease-safe, SKIP LOCKED batch function installed by the forward-only
+        ENG-P08 retention migration instead.
+        """
+        if os.getenv("ALLPHA_MEMORY_COORDINATOR_ENABLED", "false").lower() != "true":
+            return {"expired_count": 0, "batch_limit": 0}
+        if isinstance(batch_limit, bool) or not isinstance(batch_limit, int) or not 1 <= batch_limit <= 500:
+            raise MemoryDenied("Memory retention batch limit must be between 1 and 500")
+        result = await self.db(
+            "POST",
+            "rpc/expire_agent_memory_items_batch",
+            body={"p_limit": batch_limit},
+        )
+        if (
+            not isinstance(result, dict)
+            or isinstance(result.get("expired_count"), bool)
+            or not isinstance(result.get("expired_count"), int)
+            or not 0 <= result["expired_count"] <= batch_limit
+        ):
+            raise MemoryUnavailable("Bounded Memory retention RPC returned an invalid result")
+        return {**result, "batch_limit": batch_limit}
 
     async def items(self,owner_id,agent_id,*,memory_type=None,status=None,limit=50):
         p={"select":"id,policy_id,agent_id,memory_type,visibility_scope,purpose,classification,content,content_sha256,source_ref,provenance,confidence,version,policy_version,status,retention_expires_at,approved_at,pinned_at,created_at,updated_at",
