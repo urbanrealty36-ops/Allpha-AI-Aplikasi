@@ -5,6 +5,47 @@ from urllib.parse import urlparse,quote
 import httpx
 from allpha_api.media_scanner import local_scanner_identity_pins, scan_media_bytes
 log=logging.getLogger("allpha.provider_callback_worker")
+MAX_PROVIDER_DERIVATIVE_BYTES = 100 * 1024 * 1024
+
+
+def validate_eager_derivative_contract(media_type: str, eager: Any) -> None:
+ if not isinstance(eager, list) or any(not isinstance(item, dict) for item in eager):
+  raise ValueError("PROVIDER_EAGER_DERIVATIVES_INVALID")
+ if any(item.get("status") == "failed" for item in eager):
+  raise ValueError("PROVIDER_EAGER_DERIVATIVES_INCOMPLETE")
+ mime_types=[str(item.get("format") or item.get("mime_type") or "").lower() for item in eager]
+ if media_type.startswith("video/"):
+  if len(eager)!=3 or mime_types.count("video/mp4")<2 or mime_types.count("image/jpeg")<1:
+   raise ValueError("PROVIDER_VIDEO_RENDITION_CONTRACT_INVALID")
+ elif media_type.startswith("audio/"):
+  if len(eager)!=2 or any(value not in {"audio/mpeg","audio/mp4"} for value in mime_types):
+   raise ValueError("PROVIDER_AUDIO_RENDITION_CONTRACT_INVALID")
+ else:
+  raise ValueError("PROVIDER_MEDIA_TYPE_UNSUPPORTED")
+
+
+async def download_provider_derivative(client: httpx.AsyncClient, url: str) -> tuple[bytes, str]:
+ async with client.stream("GET",url) as response:
+  response.raise_for_status()
+  mime=response.headers.get("content-type","").split(";")[0].lower()
+  if not (mime.startswith("video/") or mime.startswith("audio/") or mime=="image/jpeg"):
+   raise ValueError("PROVIDER_DERIVATIVE_MIME_INVALID")
+  raw_length=response.headers.get("content-length")
+  if raw_length:
+   try:
+    if int(raw_length)>MAX_PROVIDER_DERIVATIVE_BYTES:
+     raise ValueError("PROVIDER_DERIVATIVE_TOO_LARGE")
+   except ValueError as exc:
+    if str(exc)=="PROVIDER_DERIVATIVE_TOO_LARGE": raise
+    raise ValueError("PROVIDER_DERIVATIVE_LENGTH_INVALID") from exc
+  body=bytearray()
+  async for chunk in response.aiter_bytes():
+   if len(body)+len(chunk)>MAX_PROVIDER_DERIVATIVE_BYTES:
+    raise ValueError("PROVIDER_DERIVATIVE_TOO_LARGE")
+   body.extend(chunk)
+  if not body:
+   raise ValueError("PROVIDER_DERIVATIVE_EMPTY")
+  return bytes(body),mime
 
 class CallbackWorker:
  def __init__(self):
@@ -51,20 +92,14 @@ class CallbackWorker:
    if public_id!=media["provider_public_id"] or event.get("asset_id")!=media["provider_asset_id"] or event.get("batch_id")!=media["provider_batch_id"] or provider_payload.get("provider_batch_id")!=event.get("batch_id"):
     raise ValueError("PROVIDER_CALLBACK_ASSET_OR_BATCH_MISMATCH")
    eager=event.get("eager") or []
-   expected=3 if media["media_type"].startswith("video/") else 2
-   if len(eager)<expected or any(not isinstance(item,dict) or item.get("status")=="failed" for item in eager):
-    raise ValueError("PROVIDER_EAGER_DERIVATIVES_INCOMPLETE")
+   validate_eager_derivative_contract(str(media["media_type"]),eager)
    derivatives=[]
    async with httpx.AsyncClient(trust_env=False, follow_redirects=False, timeout=httpx.Timeout(90,connect=5)) as provider:
     for index,item in enumerate(eager):
      url=item.get("secure_url");parsed=urlparse(url or "")
      if parsed.scheme!="https" or parsed.hostname!="res.cloudinary.com" or not parsed.path.startswith(f"/{self.cloud}/video/authenticated/"):
       raise ValueError("PROVIDER_DERIVATIVE_URL_REJECTED")
-     response=await provider.get(url)
-     response.raise_for_status()
-     if len(response.content)>100*1024*1024:raise ValueError("PROVIDER_DERIVATIVE_TOO_LARGE")
-     binary=response.content;mime=response.headers.get("content-type","").split(";")[0].lower()
-     if not (mime.startswith("video/") or mime.startswith("audio/") or mime=="image/jpeg"):raise ValueError("PROVIDER_DERIVATIVE_MIME_INVALID")
+     binary,mime=await download_provider_derivative(provider,url)
      await asyncio.to_thread(self.scan,binary)
      suffix="mp4" if mime=="video/mp4" else "mp3" if mime=="audio/mpeg" else "m4a" if mime=="audio/mp4" else "jpg" if mime=="image/jpeg" else "bin"
      kind="moderation_poster" if mime=="image/jpeg" else f"rendition_{index+1}"
