@@ -317,23 +317,24 @@ async def get_media(media_id:uuid.UUID,user:dict[str,Any]=Depends(current_user))
     rows=response.json()
     if not rows:
         raise HTTPException(404,detail={"code":"MEDIA_NOT_FOUND","message":"Media not found."})
-    item=media_item_response(rows[0])
+    raw_item=rows[0]
+    item=media_item_response(raw_item)
     delivery=None
-    if item.get("storage_provider")=="cloudinary" and item.get("status")=="ready":
+    if raw_item.get("storage_provider")=="cloudinary" and raw_item.get("status")=="ready":
         try:
             cfg=CloudinaryConfig.from_environment()
-            delivery=build_signed_private_download_url(config=cfg,public_id=str(item["provider_public_id"]),
-                resource_type=str(item["provider_resource_type"]),format=str(item["provider_format"]),expires_in=300)
+            delivery=build_signed_private_download_url(config=cfg,public_id=str(raw_item["provider_public_id"]),
+                resource_type=str(raw_item["provider_resource_type"]),format=str(raw_item["provider_format"]),expires_in=300)
             derivative_deliveries=[]
             for derivative in item.get("derivatives") or []:
                 if not isinstance(derivative,dict) or derivative.get("provider")!="cloudinary":
                     continue
                 derivative_url=build_signed_authenticated_delivery_url(
-                    config=cfg,public_id=str(item["provider_public_id"]),
-                    resource_type=str(item["provider_resource_type"]),
+                    config=cfg,public_id=str(raw_item["provider_public_id"]),
+                    resource_type=str(raw_item["provider_resource_type"]),
                     format=str(derivative["format"]),
                     transformation=str(derivative["transformation"]),
-                    version=int(derivative.get("version") or item["provider_version"]),
+                    version=int(derivative.get("version") or raw_item["provider_version"]),
                 )
                 derivative_deliveries.append({**derivative,"delivery_url":derivative_url})
         except (CloudinaryConfigurationError,ValueError,KeyError,TypeError):
