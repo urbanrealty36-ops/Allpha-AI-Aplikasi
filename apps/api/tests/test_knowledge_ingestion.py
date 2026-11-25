@@ -379,3 +379,46 @@ def test_public_job_projection_drops_lease_fields():
     job = {"id": "j", "status": "queued", "stage": "awaiting_malware_scan", "lease_token": "t", "locked_by": "w", "attempt": 1}
     assert knowledge._public_job(job) == {"id": "j", "status": "queued", "stage": "awaiting_malware_scan", "attempt": 1}
     assert knowledge._public_job(None) is None
+
+@pytest.mark.parametrize("credential_name", ["SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_SECRET_KEY"])
+def test_knowledge_admin_rest_request_sends_matching_bearer_and_apikey(monkeypatch, credential_name):
+    import asyncio
+
+    monkeypatch.setenv("SUPABASE_URL", "https://project.supabase.co")
+    monkeypatch.delenv("SUPABASE_SERVICE_ROLE_KEY", raising=False)
+    monkeypatch.delenv("SUPABASE_SECRET_KEY", raising=False)
+    monkeypatch.setenv(credential_name, "server-only-key")
+    captured = {}
+
+    class Response:
+        status_code = 200
+        content = b"[]"
+
+        @staticmethod
+        def json():
+            return []
+
+    class FakeAsyncClient:
+        def __init__(self, **kwargs):
+            captured["client_options"] = kwargs
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def request(self, method, url, *, headers, params=None, json=None):
+            captured.update(method=method, url=url, headers=headers)
+            return Response()
+
+    monkeypatch.setattr(knowledge.httpx, "AsyncClient", FakeAsyncClient)
+
+    result = asyncio.run(
+        knowledge._admin_db_request("GET", "agent_knowledge_sources")
+    )
+
+    assert result == []
+    assert captured["headers"]["apikey"] == "server-only-key"
+    assert captured["headers"]["Authorization"] == "Bearer server-only-key"
+    assert captured["url"] == "https://project.supabase.co/rest/v1/agent_knowledge_sources"
