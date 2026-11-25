@@ -62,7 +62,7 @@ def test_watchlist_rejects_unavailable_title_without_writing(monkeypatch):
     try:
         response=client.post("/v1/cinema/watchlist/"+TITLE)
         assert response.status_code==404
-        assert response.json()["detail"]["code"]=="CINEMA_TITLE_NOT_AVAILABLE"
+        assert response.json()["error"]["code"]=="CINEMA_TITLE_NOT_AVAILABLE"
     finally: app.dependency_overrides.pop(current_user,None)
 
 def test_watchlist_delete_is_scoped_to_authenticated_owner(monkeypatch):
