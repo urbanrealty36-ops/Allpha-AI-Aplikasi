@@ -2,8 +2,8 @@ import React, { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Platform, Pressable, Text, TextInput, View } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import { File as ExpoFile } from "expo-file-system";
-import { fetch as expoFetch } from "expo/fetch";
 import * as SecureStore from "expo-secure-store";
+import * as Crypto from "expo-crypto";
 
 type DraftTitle = {
   id: string;
@@ -74,15 +74,18 @@ async function request<T>(getAccessToken: Props["getAccessToken"], path: string,
 }
 
 
-export type NativeResumableUploadInit = {
-  item: { id: string };
-  already_uploaded: boolean;
-  tus_endpoint?: string;
-  upload_token?: string;
-  upload_metadata?: Record<string, string>;
-  chunk_size_bytes?: number;
+type NativeAuthenticatedRequest = (path: string, init?: RequestInit) => Promise<unknown>;
+type NativeCloudinaryUploadIntent = {
+  item: { id: string; status: string };
+  upload: {
+    upload_url: string;
+    resource_type: string;
+    delivery_type: string;
+    public_id: string;
+    expires_at: number;
+    params: Record<string, string | number | boolean>;
+  };
 };
-
 type PersistedNativeCinemaUpload = {
   contentId: string;
   mediaId: string;
@@ -91,100 +94,86 @@ type PersistedNativeCinemaUpload = {
   fingerprint: string;
 };
 
-function base64Ascii(value: string): string {
-  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-  let output = "";
-  for (let i = 0; i < value.length; i += 3) {
-    const a = value.charCodeAt(i) & 255;
-    const hasB = i + 1 < value.length;
-    const hasC = i + 2 < value.length;
-    const b = hasB ? value.charCodeAt(i + 1) & 255 : 0;
-    const c = hasC ? value.charCodeAt(i + 2) & 255 : 0;
-    output += alphabet[a >> 2];
-    output += alphabet[((a & 3) << 4) | (b >> 4)];
-    output += hasB ? alphabet[((b & 15) << 2) | (c >> 6)] : "=";
-    output += hasC ? alphabet[c & 63] : "=";
-  }
-  return output;
-}
-
-export async function uploadNativeFileWithTus(
+/** Hash locally, request a scoped FastAPI intent, upload direct to authenticated Cloudinary, then complete via FastAPI. */
+export async function uploadNativeFileWithCloudinary(
   file: ExpoFile,
-  init: NativeResumableUploadInit,
-  apiKey: string,
+  contentId: string,
   mediaId: string,
+  mediaType: string,
+  apiRequest: NativeAuthenticatedRequest,
   onProgress: (percent: number) => void,
-  storageKeyPrefix = "allpha:cinema:tus",
-): Promise<void> {
-  if (!init.tus_endpoint || !init.upload_token || !init.upload_metadata) {
-    throw new Error("Kontrak upload resumable dari server tidak lengkap.");
+): Promise<{ id: string; status: string }> {
+  if (!Number.isSafeInteger(file.size) || file.size <= 0) throw new Error("Ukuran file media tidak valid.");
+  if (!mediaType) throw new Error("Tipe MIME file wajib tersedia.");
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const digest = await Crypto.digest(Crypto.CryptoDigestAlgorithm.SHA256, bytes);
+  const sha256 = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
+  const rawIntent = await apiRequest("/v1/media/upload-intents", {
+    method: "POST",
+    headers: { "Idempotency-Key": mediaId },
+    body: JSON.stringify({
+      content_id: contentId, domain: "content", purpose: "attachment",
+      filename: file.name, media_type: mediaType, size_bytes: file.size, sha256,
+    }),
+  });
+  const intent = rawIntent as NativeCloudinaryUploadIntent;
+  if (intent.item?.id !== mediaId || !intent.upload?.upload_url || !intent.upload?.params) {
+    throw new Error("Kontrak upload Cloudinary dari FastAPI tidak lengkap.");
   }
-  const urlKey = storageKeyPrefix + ":" + mediaId;
-  let uploadUrl = await SecureStore.getItemAsync(urlKey);
-  const headers = {
-    "Tus-Resumable": "1.0.0",
-    apikey: apiKey,
-    "x-signature": init.upload_token,
-  };
-  const readOffset = async (target: string): Promise<number> => {
-    const response = await expoFetch(target, { method: "HEAD", headers });
-    if (response.status === 404 || response.status === 410) return -1;
-    if (!response.ok) throw new Error("Sesi resumable Storage tidak dapat dilanjutkan.");
-    const offset = Number(response.headers.get("Upload-Offset"));
-    if (!Number.isSafeInteger(offset) || offset < 0 || offset > file.size) {
-      throw new Error("Offset upload resumable dari Storage tidak valid.");
+
+  let providerAlreadyExists = ["processing", "ready"].includes(intent.item.status);
+  if (!providerAlreadyExists) {
+    if (intent.upload.expires_at <= Math.floor(Date.now() / 1000)) {
+      throw new Error("Intent upload Cloudinary sudah kedaluwarsa. Silakan mulai ulang upload.");
     }
-    return offset;
-  };
-  let offset = uploadUrl ? await readOffset(uploadUrl) : -1;
-  if (offset < 0) {
-    await SecureStore.deleteItemAsync(urlKey);
-    const metadata = Object.entries(init.upload_metadata)
-      .map(([key, value]) => key + " " + base64Ascii(value))
-      .join(",");
-    const created = await expoFetch(init.tus_endpoint, {
-      method: "POST",
-      headers: {
-        ...headers,
-        "Upload-Length": String(file.size),
-        "Upload-Metadata": metadata,
-      },
+    const form = new FormData();
+    form.append("file", { uri: file.uri, name: file.name, type: mediaType } as any);
+    for (const [key, value] of Object.entries(intent.upload.params)) form.append(key, String(value));
+    const providerResponse = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", intent.upload.upload_url);
+      xhr.timeout = 180000;
+      xhr.upload.onprogress = event => {
+        if (event.lengthComputable && event.total > 0) {
+          onProgress(Math.min(90, Math.floor((event.loaded / event.total) * 90)));
+        }
+      };
+      xhr.onload = () => resolve({ status: xhr.status, body: xhr.responseText || "" });
+      xhr.onerror = () => reject(new Error("Koneksi ke Cloudinary terputus. Upload dapat dicoba kembali."));
+      xhr.ontimeout = () => reject(new Error("Upload Cloudinary melewati batas waktu."));
+      xhr.send(form);
     });
-    if (created.status === 409) throw new Error("MEDIA_OBJECT_ALREADY_EXISTS");
-    if (created.status !== 201) throw new Error("Storage menolak pembuatan sesi upload resumable.");
-    const location = created.headers.get("Location");
-    if (!location) throw new Error("Storage tidak mengembalikan URL sesi resumable.");
-    uploadUrl = new URL(location, init.tus_endpoint).toString();
-    await SecureStore.setItemAsync(urlKey, uploadUrl);
-    offset = 0;
-  }
-  onProgress(Math.min(100, Math.floor((offset / file.size) * 100)));
-  const chunkSize = init.chunk_size_bytes || 6 * 1024 * 1024;
-  while (offset < file.size) {
-    const chunk = file.slice(offset, Math.min(file.size, offset + chunkSize));
-    const response = await expoFetch(uploadUrl!, {
-      method: "PATCH",
-      headers: {
-        ...headers,
-        "Upload-Offset": String(offset),
-        "Content-Type": "application/offset+octet-stream",
-      },
-      body: chunk,
-    });
-    if (response.status === 409) {
-      const refreshed = await readOffset(uploadUrl!);
-      if (refreshed < 0) throw new Error("Sesi upload resumable telah kedaluwarsa; coba lanjutkan kembali.");
-      offset = refreshed;
-      continue;
+    if (providerResponse.status >= 200 && providerResponse.status < 300) {
+      let asset: Record<string, unknown>;
+      try { asset = JSON.parse(providerResponse.body) as Record<string, unknown>; }
+      catch { throw new Error("Respons upload Cloudinary tidak valid."); }
+      if (asset.public_id !== intent.upload.public_id ||
+          asset.resource_type !== intent.upload.resource_type ||
+          asset.type !== "authenticated" ||
+          Number(asset.bytes) !== file.size) {
+        throw new Error("Identitas asset Cloudinary tidak sesuai dengan upload intent.");
+      }
+    } else {
+      let providerMessage = "";
+      try { providerMessage = String((JSON.parse(providerResponse.body) as { error?: { message?: string } }).error?.message || ""); }
+      catch { /* Keep the HTTP status as the provider signal. */ }
+      const duplicate = providerResponse.status === 409 || /already exists|already uploaded/i.test(providerMessage);
+      if (!duplicate) throw new Error(providerMessage || ("Cloudinary menolak upload (HTTP " + providerResponse.status + ")."));
+      providerAlreadyExists = true;
     }
-    if (response.status !== 204) throw new Error("Chunk video gagal dikirim; sesi tersimpan untuk dilanjutkan.");
-    const nextOffset = Number(response.headers.get("Upload-Offset"));
-    offset = Number.isSafeInteger(nextOffset) && nextOffset > offset ? nextOffset : offset + chunk.size;
-    onProgress(Math.min(100, Math.floor((offset / file.size) * 100)));
   }
-  const finalOffset = await readOffset(uploadUrl!);
-  if (finalOffset !== file.size) throw new Error("Storage belum mengonfirmasi seluruh byte upload.");
+
+  onProgress(95);
+  const rawCompleted = await apiRequest("/v1/media/complete", {
+    method: "POST",
+    body: JSON.stringify({ media_id: mediaId }),
+  });
+  const completed = rawCompleted as { item?: { id?: string; status?: string } };
+  if (completed.item?.id !== mediaId || !completed.item.status) {
+    throw new Error("FastAPI belum mengonfirmasi lifecycle media.");
+  }
   onProgress(100);
+  return { id: mediaId, status: completed.item.status };
 }
 
 function Action({ title, onPress, disabled = false, secondary = false }: {
