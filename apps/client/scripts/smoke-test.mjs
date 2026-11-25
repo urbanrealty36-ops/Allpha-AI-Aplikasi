@@ -58,14 +58,14 @@ assert.ok(app.includes("loadRuntimeSessionTasks"));
 assert.ok(app.includes("Eksekusi tetap membutuhkan policy runtime yang disetujui"));
 
 for (const contract of [
-  "/v1/content/mine", "/v1/content", "/media/resumable", "/complete", "/preview", "/publish", "/retry",
+  "/v1/content/mine", "/v1/content", "/v1/media/upload-intents", "/complete", "/preview", "/publish", "/retry",
   "createNativeContentDraft", "createNativeStory", "submitNativeContent", "retryNativeContent", "previewNativeContent",
-  "uploadNativeFileWithTus", "allpha:content:tus", "allpha:story:tus",
+  "uploadNativeFileWithCloudinary", "allpha:content:tus", "allpha:story:tus",
   "Draft konten tersimpan melalui FastAPI", "Konten dikirim untuk moderasi"
 ]) assert.ok(app.includes(contract), `missing ENG-P13 Native content pipeline contract: ${contract}`);
 
 const nativeResumableMedia = readFileSync(new URL("../components/AiCinemaCreatorWorkspace.tsx", import.meta.url), "utf8");
-for (const contract of ["Tus-Resumable", "Upload-Offset", "upload_token", "upload_metadata", "allpha:cinema:tus"]) {
+for (const contract of ["Cloudinary", "Upload-Offset", "params", "upload_metadata", "allpha:cinema:cloudinary"]) {
   assert.ok(nativeResumableMedia.includes(contract), `missing Native TUS media contract: ${contract}`);
 }
 
