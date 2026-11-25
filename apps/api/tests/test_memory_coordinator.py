@@ -325,3 +325,20 @@ def test_global_memory_expiry_fails_closed_when_bounded_rpc_response_is_invalid(
     store = InvalidRetentionRPC()
     with pytest.raises(MemoryUnavailable):
         asyncio.run(store.expire_all(batch_limit=500))
+
+def test_memory_retention_migration_installs_bounded_skip_locked_cron():
+    from pathlib import Path
+
+    migration = (
+        Path(__file__).resolve().parents[1]
+        / "supabase" / "migrations"
+        / "20261124100000_eng_p08_memory_retention_worker.sql"
+    )
+    sql = migration.read_text(encoding="utf-8").lower()
+    assert "expire_agent_memory_items_batch(p_limit integer)" in sql
+    assert "p_limit > 500" in sql
+    assert "for update skip locked" in sql
+    assert "retention_expires_at <= clock_timestamp()" in sql
+    assert "cron.schedule(" in sql
+    assert "select public.expire_agent_memory_items_batch(500)" in sql
+    assert "cron.unschedule(v_job_id)" in sql
