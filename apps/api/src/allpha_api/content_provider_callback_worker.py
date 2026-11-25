@@ -13,12 +13,15 @@ def validate_eager_derivative_contract(media_type: str, eager: Any) -> None:
   raise ValueError("PROVIDER_EAGER_DERIVATIVES_INVALID")
  if any(item.get("status") == "failed" for item in eager):
   raise ValueError("PROVIDER_EAGER_DERIVATIVES_INCOMPLETE")
- mime_types=[str(item.get("format") or item.get("mime_type") or "").lower() for item in eager]
+ formats=[str(item.get("format") or item.get("mime_type") or "").lower() for item in eager]
+ video_count=sum(value in {"mp4","video/mp4"} for value in formats)
+ poster_count=sum(value in {"jpg","jpeg","image/jpeg"} for value in formats)
+ audio_count=sum(value in {"mp3","m4a","aac","audio/mpeg","audio/mp4"} for value in formats)
  if media_type.startswith("video/"):
-  if len(eager)!=3 or mime_types.count("video/mp4")<2 or mime_types.count("image/jpeg")<1:
+  if len(eager)!=3 or video_count<2 or poster_count<1:
    raise ValueError("PROVIDER_VIDEO_RENDITION_CONTRACT_INVALID")
  elif media_type.startswith("audio/"):
-  if len(eager)!=2 or any(value not in {"audio/mpeg","audio/mp4"} for value in mime_types):
+  if len(eager)!=2 or audio_count!=2:
    raise ValueError("PROVIDER_AUDIO_RENDITION_CONTRACT_INVALID")
  else:
   raise ValueError("PROVIDER_MEDIA_TYPE_UNSUPPORTED")
