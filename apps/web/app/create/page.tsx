@@ -99,7 +99,8 @@ export default function CreatePage() {
         if (!created?.id) throw new Error("Draft tersimpan tetapi ID konten tidak dikembalikan API. Buka konten Anda untuk memeriksa statusnya.");
         setDraftId(created.id);
       }
-      if (file && created) {
+      if (!created) throw new Error("Draft konten tidak tersedia untuk dilanjutkan.");
+      if (file) {
         const key = uploadId || crypto.randomUUID();
         setUploadId(key);
         await uploadContentMediaWithTus(request, created.id, file, key, setUploadProgress);
