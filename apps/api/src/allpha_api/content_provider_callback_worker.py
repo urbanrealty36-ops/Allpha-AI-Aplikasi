@@ -1,5 +1,6 @@
 """Processes authenticated Cloudinary eager callbacks outside the webhook request path."""
 from __future__ import annotations
+from typing import Any
 import asyncio,hashlib,logging,os,signal,uuid
 from urllib.parse import urlparse,quote
 import httpx
