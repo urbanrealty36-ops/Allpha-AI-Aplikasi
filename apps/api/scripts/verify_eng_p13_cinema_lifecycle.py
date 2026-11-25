@@ -263,30 +263,33 @@ insert into public.content_media(
 set role service_role;
 do $do$
 declare v_job public.content_lifecycle_jobs%rowtype; v_receipt jsonb; v_result jsonb; v_sha text;
+ v_valid_found boolean:=false; v_invalid_found boolean:=false;
 begin
- select * into v_job from public.claim_content_lifecycle_jobs('ci-subtitle-worker',10,60,'subtitle_validate')
- where media_id='{SUBTITLE_MEDIA}' limit 1;
- if not found then raise exception 'subtitle validation job was not claimed'; end if;
- select sha256 into v_sha from public.content_media where id='{SUBTITLE_MEDIA}';
- v_receipt:=jsonb_build_object(
-  'scanner_id','clamav-local','contract_version','allpha.local-clamav.v1',
-  'sha256',v_sha,'engine_version','ci-clamav-engine','signature_version','ci-signature-set',
-  'validation',jsonb_build_object('sha256',v_sha,'format','webvtt','cue_count','1')
- );
- v_result:=public.complete_content_subtitle_job(v_job.id,v_job.lease_token,'{SUBTITLE_MEDIA}',v_receipt,1);
- if v_result->>'outcome'<>'completed' then raise exception 'subtitle job did not complete: %',v_result; end if;
-
- select * into v_job from public.claim_content_lifecycle_jobs('ci-subtitle-worker',10,60,'subtitle_validate')
- where media_id='{INVALID_SUBTITLE_MEDIA}' limit 1;
- if not found then raise exception 'invalid subtitle validation job was not claimed'; end if;
- select sha256 into v_sha from public.content_media where id='{INVALID_SUBTITLE_MEDIA}';
- v_receipt:=jsonb_build_object(
-  'scanner_id','untrusted-scanner','contract_version','allpha.local-clamav.v1',
-  'sha256',v_sha,'engine_version','ci-clamav-engine','signature_version','ci-signature-set',
-  'validation',jsonb_build_object('sha256',v_sha,'format','webvtt','cue_count','1')
- );
- v_result:=public.complete_content_subtitle_job(v_job.id,v_job.lease_token,'{INVALID_SUBTITLE_MEDIA}',v_receipt,1);
- if v_result->>'outcome'<>'scan_receipt_invalid' then raise exception 'invalid scanner receipt was not rejected'; end if;
+ for v_job in select * from public.claim_content_lifecycle_jobs('ci-subtitle-worker',10,60,'subtitle_validate')
+ loop
+  if v_job.media_id='{SUBTITLE_MEDIA}'::uuid then
+   select sha256 into v_sha from public.content_media where id='{SUBTITLE_MEDIA}';
+   v_receipt:=jsonb_build_object(
+    'scanner_id','clamav-local','contract_version','allpha.local-clamav.v1',
+    'sha256',v_sha,'engine_version','ci-clamav-engine','signature_version','ci-signature-set',
+    'validation',jsonb_build_object('sha256',v_sha,'format','webvtt','cue_count','1')
+   );
+   v_result:=public.complete_content_subtitle_job(v_job.id,v_job.lease_token,'{SUBTITLE_MEDIA}',v_receipt,1);
+   if v_result->>'outcome'<>'completed' then raise exception 'subtitle job did not complete: %',v_result; end if;
+   v_valid_found:=true;
+  elsif v_job.media_id='{INVALID_SUBTITLE_MEDIA}'::uuid then
+   select sha256 into v_sha from public.content_media where id='{INVALID_SUBTITLE_MEDIA}';
+   v_receipt:=jsonb_build_object(
+    'scanner_id','untrusted-scanner','contract_version','allpha.local-clamav.v1',
+    'sha256',v_sha,'engine_version','ci-clamav-engine','signature_version','ci-signature-set',
+    'validation',jsonb_build_object('sha256',v_sha,'format','webvtt','cue_count','1')
+   );
+   v_result:=public.complete_content_subtitle_job(v_job.id,v_job.lease_token,'{INVALID_SUBTITLE_MEDIA}',v_receipt,1);
+   if v_result->>'outcome'<>'scan_receipt_invalid' then raise exception 'invalid scanner receipt was not rejected'; end if;
+   v_invalid_found:=true;
+  end if;
+ end loop;
+ if not v_valid_found or not v_invalid_found then raise exception 'subtitle jobs were not both claimed and verified'; end if;
 end
 $do$;
 reset role;
