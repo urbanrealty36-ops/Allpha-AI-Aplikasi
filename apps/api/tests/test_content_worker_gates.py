@@ -157,3 +157,28 @@ def test_content_auxiliary_workers_are_disabled_by_default(monkeypatch):
     assert content_provider_cleanup_worker.enabled() is False
     assert content_scheduler_worker.enabled() is False
     assert content_retention_worker.enabled() is False
+
+
+def test_provider_derivative_contract_requires_playback_renditions_and_poster():
+    from allpha_api.content_provider_callback_worker import validate_eager_derivative_contract
+
+    validate_eager_derivative_contract("video/mp4", [
+        {"format": "video/mp4", "status": "success"},
+        {"format": "video/mp4", "status": "success"},
+        {"format": "image/jpeg", "status": "success"},
+    ])
+    validate_eager_derivative_contract("audio/mpeg", [
+        {"format": "audio/mpeg", "status": "success"},
+        {"format": "audio/mp4", "status": "success"},
+    ])
+    with pytest.raises(ValueError, match="PROVIDER_VIDEO_RENDITION_CONTRACT_INVALID"):
+        validate_eager_derivative_contract("video/mp4", [
+            {"format": "video/mp4", "status": "success"},
+            {"format": "video/mp4", "status": "success"},
+            {"format": "video/mp4", "status": "success"},
+        ])
+    with pytest.raises(ValueError, match="PROVIDER_EAGER_DERIVATIVES_INCOMPLETE"):
+        validate_eager_derivative_contract("audio/mpeg", [
+            {"format": "audio/mpeg", "status": "success"},
+            {"format": "audio/mp4", "status": "failed"},
+        ])
