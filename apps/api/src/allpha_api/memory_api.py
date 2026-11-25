@@ -57,7 +57,7 @@ async def _owner(agent_id,request,user):
 @router.get("/classes")
 async def classes(user:dict[str,Any]=Depends(current_user)):
  return {"items":[
- {"key":"conversation","label":"Conversation Memory","storage":"conversations/messages","managed":False},
+ {"key":"conversation","label":"Conversation Memory","storage":"conversations/messages","managed":False,"consent_required":True,"retention_enforced":True},
  {"key":"working","label":"Working Memory","storage":"memory_coordinator","managed":True},
  {"key":"episodic","label":"Episodic Memory","storage":"memory_coordinator","managed":True},
  {"key":"semantic","label":"Semantic Memory","storage":"memory_coordinator","managed":True},

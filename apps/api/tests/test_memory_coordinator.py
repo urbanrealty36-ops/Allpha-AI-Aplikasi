@@ -214,6 +214,13 @@ def test_conversation_context_is_centralized_and_participant_scoped():
     requester = str(uuid.uuid4())
     agent = str(uuid.uuid4())
     store = FakeMemoryCoordinator(
+        policies=[{
+            "id": "conversation-policy", "memory_type": "conversation", "enabled": True,
+            "consent_version": CONSENT_VERSION, "consent_revoked_at": None,
+            "allowed_purposes": ["agent_runtime_context"],
+            "allowed_sensitivities": ["public", "internal", "confidential", "restricted"],
+            "retention_days": 30, "policy_version": 2,
+        }],
         conversation_participants=[{"user_id": requester}, {"agent_id": agent}],
         message_rows=[
             {"sender_type": "agent", "sender_agent_id": agent, "body": "  Hello back  "},
@@ -236,3 +243,46 @@ def test_conversation_context_denies_when_requester_or_agent_is_not_a_participan
     with pytest.raises(MemoryDenied):
         asyncio.run(store.conversation_context(str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())))
     assert not any(call["path"] == "messages" for call in store.calls)
+
+
+def test_conversation_context_requires_explicit_consent_and_restricted_scope():
+    import uuid
+    conversation, requester, agent = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
+    no_consent = FakeMemoryCoordinator(
+        policies=[{"memory_type":"long_term","enabled":True,"consent_version":CONSENT_VERSION}],
+        conversation_participants=[{"user_id":requester},{"agent_id":agent}],
+        message_rows=[{"sender_type":"human","sender_user_id":requester,"body":"private"}],
+    )
+    with pytest.raises(MemoryDenied):
+        asyncio.run(no_consent.conversation_context(conversation,requester,agent))
+    assert not any(call["path"]=="messages" for call in no_consent.calls)
+
+    insufficient_scope = FakeMemoryCoordinator(
+        policies=[{
+            "memory_type":"conversation","enabled":True,"consent_version":CONSENT_VERSION,
+            "consent_revoked_at":None,"allowed_purposes":["agent_runtime_context"],
+            "allowed_sensitivities":["public","internal"],"retention_days":30,"policy_version":1,
+        }],
+        conversation_participants=[{"user_id":requester},{"agent_id":agent}],
+        message_rows=[{"sender_type":"human","sender_user_id":requester,"body":"private"}],
+    )
+    with pytest.raises(MemoryDenied):
+        asyncio.run(insufficient_scope.conversation_context(conversation,requester,agent))
+    assert not any(call["path"]=="messages" for call in insufficient_scope.calls)
+
+
+def test_conversation_context_applies_policy_retention_window():
+    import uuid
+    conversation, requester, agent = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
+    store = FakeMemoryCoordinator(
+        policies=[{
+            "memory_type":"conversation","enabled":True,"consent_version":CONSENT_VERSION,
+            "consent_revoked_at":None,"allowed_purposes":["agent_runtime_context"],
+            "allowed_sensitivities":["restricted"],"retention_days":7,"policy_version":3,
+        }],
+        conversation_participants=[{"user_id":requester},{"agent_id":agent}],
+        message_rows=[{"sender_type":"human","sender_user_id":requester,"body":"recent"}],
+    )
+    assert asyncio.run(store.conversation_context(conversation,requester,agent)) == "Human: recent"
+    message_read = next(call for call in store.calls if call["path"]=="messages")
+    assert message_read["params"]["created_at"].startswith("gte.")

@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 import httpx
 
-MEMORY_TYPES=("working","episodic","semantic","procedural","long_term")
+MEMORY_TYPES=("conversation","working","episodic","semantic","procedural","long_term")
 PURPOSES=("agent_generation_context","agent_runtime_context","workflow_context","personalization_context")
 SENSITIVITIES=("public","internal","confidential","restricted")
 CONSENT_VERSION="allpha.memory.v1"
@@ -99,6 +99,8 @@ class MemoryCoordinator:
 
     async def propose(self,owner_id,agent_id,memory_type,purpose,classification,content,source_ref,provenance,confidence,retention_days):
         if os.getenv("ALLPHA_MEMORY_COORDINATOR_ENABLED","false").lower()!="true": raise MemoryUnavailable("Memory proposal writes are not activated")
+        if memory_type == "conversation":
+            raise MemoryDenied("Conversation content remains in the canonical Messaging store and is never copied into persistent Memory items")
         if memory_type not in MEMORY_TYPES or purpose not in PURPOSES or classification not in SENSITIVITIES or not content.strip() or len(content)>8000:
             raise MemoryDenied("Memory proposal contract is invalid")
         if len(str(source_ref).encode())>4096 or len(str(provenance).encode())>4096 or (confidence is not None and not 0<=confidence<=1):
@@ -224,7 +226,7 @@ class MemoryCoordinator:
         return result if isinstance(result,dict) else None
 
     async def conversation_context(
-        self, conversation_id, requester_id, agent_id, *, max_messages=12, max_chars=6000,
+        self, conversation_id, requester_id, agent_id, *, purpose="agent_runtime_context", max_messages=12, max_chars=6000,
     ):
         """Assemble short-term context from the canonical conversation store.
 
@@ -264,6 +266,23 @@ class MemoryCoordinator:
         if not has_requester or not has_agent:
             raise MemoryDenied("Conversation context requires both verified participants")
 
+        if purpose not in PURPOSES:
+            raise MemoryDenied("Conversation context purpose is invalid")
+        policies = await self.policies(requester, agent)
+        policy = next((item for item in policies if item.get("memory_type") == "conversation"), None)
+        if (
+            not policy or not policy.get("enabled")
+            or policy.get("consent_version") != CONSENT_VERSION
+            or policy.get("consent_revoked_at")
+            or purpose not in (policy.get("allowed_purposes") or [])
+            or "restricted" not in (policy.get("allowed_sensitivities") or [])
+        ):
+            raise MemoryDenied("Conversation context requires current explicit owner consent for restricted conversation content")
+        retention_days = int(policy.get("retention_days") or 0)
+        if retention_days < 1 or retention_days > 3650 or int(policy.get("policy_version") or 0) < 1:
+            raise MemoryDenied("Conversation Memory retention policy is invalid")
+        retained_since = (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat()
+
         rows = await self.db("GET", "messages", params={
             "select": "sender_type,sender_user_id,sender_agent_id,body,created_at",
             "conversation_id": f"eq.{conversation}",
@@ -272,6 +291,7 @@ class MemoryCoordinator:
                 f"and(sender_type.eq.agent,sender_agent_id.eq.{agent}))"
             ),
             "delivery_status": "in.(sent,delivered,read)",
+            "created_at": f"gte.{retained_since}",
             "order": "created_at.desc",
             "limit": str(max_messages),
         })
