@@ -1623,3 +1623,10 @@ This is an evidence refresh inside the existing fixed plan. It does not create a
 - **Focused regression coverage:** `d944903d6ff3ffc58e58e19b4b54dc8fb287bfca` verifies secret-key-only resolution and parses the worker source AST to require `trust_env=False` and `follow_redirects=False` on every HTTP client. CI execution is pending.
 - **Status:** worker source hardening is **implemented**; generation worker execution lifecycle and production processing are not verified by this transport fix. ENG-P10 remains `in_progress`.
 - **Next:** continue P10 durable run processing and worker execution evidence after P07–P09 dependencies; preserve no-replay and pending-reconciliation behavior for uncertain provider outcomes.
+
+## 40.76 — ENG-P10/P11 runtime and workflow persistence credential hardening (2026-11-25)
+
+- **Agent Runtime:** `ca901c6a388f2b5fbb01a726114748322ccefd64` updates `AgentRuntimeStore.from_environment()` to accept `SUPABASE_SERVICE_ROLE_KEY` or `SUPABASE_SECRET_KEY`, and disables ambient proxies/redirects for its authenticated PostgREST client. `3899ea3d76f1a8fbef4bba7395871f7d7769e084` adds a request-boundary regression test for key resolution, Bearer/apikey consistency, and both egress flags.
+- **Workflow:** `6a0207cc62d86d0ed3b5bb5a85894275236ae49f` updates `WorkflowStore.from_environment()` to accept the canonical secret key as well as the legacy variable. Its HTTP client already enforced `trust_env=False` and `follow_redirects=False`; `a54ad9ec21095f7e462727f8e167aafc79883445` adds secret-key-only factory coverage.
+- **Status:** both source changes and focused regression coverage are **implemented**; CI execution, runtime task execution and workflow lifecycle production evidence remain pending. ENG-P10 and ENG-P11 remain `in_progress`.
+- **Next:** complete CI on the consolidated source, then continue worker lifecycle correctness and Cinema creator/viewer production integration. No schema or production data was changed by these credential fixes.
