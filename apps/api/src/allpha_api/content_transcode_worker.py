@@ -87,8 +87,9 @@ class TranscodeWorker:
    except Exception:log.exception("could not persist transcode failure job=%s",jid)
  async def batch(self):
   jobs=await self.rpc("claim_content_lifecycle_jobs",{"p_worker_id":self.worker_id,"p_limit":1,"p_lease_seconds":300,"p_job_type":"media_transcode"}) or []
-  for job in jobs:await self.run_job(job)
-  return len(jobs)
+  legacy_image_jobs=await self.rpc("claim_content_lifecycle_jobs",{"p_worker_id":self.worker_id,"p_limit":1,"p_lease_seconds":300,"p_job_type":"image_process"}) or []
+  for job in [*jobs,*legacy_image_jobs]:await self.run_job(job)
+  return len(jobs)+len(legacy_image_jobs)
  async def assert_schema_ready(self):
   result=await self.rpc("cloudinary_media_schema_readiness",{})
   if not isinstance(result,dict) or result.get("ready") is not True:
