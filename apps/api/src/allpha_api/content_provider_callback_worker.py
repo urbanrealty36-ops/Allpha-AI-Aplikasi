@@ -2,7 +2,7 @@
 from __future__ import annotations
 from typing import Any
 import asyncio,hashlib,logging,os,signal,uuid
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 import httpx
 from allpha_api.cloudinary_provider import CloudinaryConfig, build_signed_private_download_url, eager_transformations
 from allpha_api.media_scanner import require_media_scanner_configuration, scan_media_bytes_async
@@ -59,36 +59,68 @@ def provider_derivative_identity(index: int, mime: str, media_type: str = "video
 async def download_cloudinary_original(
  client: httpx.AsyncClient, url: str, *, expected_media_type: str, max_bytes: int,
 ) -> bytes:
- """Download the exact authenticated original from Cloudinary for malware scanning."""
+ """Download the exact authenticated original with manually validated redirects and a byte cap."""
  parsed = urlparse(url)
  if parsed.scheme != "https" or parsed.hostname != "api.cloudinary.com" or "/download" not in parsed.path:
   raise ValueError("PROVIDER_ORIGINAL_URL_REJECTED")
  if max_bytes <= 0 or max_bytes > MAX_PROVIDER_MEDIA_BYTES:
   raise ValueError("PROVIDER_ORIGINAL_SIZE_INVALID")
- async with client.stream("GET", url) as response:
-  response.raise_for_status()
-  final_host = (urlparse(str(response.url)).hostname or "").lower()
-  if not (final_host == "api.cloudinary.com" or final_host.endswith(".cloudinary.com") or final_host.endswith(".akamaihd.net")):
-   raise ValueError("PROVIDER_ORIGINAL_REDIRECT_REJECTED")
-  mime = response.headers.get("content-type", "").split(";", 1)[0].lower()
-  if mime not in {expected_media_type, "application/octet-stream"}:
-   raise ValueError("PROVIDER_ORIGINAL_MIME_MISMATCH")
-  raw_length = response.headers.get("content-length")
-  if raw_length:
-   try:
-    if int(raw_length) > max_bytes:
+ current_url = url
+ allowed_hosts = {"api.cloudinary.com"}
+ for redirect_count in range(4):
+  async with client.stream("GET", current_url) as response:
+   if response.status_code in {301, 302, 303, 307, 308}:
+    if redirect_count >= 3:
+     raise ValueError("PROVIDER_ORIGINAL_REDIRECT_LIMIT")
+    location = response.headers.get("location")
+    if not location:
+     raise ValueError("PROVIDER_ORIGINAL_REDIRECT_REJECTED")
+    target = urljoin(current_url, location)
+    target_parts = urlparse(target)
+    target_host = (target_parts.hostname or "").lower()
+    if (
+     target_parts.scheme != "https"
+     or target_parts.username is not None
+     or target_parts.password is not None
+     or target_parts.port not in (None, 443)
+     or not (
+      target_host in allowed_hosts
+      or target_host.endswith(".cloudinary.com")
+      or target_host.endswith(".akamaihd.net")
+     )
+    ):
+     raise ValueError("PROVIDER_ORIGINAL_REDIRECT_REJECTED")
+    current_url = target
+    continue
+   response.raise_for_status()
+   final_host = (urlparse(str(response.url)).hostname or "").lower()
+   if not (
+    final_host in allowed_hosts
+    or final_host.endswith(".cloudinary.com")
+    or final_host.endswith(".akamaihd.net")
+   ):
+    raise ValueError("PROVIDER_ORIGINAL_REDIRECT_REJECTED")
+   mime = response.headers.get("content-type", "").split(";", 1)[0].lower()
+   if mime not in {expected_media_type, "application/octet-stream"}:
+    raise ValueError("PROVIDER_ORIGINAL_MIME_MISMATCH")
+   raw_length = response.headers.get("content-length")
+   if raw_length:
+    try:
+     if int(raw_length) > max_bytes:
+      raise ValueError("PROVIDER_ORIGINAL_TOO_LARGE")
+    except ValueError as exc:
+     if str(exc) == "PROVIDER_ORIGINAL_TOO_LARGE":
+      raise
+     raise ValueError("PROVIDER_ORIGINAL_LENGTH_INVALID") from exc
+   body = bytearray()
+   async for chunk in response.aiter_bytes():
+    if len(body) + len(chunk) > max_bytes:
      raise ValueError("PROVIDER_ORIGINAL_TOO_LARGE")
-   except ValueError as exc:
-    if str(exc) == "PROVIDER_ORIGINAL_TOO_LARGE": raise
-    raise ValueError("PROVIDER_ORIGINAL_LENGTH_INVALID") from exc
-  body = bytearray()
-  async for chunk in response.aiter_bytes():
-   if len(body) + len(chunk) > max_bytes:
-    raise ValueError("PROVIDER_ORIGINAL_TOO_LARGE")
-   body.extend(chunk)
-  if not body:
-   raise ValueError("PROVIDER_ORIGINAL_EMPTY")
-  return bytes(body)
+    body.extend(chunk)
+   if not body:
+    raise ValueError("PROVIDER_ORIGINAL_EMPTY")
+   return bytes(body)
+ raise ValueError("PROVIDER_ORIGINAL_REDIRECT_LIMIT")
 
 
 def build_cloudinary_derivative_metadata(
@@ -187,7 +219,7 @@ class CallbackWorker:
     config=self.cloudinary,public_id=public_id,resource_type=resource_type,
     format=str(media["provider_format"]),expires_in=300,
    )
-   async with httpx.AsyncClient(trust_env=False, follow_redirects=True, timeout=httpx.Timeout(180,connect=5)) as provider:
+   async with httpx.AsyncClient(trust_env=False, follow_redirects=False, timeout=httpx.Timeout(180,connect=5)) as provider:
     original=await download_cloudinary_original(
      provider,original_url,expected_media_type=str(media["media_type"]),
      max_bytes=min(int(media["size_bytes"]),MAX_PROVIDER_MEDIA_BYTES),
