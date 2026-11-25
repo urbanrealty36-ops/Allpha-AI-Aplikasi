@@ -189,3 +189,17 @@ def test_provider_derivative_download_is_stream_bounded():
     assert "MAX_PROVIDER_DERIVATIVE_BYTES = 100 * 1024 * 1024" in source
     assert "async for chunk in response.aiter_bytes()" in source
     assert "PROVIDER_DERIVATIVE_TOO_LARGE" in source
+
+
+def test_content_worker_callback_url_and_cloud_name_are_canonical(monkeypatch):
+    monkeypatch.setenv("ALLPHA_CONTENT_TRANSCODE_WORKER_ENABLED", "true")
+    monkeypatch.setenv("ALLPHA_CLAMAV_ENABLED", "true")
+    _set_scanner_pins(monkeypatch)
+    monkeypatch.setenv("SUPABASE_URL", "https://project.supabase.co")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "server-only")
+    monkeypatch.setenv("CLAMAV_HOST", "clamav.internal")
+    monkeypatch.setenv("CLOUDINARY_CLOUD_NAME", "oiqyjqeg")
+    monkeypatch.setenv("CLOUDINARY_API_KEY", "key")
+    monkeypatch.setenv("CLOUDINARY_API_SECRET", "secret")
+    monkeypatch.setenv("ALLPHA_CLOUDINARY_CALLBACK_URL", "https://api.allpha.web.id/v1/content/internal/providers/cloudinary/eager-callback")
+    assert content_transcode_worker.enabled() is True
