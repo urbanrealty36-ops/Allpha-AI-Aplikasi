@@ -45,33 +45,16 @@ def _config():
     return base,key
 
 
-MEDIA_SCHEMA_REQUIRED_COLUMNS = (
-    "storage_provider", "domain", "purpose", "resource_id", "tenant_id", "session_id",
-    "provider_resource_type", "provider_delivery_type", "provider_version", "provider_format",
-    "provider_width", "provider_height", "provider_duration", "provider_bytes", "provider_tags",
-    "provider_metadata", "upload_expires_at", "upload_completed_at", "upload_idempotency_key",
-    "provider_deleted_at", "provider_delete_state", "scan_receipt", "updated_at",
-)
-
-
 async def _require_cloudinary_media_schema() -> None:
-    """Fail closed until the forward-only canonical media migration is applied."""
-    base, key = _config()
-    params = {"select": ",".join(MEDIA_SCHEMA_REQUIRED_COLUMNS), "limit": "0"}
+    """Fail closed until the canonical media registry and all required RPCs are ready."""
     try:
-        async with httpx.AsyncClient(timeout=10, trust_env=False, follow_redirects=False) as client:
-            response = await client.get(
-                f"{base}/rest/v1/content_media",
-                params=params,
-                headers={"apikey": key, "Authorization": f"Bearer {key}"},
-            )
-    except httpx.HTTPError as exc:
-        raise HTTPException(503, detail={"code": "MEDIA_DB_UNAVAILABLE", "message": "Media registry tidak tersedia."}) from exc
-    if response.status_code >= 300:
-        raise HTTPException(
-            503,
-            detail={"code": "MEDIA_SCHEMA_NOT_READY", "message": "Kontrak database Media Foundation belum tersedia."},
-        )
+        readiness = await service_db_request("cloudinary_media_schema_readiness", body={})
+    except HTTPException as exc:
+        if exc.status_code == 503:
+            raise
+        raise HTTPException(503, detail={"code": "MEDIA_SCHEMA_NOT_READY", "message": "Kontrak database Media Foundation belum tersedia."}) from exc
+    if not isinstance(readiness, dict) or readiness.get("ready") is not True:
+        raise HTTPException(503, detail={"code": "MEDIA_SCHEMA_NOT_READY", "message": "Kontrak database Media Foundation belum tersedia."})
 
 
 async def _owned(media_id: uuid.UUID, owner_id: str) -> dict[str, Any]:
