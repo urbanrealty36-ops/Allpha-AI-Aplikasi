@@ -339,7 +339,7 @@ for (const contract of ["/v1/feed", "/v1/feed/preferences", "session.access_toke
 assert.doesNotMatch(webFeed, /mockFeedItems|fakeFeed/);
 
 const webStories = readFileSync(new URL("../app/stories/page.tsx", import.meta.url), "utf8");
-for (const contract of ["/v1/stories", "/v1/content/", "/publish", "uploadContentMediaWithTus", "draftId", "uploadId", "session.access_token"]) {
+for (const contract of ["/v1/stories", "/v1/content/", "/publish", "uploadContentMediaWithCloudinary", "draftId", "uploadId", "session.access_token"]) {
   assert.ok(webStories.includes(contract), "missing Web Stories lifecycle contract: " + contract);
 }
 assert.doesNotMatch(webStories, /new FormData\(\)/, "Web Stories must use the canonical Cloudinary upload service");
