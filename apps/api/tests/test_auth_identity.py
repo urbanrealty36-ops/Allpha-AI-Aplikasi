@@ -987,3 +987,44 @@ def test_missing_postgrest_table_is_reported_as_schema_unavailable(monkeypatch):
 
     assert exc.value.status_code == 503
     assert exc.value.detail["code"] == "DATABASE_SCHEMA_UNAVAILABLE"
+
+def test_user_db_request_disables_ambient_proxy_and_redirects(monkeypatch):
+    import asyncio
+
+    captured = {}
+
+    class FakeResponse:
+        status_code = 200
+        content = b"[]"
+
+        @staticmethod
+        def json():
+            return []
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            captured["client_options"] = kwargs
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def request(self, method, url, *, headers, params=None, json=None):
+            captured.update(method=method, url=url, headers=headers)
+            return FakeResponse()
+
+    monkeypatch.setenv("SUPABASE_URL", "https://project.supabase.co")
+    monkeypatch.setenv("SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test")
+    monkeypatch.setattr("allpha_api.auth.httpx.AsyncClient", FakeAsyncClient)
+
+    result = asyncio.run(
+        user_db_request("GET", "agent_knowledge_chunks", "user-access-token")
+    )
+
+    assert result == []
+    assert captured["client_options"]["trust_env"] is False
+    assert captured["client_options"]["follow_redirects"] is False
+    assert captured["headers"]["apikey"] == "sb_publishable_test"
+    assert captured["headers"]["Authorization"] == "Bearer user-access-token"
