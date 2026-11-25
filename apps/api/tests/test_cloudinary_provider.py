@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 from urllib.parse import parse_qs, urlsplit
@@ -188,8 +189,7 @@ def test_cloudinary_upload_intent_binds_media_context():
     )
 
 
-@pytest.mark.asyncio
-async def test_fetch_cloudinary_resource_verifies_authenticated_identity():
+def test_fetch_cloudinary_resource_verifies_authenticated_identity():
     import httpx
 
     requested = {}
@@ -209,20 +209,22 @@ async def test_fetch_cloudinary_resource_verifies_authenticated_identity():
             "height": 32,
         })
 
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        asset = await fetch_cloudinary_resource(
-            config=_config(),
-            public_id="allpha/12345678-1234-4234-9234-123456789abc",
-            resource_type="image",
-            client=client,
-        )
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            return await fetch_cloudinary_resource(
+                config=_config(),
+                public_id="allpha/12345678-1234-4234-9234-123456789abc",
+                resource_type="image",
+                client=client,
+            )
+
+    asset = asyncio.run(run())
     assert asset["asset_id"] == "asset-123"
     assert "/resources/image/authenticated/allpha/" in requested["url"]
     assert requested["authorization"] is not None
 
 
-@pytest.mark.asyncio
-async def test_fetch_cloudinary_resource_rejects_non_authenticated_asset():
+def test_fetch_cloudinary_resource_rejects_non_authenticated_asset():
     import httpx
 
     def handler(request):
@@ -236,11 +238,14 @@ async def test_fetch_cloudinary_resource_rejects_non_authenticated_asset():
             "bytes": 1024,
         })
 
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        with pytest.raises(CloudinaryProviderError, match="CLOUDINARY_ASSET_NOT_AUTHENTICATED"):
-            await fetch_cloudinary_resource(
-                config=_config(),
-                public_id="allpha/12345678-1234-4234-9234-123456789abc",
-                resource_type="image",
-                client=client,
-            )
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            with pytest.raises(CloudinaryProviderError, match="CLOUDINARY_ASSET_NOT_AUTHENTICATED"):
+                await fetch_cloudinary_resource(
+                    config=_config(),
+                    public_id="allpha/12345678-1234-4234-9234-123456789abc",
+                    resource_type="image",
+                    client=client,
+                )
+
+    asyncio.run(run())
