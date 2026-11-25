@@ -1723,3 +1723,12 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 - **Commits:** API lock f4d9767b7b5538aa3750b0c35f5c1651ffd4bfda; Web route lock 37a5d1fce415878b32013ffec2c888b2f83cb04d; API lock regression 95ccdf3a2726aa67a638e2978f1fdf8cf0cd2f47.
 - **Verification:** source committed to main; automated test result and Railway runtime verification are pending. Super Admin UI, Native navigation, legacy theme route, and cached local assets remain follow-up lock surfaces; no full cross-client lock is claimed yet.
 - **Phase status:** ENG-P21–P24 remain unchanged in the fixed plan; no Spatial phase is marked complete. All public and operator Spatial API access is denied at the FastAPI boundary while this lock is active.
+
+
+## 40.86 — Cross-client 3D Universe lock completion (2026-11-25)
+
+- **Web:** all /spatial routes and the legacy /theme route now terminate through server-side notFound layouts.
+- **Super Admin:** spatial-governance, spatial-receipts, and spatial-themes route trees now terminate through server-side notFound layouts. Operator access is also denied by the API lock recorded in 40.85.
+- **Native:** SpatialNavigationScreen and SpatialThemeCatalogScreen now render only the development-lock notice; they no longer request or render spatial catalog/assets.
+- **Commit evidence:** 85fd07217cfeaf88f52044c8d26b452a1f382b9a; c25ff35284a16250f002a90983a6bcbf49869cc6; b676fec2aa611af83253ddb1e0ab5b255c93ab43; 8af3a717e7b9b4d93c47cdcc504efb365899a3da; b0a1ac164897102f9d60e32d69265956cf176a72; c3e389ce50a0b6791caaba11e1b67b740de7b84.
+- **Status:** source-level lock now covers Web, Native screen entry points, Super Admin pages, and FastAPI public/operator endpoints. Build/runtime confirmation remains pending; cached local copies of previously downloaded GLB files cannot be remotely erased by this route lock and must not be exposed by other screens.
