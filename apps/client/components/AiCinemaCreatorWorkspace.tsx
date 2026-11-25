@@ -99,6 +99,7 @@ export async function uploadNativeFileWithCloudinary(
   file: ExpoFile,
   contentId: string,
   mediaId: string,
+  filename: string,
   mediaType: string,
   apiRequest: NativeAuthenticatedRequest,
   onProgress: (percent: number) => void,
@@ -113,7 +114,7 @@ export async function uploadNativeFileWithCloudinary(
     headers: { "Idempotency-Key": mediaId },
     body: JSON.stringify({
       content_id: contentId, domain: "content", purpose: "attachment",
-      filename: file.name, media_type: mediaType, size_bytes: file.size, sha256,
+      filename, media_type: mediaType, size_bytes: file.size, sha256,
     }),
   });
   const intent = rawIntent as NativeCloudinaryUploadIntent;
@@ -127,7 +128,7 @@ export async function uploadNativeFileWithCloudinary(
       throw new Error("Intent upload Cloudinary sudah kedaluwarsa. Silakan mulai ulang upload.");
     }
     const form = new FormData();
-    form.append("file", { uri: file.uri, name: file.name, type: mediaType } as any);
+    form.append("file", { uri: file.uri, name: filename, type: mediaType } as any);
     for (const [key, value] of Object.entries(intent.upload.params)) form.append(key, String(value));
     const providerResponse = await new Promise<{ status: number; body: string }>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
@@ -377,37 +378,14 @@ export function AiCinemaCreatorWorkspace({ getAccessToken }: Props) {
       }
       setUploadDraftId(contentId);
       setUploadIdempotencyKey(mediaId);
-      const init = await request<NativeResumableUploadInit>(
-        getAccessToken,
-        "/v1/content/" + encodeURIComponent(contentId) + "/media/resumable",
-        {
-          method: "POST",
-          headers: { "Idempotency-Key": mediaId },
-          body: JSON.stringify({
-            filename: uploadAsset.name,
-            media_type: mediaType,
-            size_bytes: fileSize,
-          }),
-        },
+      await uploadNativeFileWithCloudinary(
+        file, contentId, mediaId, uploadAsset.name, mediaType,
+        (path, init) => request(getAccessToken, path, init),
+        setUploadProgress,
       );
-      if (!init.already_uploaded) {
-        const publishableKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-        if (!publishableKey) throw new Error("Kunci publik Supabase belum dikonfigurasi untuk upload resumable.");
-        try {
-          await uploadNativeFileWithTus(file, init, publishableKey, mediaId, setUploadProgress);
-        } catch (cause) {
-          if (!(cause instanceof Error) || cause.message !== "MEDIA_OBJECT_ALREADY_EXISTS") throw cause;
-        }
-        await request(
-          getAccessToken,
-          "/v1/content/" + encodeURIComponent(contentId) + "/media/" + encodeURIComponent(mediaId) + "/complete",
-          { method: "POST" },
-        );
-      }
       await SecureStore.deleteItemAsync(sessionKey);
-      await SecureStore.deleteItemAsync("allpha:cinema:tus:" + mediaId);
       setUploadAsset(null); setUploadDraftId(""); setUploadIdempotencyKey(""); setUploadProgress(100);
-      setNotice("Upload resumable tersimpan. Media masuk pipeline scan dan transcode; pilih media setelah status ready dan scan clean.");
+      setNotice("Upload Cloudinary terkirim. Media masuk pipeline scan dan transcode; pilih setelah status ready dan scan clean.");
       await loadTitles();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Upload video AI Cinema gagal. Sesi tersimpan untuk dicoba kembali.");
