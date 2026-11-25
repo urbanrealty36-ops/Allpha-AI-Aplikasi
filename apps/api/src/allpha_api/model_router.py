@@ -664,6 +664,25 @@ class CanonicalTextGenerationRouter:
             if start_rank < 0:
                 raise TextGenerationRouterUnavailable("no configured provider adapter is available", category="provider_route")
 
+        credit_reservation: Any | None = None
+        if self._credit_ledger is not None:
+            try:
+                credit_reservation = await self._credit_ledger.reserve(request, policy)
+            except Exception as exc:
+                raise TextGenerationRouterUnavailable(
+                    "approved credit reservation could not be confirmed; provider execution is blocked",
+                    category="credit_reservation",
+                ) from exc
+
+        async def mark_credit_pending(reason_code: str) -> None:
+            if credit_reservation is not None and self._credit_ledger is not None:
+                try:
+                    await self._credit_ledger.mark_pending(credit_reservation, reason_code)
+                except Exception:
+                    # Never release an uncertain reservation. The durable reservation
+                    # remains available for operator reconciliation if this RPC is down.
+                    pass
+
         last_safe_failure: TextGenerationProviderTransient | None = None
         for rank in range(start_rank, len(candidates)):
             route = candidates[rank]
@@ -722,6 +741,8 @@ class CanonicalTextGenerationRouter:
                         "model_id": response.model_id, "model_version": response.model_version,
                         "prompt_sha256": prompt_hash, "output_sha256": output_hash,
                         "input_tokens": response.input_tokens, "output_tokens": response.output_tokens,
+                        "usage_units": 1 if self._credit_ledger is not None else response.input_tokens + response.output_tokens,
+                        "usage_unit": "request" if self._credit_ledger is not None else "tokens_total",
                         "cost_microunits": response.cost_microunits, "cost_unit": response.cost_unit,
                         "pricing_version": response.pricing_version, "latency_ms": latency_ms,
                         "latency_budget_ms": policy.max_latency_ms,
@@ -737,16 +758,26 @@ class CanonicalTextGenerationRouter:
                     try:
                         await self._metering_sink.write_idempotent(evidence)  # type: ignore[union-attr]
                     except Exception as exc:
-                        # The provider may already have charged for this generation. Never
-                        # retry the provider call just because durable evidence persistence failed.
+                        # The provider may already have charged for this generation. Keep
+                        # the reservation pending until usage evidence can be reconciled.
+                        await mark_credit_pending("provider_completed_metering_persistence_failed")
                         raise TextGenerationRouterUnavailable(
                             "generation completed but durable usage evidence could not be recorded; automatic replay is blocked"
                         ) from exc
+                    if credit_reservation is not None and self._credit_ledger is not None:
+                        try:
+                            await self._credit_ledger.settle(credit_reservation, evidence)
+                        except Exception as exc:
+                            await mark_credit_pending("provider_completed_credit_settlement_failed")
+                            raise TextGenerationRouterUnavailable(
+                                "generation usage is metered but credit settlement is pending reconciliation"
+                            ) from exc
                     if policy_rejection:
                         raise TextGenerationRouterRejected(policy_rejection)
                     return response, evidence
                 except TextGenerationProviderTransient as exc:
                     if not exc.safe_to_retry:
+                        await mark_credit_pending("provider_outcome_unknown")
                         raise TextGenerationRouterUnavailable(
                             "text-generation provider outcome is unknown; automatic replay is blocked"
                         ) from exc
@@ -762,17 +793,27 @@ class CanonicalTextGenerationRouter:
                 except (TextGenerationRouterRejected, TextGenerationRouterUnavailable):
                     raise
                 except asyncio.TimeoutError as exc:
-                    # A timed-out generation may have completed remotely. Without an
-                    # adapter-verified idempotent replay contract, never issue a second call.
+                    # A timed-out generation may have completed remotely. Keep credits
+                    # reserved for reconciliation; never release or replay this request.
+                    await mark_credit_pending("provider_timeout_outcome_unknown")
                     raise TextGenerationRouterUnavailable(
                         "text-generation outcome is unknown after timeout; automatic replay is blocked"
                     ) from exc
                 except Exception as exc:
+                    await mark_credit_pending("provider_outcome_unknown")
                     raise TextGenerationRouterUnavailable(
                         "text-generation provider outcome is unknown; automatic replay is blocked"
                     ) from exc
 
         if last_safe_failure is not None:
+            if credit_reservation is not None and self._credit_ledger is not None:
+                try:
+                    await self._credit_ledger.release(credit_reservation, "all_provider_routes_rejected_before_execution")
+                except Exception as exc:
+                    await mark_credit_pending("definitive_failure_credit_release_failed")
+                    raise TextGenerationRouterUnavailable(
+                        "all providers rejected before execution but credit release is pending reconciliation"
+                    ) from exc
             raise TextGenerationRouterUnavailable(
                 "all approved text-generation providers were unavailable before generation; fallback exhausted",
                 category="provider_route",
