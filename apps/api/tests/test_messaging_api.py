@@ -212,5 +212,5 @@ def test_conversation_memory_context_delegates_to_canonical_memory_coordinator(m
     result = asyncio.run(messaging_api._conversation_memory_context(
         conversation, "requester", "agent", max_messages=8, max_chars=3000,
     ))
-    assert result == "Human: hi\\nAgent: hello"
+    assert result == "Human: hi\nAgent: hello"
     assert calls == [(conversation, "requester", "agent", 8, 3000)]
