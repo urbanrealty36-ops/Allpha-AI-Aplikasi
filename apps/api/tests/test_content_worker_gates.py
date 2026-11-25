@@ -271,3 +271,23 @@ def test_image_eager_contract_requires_two_jpeg_derivatives():
     ])
     with pytest.raises(ValueError, match="PROVIDER_IMAGE_RENDITION_CONTRACT_INVALID"):
         validate_eager_derivative_contract("image/jpeg", [{"format": "jpg", "status": "success"}])
+
+
+@pytest.mark.parametrize(("resource_type", "path"), [
+    ("image", "/image/destroy"),
+    ("video", "/video/destroy"),
+    ("raw", "/raw/destroy"),
+])
+def test_cloudinary_cleanup_uses_asset_resource_type(resource_type, path):
+    from allpha_api.content_provider_cleanup_worker import cloudinary_destroy_endpoint
+
+    assert cloudinary_destroy_endpoint("allpha-test", resource_type).endswith(path)
+
+
+def test_cloudinary_cleanup_rejects_untrusted_resource_and_cloud():
+    from allpha_api.content_provider_cleanup_worker import cloudinary_destroy_endpoint
+
+    with pytest.raises(ValueError, match="RESOURCE_TYPE"):
+        cloudinary_destroy_endpoint("allpha-test", "unknown")
+    with pytest.raises(ValueError, match="CLOUD_INVALID"):
+        cloudinary_destroy_endpoint("bad/cloud", "image")
