@@ -185,7 +185,7 @@ for (const contract of [
 for (const contract of [
   "/media/resumable", "/complete", "Tus-Resumable", "Upload-Offset", "upload_token",
   "upload_metadata", "chunk_size_bytes", "application/offset+octet-stream", "Idempotency-Key"
-]) assert.ok(resumableMediaUploader.includes(contract), `missing canonical browser Cloudinary contract: ${contract}`);
+]) assert.ok(resumableMediaUploader.includes(contract), `missing canonical browser TUS contract: ${contract}`);
 assert.doesNotMatch(contentStudio, /new FormData\(\)/, "Web Creator Studio must use the canonical resumable media upload lifecycle");
 assert.doesNotMatch(contentStudio, /SUPABASE_SERVICE_ROLE_KEY|service_role|mockContentItems|fakeFeed/);
 
