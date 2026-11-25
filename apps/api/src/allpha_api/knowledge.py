@@ -116,7 +116,16 @@ async def _admin_db_request(method: str, path: str, access_token: str | None = N
     except httpx.HTTPError as exc:
         raise HTTPException(503, detail={"code": "KNOWLEDGE_DATABASE_UNAVAILABLE", "message": "Database sumber pengetahuan tidak tersedia."}) from exc
     if response.status_code == 404:
-        return []
+        # A missing PostgREST relation/RPC is a schema or deployment error,
+        # never an empty collection. Treating it as [] makes an unavailable
+        # lifecycle endpoint look like a successful no-op to callers.
+        raise HTTPException(
+            503,
+            detail={
+                "code": "KNOWLEDGE_SCHEMA_UNAVAILABLE",
+                "message": "Kontrak database Knowledge belum tersedia.",
+            },
+        )
     if response.status_code == 409:
         raise HTTPException(409, detail={"code": "KNOWLEDGE_CONFLICT", "message": "Status sumber pengetahuan berubah; muat ulang sebelum mencoba lagi."})
     if response.status_code >= 400:
