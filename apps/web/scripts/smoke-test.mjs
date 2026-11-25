@@ -177,10 +177,12 @@ const superAdmin = readFileSync(superAdminPath, "utf8");
 // ENG-P13 Creator Studio + moderation contracts: authenticated API only; no mocked business records.
 const contentStudio = readFileSync(new URL("../app/content-studio/page.tsx", import.meta.url), "utf8");
 for (const contract of [
-  "/v1/content/mine", "/v1/content", "/media", "/preview", "/publish", "/retry",
-  "Authorization", "session.access_token", "FormData", "preview_url", "visibility", "content_type",
+  "/v1/content/mine", "/v1/content", "/media/resumable", "/complete", "/preview", "/publish", "/retry",
+  "Authorization", "session.access_token", "Tus-Resumable", "Upload-Offset", "upload_token",
+  "chunk_size_bytes", "preview_url", "visibility", "content_type",
   "Konten dikirim untuk ditinjau."
 ]) assert.ok(contentStudio.includes(contract), `missing ENG-P13 Web content contract: ${contract}`);
+assert.doesNotMatch(contentStudio, /new FormData\(\)/, "Web Creator Studio must use the canonical resumable media upload lifecycle");
 assert.doesNotMatch(contentStudio, /SUPABASE_SERVICE_ROLE_KEY|service_role|mockContentItems|fakeFeed/);
 
 const moderationPath = new URL("../../super-admin/app/content-moderation/page.tsx", import.meta.url);
