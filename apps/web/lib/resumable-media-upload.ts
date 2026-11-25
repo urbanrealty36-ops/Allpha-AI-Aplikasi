@@ -34,6 +34,7 @@ export async function uploadContentMediaWithTus(
   file: File,
   idempotencyKey: string,
   onProgress: (percent: number) => void,
+  mediaType = file.type,
 ): Promise<{ id: string }> {
   if (!Number.isSafeInteger(file.size) || file.size <= 0) {
     throw new Error("Ukuran file media tidak valid untuk upload resumable.");
@@ -41,7 +42,7 @@ export async function uploadContentMediaWithTus(
   const initialized = await request(`/v1/content/${encodeURIComponent(contentId)}/media/resumable`, {
     method: "POST",
     headers: { "Idempotency-Key": idempotencyKey },
-    body: JSON.stringify({ filename: file.name, media_type: file.type, size_bytes: file.size }),
+    body: JSON.stringify({ filename: file.name, media_type: mediaType, size_bytes: file.size }),
   });
   const init = initialized as ResumableMediaInit;
   if (!init.item?.id) throw new Error("API tidak mengembalikan identitas media untuk upload resumable.");
@@ -235,15 +236,16 @@ export async function uploadContentMediaWithCloudinary(
   file: File,
   idempotencyKey: string,
   onProgress: (percent: number) => void,
+  mediaType = file.type,
 ): Promise<{ id: string }> {
   if (!Number.isSafeInteger(file.size) || file.size <= 0) throw new Error("Ukuran file media tidak valid.");
-  if (!file.type) throw new Error("Tipe MIME file wajib tersedia.");
+  if (!mediaType) throw new Error("Tipe MIME file wajib tersedia.");
   const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
   const sha256 = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
   const raw = await request("/v1/media/upload-intents", {
     method: "POST",
     headers: { "Idempotency-Key": idempotencyKey },
-    body: JSON.stringify({ content_id: contentId, filename: file.name, media_type: file.type, size_bytes: file.size, sha256 }),
+    body: JSON.stringify({ content_id: contentId, filename: file.name, media_type: mediaType, size_bytes: file.size, sha256 }),
   });
   const intent = raw as CloudinaryUploadIntent;
   if (!intent.item?.id || !intent.upload?.upload_url || !intent.upload?.params) {
