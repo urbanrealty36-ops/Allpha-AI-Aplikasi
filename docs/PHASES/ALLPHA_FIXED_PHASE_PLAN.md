@@ -1807,3 +1807,10 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 - **Compatibility:** extended provider metadata is read only when the Cloudinary storage feature flag is enabled, so the current Supabase-backed production path continues to use the existing schema.
 - **Focused tests:** image derivative count, naming and URL resource-type path checks added; CI pending.
 - **Status:** ENG-P13 remains in_progress. Direct signed upload, Cloudinary-only binary persistence and private delivery still require the asset-registry migration and resumable API/client integration.
+
+## 40.96 — ENG-P13 Cloudinary cleanup resource-type correctness (2026-11-25)
+
+- **Implementation:** the existing provider cleanup consumer now selects Cloudinary's destroy endpoint from the persisted asset resource type (image, video, or raw) rather than hard-coding `/video/destroy`. It validates the resource type, cloud name and Allpha public-ID namespace before issuing the signed destroy request. This allows cleanup jobs for image derivatives/assets to use the correct provider API without introducing another worker or queue.
+- **Focused regression coverage:** tests cover image/video/raw endpoint selection and reject invalid resource types/cloud names. CI result is pending at this entry's creation; do not treat source commit as test/deployment evidence.
+- **Scope boundary:** this closes a concrete P13 deletion-path defect only. It does not prove upload authorization, Cloudinary binary upload, callback processing, derivative persistence, scanner readiness or secure delivery end-to-end. No production DB/Storage mutation was performed.
+- **Status:** ENG-P13 remains `in_progress`; continue with the direct Cloudinary upload-intent/asset metadata contract and resumable client integration, then verify the complete provider lifecycle against configured scanner and Railway worker.
