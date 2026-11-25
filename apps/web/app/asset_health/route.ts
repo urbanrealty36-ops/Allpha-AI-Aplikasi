@@ -9,8 +9,8 @@ const REQUIRED_ASSETS = [
   { path: "/assets/slides/slide_welcome_3d_1793022854882.jpg", contentType: "image/jpeg" },
   { path: "/assets/slides/slide_cinema_3d_1793023017033.jpg", contentType: "image/jpeg" },
   { path: "/assets/slides/slide_livestage_3d_1793023043430.jpg", contentType: "image/jpeg" },
-  { path: "/assets/menggu3d/district_spatial.jpg", contentType: "image/jpeg" },
-  { path: "/assets/menggu3d/landmark_citadel.jpg", contentType: "image/jpeg" },
+  // Spatial preview assets are intentionally excluded: middleware returns 404
+  // while the 3D Universe is globally locked. They must not fail app readiness.
 ] as const;
 
 export async function GET() {

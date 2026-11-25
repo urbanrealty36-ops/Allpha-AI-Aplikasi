@@ -847,11 +847,14 @@ for (const requiredPath of [
   "/assets/slides/slide_welcome_3d_1793022854882.jpg",
   "/assets/slides/slide_cinema_3d_1793023017033.jpg",
   "/assets/slides/slide_livestage_3d_1793023043430.jpg",
-  "/assets/menggu3d/district_spatial.jpg",
-  "/assets/menggu3d/landmark_citadel.jpg",
 ]) {
   assert.ok(assetHealthRoute.includes(requiredPath), `runtime asset health probe is missing ${requiredPath}`);
 }
+assert.doesNotMatch(assetHealthRoute, /\/assets\/menggu3d\//,
+  "locked Spatial preview assets must not be part of the readiness probe");
+const spatialAssetMiddleware = readFileSync(new URL("../middleware.ts", import.meta.url), "utf8");
+assert.ok(spatialAssetMiddleware.includes('pathname.startsWith("/assets/menggu3d/")'),
+  "direct Spatial asset requests must remain locked while excluded from readiness");
 
 
 // AI Cinema production CTA must open the real Creator Studio workspace,

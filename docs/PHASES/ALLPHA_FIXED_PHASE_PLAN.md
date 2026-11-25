@@ -1748,3 +1748,12 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 - **Implementation:** apps/web/middleware.ts now returns a non-cacheable 404 for direct requests to /assets/menggu3d/* and the named Spatial district preview image. This complements the FastAPI route lock, Web route layouts, Super Admin layouts, and Native notice screens.
 - **Commit:** c86dd96ea12ec8fe0174b19eb1f7b539e0c730ff.
 - **Verification:** middleware source committed to main; latest Web build and direct asset request verification pending. Private Supabase object URLs previously issued remain subject to their original signed-token expiry; no storage object was deleted or modified.
+
+
+## 40.89 — Railway Web readiness aligned with the global Spatial lock (2026-11-25)
+
+- **Production failure evidence:** Railway deployment `db8f9a3c-dd13-4b4e-98e6-67bbda5e0eef` built and started Next.js successfully on port 8080, but `/asset_health` returned HTTP 503 on every healthcheck attempt. The readiness route probed two `/assets/menggu3d/*` files.
+- **Root cause:** section 40.88 intentionally makes direct `/assets/menggu3d/*` requests return HTTP 404 through Web middleware while the entire 3D Universe is locked. The readiness probe incorrectly treated those deliberately forbidden files as required application assets, so the app could never become healthy.
+- **Implementation:** `apps/web/app/asset_health/route.ts` now probes only assets that are permitted to be served. `apps/web/scripts/smoke-test.mjs` asserts that locked Spatial assets are excluded from readiness and that middleware continues to deny direct requests. The public asset inventory/build manifest remains unchanged; this fix does not unlock or delete Spatial assets.
+- **Deployment:** Railway `Allpha-Web` is configured to deploy from `main` and healthcheck `/asset_health`; a push to this commit will trigger the canonical Railway deployment. No Vercel deployment is used.
+- **Status:** source fix committed; CI and Railway healthcheck verification pending. No P07–P19 phase status is advanced by this operational correction.
