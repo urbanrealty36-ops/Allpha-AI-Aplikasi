@@ -13,7 +13,7 @@ MAX_PROVIDER_MEDIA_BYTES = 50 * 1024 * 1024
 def validate_eager_derivative_contract(media_type: str, eager: Any) -> None:
  if not isinstance(eager, list) or any(not isinstance(item, dict) for item in eager):
   raise ValueError("PROVIDER_EAGER_DERIVATIVES_INVALID")
- if any(item.get("status") != "success" for item in eager):
+ if any(item.get("status") not in (None, "success") for item in eager):
   raise ValueError("PROVIDER_EAGER_DERIVATIVES_INCOMPLETE")
  expected_transformations=set((eager_transformations(media_type) or "").split("|")) - {""}
  actual_transformations=[str(item.get("transformation") or "") for item in eager]
