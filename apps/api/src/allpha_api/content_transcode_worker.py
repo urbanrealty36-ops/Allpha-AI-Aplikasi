@@ -18,7 +18,7 @@ class TranscodeWorker:
   self.callback=os.environ["ALLPHA_CLOUDINARY_CALLBACK_URL"]
   self.clamav_host=os.environ["CLAMAV_HOST"]; self.clamav_port=int(os.getenv("CLAMAV_PORT","3310"))
   self.worker_id=f"content-transcode-{uuid.uuid4()}"
-  self.client=httpx.AsyncClient(timeout=httpx.Timeout(180,connect=10),headers={"apikey":self.key,"Authorization":f"Bearer {self.key}"})
+  self.client=httpx.AsyncClient(trust_env=False, follow_redirects=False, timeout=httpx.Timeout(180,connect=10),headers={"apikey":self.key,"Authorization":f"Bearer {self.key}"})
   self.stopping=False
  async def rpc(self,name,payload):
   r=await self.client.post(f"{self.base}/rest/v1/rpc/{name}",json=payload);r.raise_for_status();return r.json() if r.content else None
@@ -49,7 +49,7 @@ class TranscodeWorker:
    signature=hashlib.sha1((serialized+self.secret).encode()).hexdigest()
    form={**params,"api_key":self.api_key,"signature":signature,"file":("original.bin",data,media_type)}
    # Never send Supabase service-role headers to the third-party media provider.
-   async with httpx.AsyncClient(timeout=httpx.Timeout(180,connect=10)) as provider_client:
+   async with httpx.AsyncClient(trust_env=False, follow_redirects=False, timeout=httpx.Timeout(180,connect=10)) as provider_client:
     upload=await provider_client.post(f"https://api.cloudinary.com/v1_1/{self.cloud}/{resource}/upload",data={k:v for k,v in form.items() if k!="file"},files={"file":form["file"]})
    upload.raise_for_status();asset=upload.json()
    if asset.get("public_id")!=public_id or not asset.get("asset_id") or not asset.get("batch_id"):
