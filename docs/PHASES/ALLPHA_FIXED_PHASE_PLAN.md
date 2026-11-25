@@ -1712,3 +1712,14 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 - Do not mark P13 complete until the dedicated worker/scanner/credentials are available and a real authorized upload reaches scan-clean → transcode → callback verification → private derivative persistence → authorized playback, with retry/deletion behavior verified.
 
 **Forward phase mapping:** ENG-P14 Feed; ENG-P15 Reels; ENG-P16 Stories; ENG-P17 Discovery; ENG-P18 Messaging; ENG-P19 Communities/collaboration/missions/workspaces. Map ENG-P19 to the PRD Collaboration Engine domain (domain 35) without creating a new engineering phase. Preserve the PRD v3.1.1 requirement that messaging also covers DM result delivery and notification state where those contracts are owned by existing phases.
+
+
+## 40.85 — Global 3D Universe access lock (2026-11-25)
+
+- **User-directed scope:** 3D Universe/Spatial is under development and must be inaccessible to anonymous users, authenticated users, and operators. This is an operational lock, not a deletion or retirement of the Spatial domain.
+- **API enforcement:** apps/api/src/allpha_api/main.py now returns a non-cacheable 404 SPATIAL_UNDER_DEVELOPMENT response for every /v1/spatial and /v1/admin/spatial request before route dependencies execute. This blocks public manifests, navigation, ingest, theme, and operator governance API paths covered by those prefixes.
+- **Web enforcement:** apps/web/app/spatial/layout.tsx calls Next.js notFound() server-side for the complete /spatial route tree, independent of authentication state.
+- **Regression contract:** apps/api/tests/test_spatial_access_lock.py covers anonymous access, authenticated access, operator API access, and non-spatial path isolation.
+- **Commits:** API lock f4d9767b7b5538aa3750b0c35f5c1651ffd4bfda; Web route lock 37a5d1fce415878b32013ffec2c888b2f83cb04d; API lock regression 95ccdf3a2726aa67a638e2978f1fdf8cf0cd2f47.
+- **Verification:** source committed to main; automated test result and Railway runtime verification are pending. Super Admin UI, Native navigation, legacy theme route, and cached local assets remain follow-up lock surfaces; no full cross-client lock is claimed yet.
+- **Phase status:** ENG-P21–P24 remain unchanged in the fixed plan; no Spatial phase is marked complete. All public and operator Spatial API access is denied at the FastAPI boundary while this lock is active.
