@@ -260,3 +260,11 @@ For planned Agent tasks that carry Knowledge citations, the API and shared worke
 - Remote mode is the default. It pins the exact allowlisted HTTPS hostname to validated public DNS addresses, disables redirects and ambient proxies, validates the scanner/engine/signature identity, requires an exact SHA-256 receipt, and fails closed on missing/ambiguous verdicts. Malware verdicts are terminal; unavailable/missing scanner remains fail-closed with stable error codes for bounded retry handling.
 - Local ClamAV is available only when ALLPHA_DOCUMENT_SCANNER_MODE=clamd and ALLPHA_CLAMAV_ENABLED=true, with deployment-pinned engine/signature identity and CLAMAV_HOST. Do not use local mode on the current 1 GB shared Railway worker.
 - The media workers remain disabled until the remote scanner endpoint, credential, exact hostname allowlist and immutable scanner identity are configured on the actual worker service; Knowledge scanner configuration on another service is not implicitly inherited.
+
+
+## ENG-P13 shared Railway media consumer host (source implemented)
+
+- The existing allpha-agent-runtime-worker now composes the canonical image/subtitle, Cloudinary transcode, Cloudinary callback and Cloudinary cleanup consumers through allpha_api.content_worker_host. This reuses the current Railway service and the existing typed content_lifecycle_jobs queue; it creates no new Railway service, queue, event table or media engine.
+- Each consumer retains its own explicit configuration gate, claim RPC/job_type, lease token, retry/failure RPC and bounded poll interval. A missing scanner or Cloudinary setting disables only that consumer; sibling Agent Runtime, Workflow and Knowledge consumers remain isolated.
+- The shared host closes each worker HTTP client on graceful shutdown. Image batch defaults to one job; Cloudinary transforms are performed by the provider, not local FFmpeg. Local ClamAV remains prohibited on the 1 GB shared host; use the canonical remote scanner.
+- Runtime activation remains disabled until the actual Railway worker has its server-only Cloudinary references and the complete remote scanner endpoint/credential/allowlist/identity. The worker service must not be reported as processing media until a real persisted lifecycle job is completed.

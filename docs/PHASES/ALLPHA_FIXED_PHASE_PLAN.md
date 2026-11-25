@@ -1778,3 +1778,13 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 - **Focused tests added:** remote media scanner receipt, malicious verdict, missing configuration and media-worker readiness with remote scanner/no local ClamAV. Existing local ClamAV tests remain as opt-in compatibility coverage. CI result pending.
 - **Remaining activation dependency:** the actual remote scanner URL, API credential, exact hostname allowlist and scanner/engine/signature pins must be configured on the worker service itself. No scanner variables are currently evidenced on the Railway worker, so no worker is enabled and no media job is claimed.
 - **Status:** ENG-P13 remains in_progress; no media lifecycle or Cloudinary binary upload is production-verified.
+
+
+## 40.92 — Compose ENG-P13 media consumers on the existing Railway shared worker (2026-11-25)
+
+- **Implementation:** added allpha_api.content_worker_host and connected it to the existing allpha-agent-runtime-worker entrypoint. It hosts the existing image/subtitle, Cloudinary transcode, callback and cleanup consumers using their current typed lifecycle job claims and lease RPCs.
+- **No duplicate infrastructure:** no new Railway service, queue, event table, or processing engine is introduced. Every media consumer is independently gated and failure-isolated from Agent Runtime, Workflow and Knowledge.
+- **Resource strategy:** media batch processing remains bounded; Cloudinary performs remote transforms; the 1 GB shared worker must use the authenticated remote malware scanner and must not bootstrap local ClamAV.
+- **Focused tests:** added disabled-by-default, one-batch graceful-stop and invalid-consumer-isolation tests. CI pending.
+- **Activation:** no media consumer is enabled by this commit. The Railway shared worker still lacks remote scanner configuration and Cloudinary references. Configure only the required provider references after the host build is green; never enable processing without scanner readiness.
+- **Status:** ENG-P13 remains in_progress; no Cloudinary upload, callback or delivery lifecycle is production-verified.

@@ -248,13 +248,17 @@ async def _serve_runtime_enabled(stop_event: asyncio.Event) -> None:
 
 
 async def serve() -> None:
-    """Host independently gated runtime, workflow and Knowledge consumers in one process."""
-    from allpha_api import workflow_worker_host, knowledge_ingestion_worker, knowledge_worker
+    """Host independently gated runtime, workflow, Knowledge and content-media consumers."""
+    from allpha_api import (
+        workflow_worker_host, knowledge_ingestion_worker, knowledge_worker,
+        content_worker_host,
+    )
 
     runtime_enabled = _consumer_enabled("Agent Runtime", _enabled)
     workflow_enabled = _consumer_enabled("Workflow", workflow_worker_host.enabled)
     knowledge_documents_enabled = _consumer_enabled("Knowledge document", knowledge_ingestion_worker.enabled)
     knowledge_embeddings_enabled = _consumer_enabled("Knowledge embedding", knowledge_worker.enabled)
+    content_media_enabled = _consumer_enabled("Content media", content_worker_host.enabled)
     stop_event = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
@@ -288,17 +292,24 @@ async def serve() -> None:
             ),
             name="knowledge-embedding-worker",
         ))
+    if content_media_enabled:
+        consumers.append(asyncio.create_task(
+            _serve_consumer_isolated(
+                "Content media", content_worker_host.serve_enabled(stop_event=stop_event),
+            ),
+            name="content-media-worker-host",
+        ))
 
     if not consumers:
         logger.warning(
-            "Allpha worker container is healthy but idle; Agent Runtime and Knowledge consumers are disabled"
+            "Allpha worker container is healthy but idle; all independently gated consumers are disabled"
         )
         await stop_event.wait()
         return
 
     logger.info(
-        "Allpha shared worker host started; agent_runtime=%s workflow=%s knowledge_documents=%s knowledge_embeddings=%s",
-        runtime_enabled, workflow_enabled, knowledge_documents_enabled, knowledge_embeddings_enabled,
+        "Allpha shared worker host started; agent_runtime=%s workflow=%s knowledge_documents=%s knowledge_embeddings=%s content_media=%s",
+        runtime_enabled, workflow_enabled, knowledge_documents_enabled, knowledge_embeddings_enabled, content_media_enabled,
     )
     await asyncio.gather(*consumers)
 
