@@ -43,6 +43,9 @@ def test_legacy_supabase_media_delivery_returns_signed_original_and_derivative_u
     requested: list[str] = []
 
     class _Client:
+        def __init__(self, *args, **kwargs):
+            pass
+
         async def __aenter__(self):
             return self
 
