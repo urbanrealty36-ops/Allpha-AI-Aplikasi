@@ -45,7 +45,7 @@ async def _db(method: str, table: str, *, params: dict[str,str] | None = None, p
         headers["Authorization"] = f"Bearer {os.getenv('SUPABASE_SERVICE_ROLE_KEY', '').strip()}"
     if prefer: headers["Prefer"] = prefer
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(12,connect=3)) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(12,connect=3), follow_redirects=False, trust_env=False) as client:
             response = await client.request(method,f"{base}/rest/v1/{table}",headers=headers,params=params,json=payload)
     except httpx.HTTPError as exc:
         raise HTTPException(503,detail={"code":"CINEMA_DATABASE_UNAVAILABLE","message":"Data AI Cinema sementara tidak tersedia."}) from exc
@@ -747,7 +747,7 @@ async def apply_cinema_generation_job(
             "message": "Host artefak privat tidak cocok dengan Supabase canonical.",
         })
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(12, connect=3)) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(12, connect=3), follow_redirects=False, trust_env=False) as client:
             response = await client.get(signed_url)
             response.raise_for_status()
     except httpx.HTTPError as exc:
