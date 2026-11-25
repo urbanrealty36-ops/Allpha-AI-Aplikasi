@@ -154,7 +154,10 @@ export async function uploadContentMedia(
   idempotencyKey: string,
   onProgress: (percent: number) => void,
 ): Promise<{ id: string }> {
-  if (process.env.NEXT_PUBLIC_ALLPHA_CLOUDINARY_MEDIA_ENABLED === "true") {
+  const cloudinaryEligible = file.type.startsWith("image/")
+    || file.type.startsWith("video/")
+    || file.type.startsWith("audio/");
+  if (process.env.NEXT_PUBLIC_ALLPHA_CLOUDINARY_MEDIA_ENABLED === "true" && cloudinaryEligible) {
     return uploadContentMediaWithCloudinary(request, contentId, file, idempotencyKey, onProgress);
   }
   return uploadContentMediaWithTus(request, contentId, file, idempotencyKey, onProgress);
@@ -162,10 +165,68 @@ export async function uploadContentMedia(
 
 
 export type CloudinaryUploadIntent = {
-  item: { id: string };
-  upload: { upload_url: string; params: Record<string, string | number | boolean>; expires_at: number };
+  item: { id: string; status: string };
+  upload: {
+    upload_url: string;
+    resource_type: string;
+    delivery_type: string;
+    public_id: string;
+    params: Record<string, string | number | boolean>;
+    expires_at: number;
+  };
   expires_in_seconds: number;
 };
+
+async function uploadDirectToCloudinary(
+  file: File,
+  intent: CloudinaryUploadIntent,
+  onProgress: (percent: number) => void,
+): Promise<void> {
+  if (!intent.upload?.upload_url || !intent.upload.params || !intent.upload.public_id) {
+    throw new Error("Kontrak upload Cloudinary dari API tidak lengkap.");
+  }
+  if (["uploaded", "processing", "ready"].includes(intent.item.status)) {
+    onProgress(95);
+    return;
+  }
+  if (intent.upload.expires_at <= Math.floor(Date.now() / 1000)) {
+    throw new Error("Intent upload Cloudinary sudah kedaluwarsa. Mulai ulang upload media.");
+  }
+  const form = new FormData();
+  form.append("file", file);
+  for (const [key, value] of Object.entries(intent.upload.params)) form.append(key, String(value));
+  const result = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", intent.upload.upload_url);
+    xhr.timeout = 180000;
+    xhr.upload.onprogress = event => {
+      if (event.lengthComputable && event.total > 0) onProgress(Math.min(90, Math.floor(event.loaded / event.total * 90)));
+    };
+    xhr.onload = () => resolve({ status: xhr.status, body: xhr.responseText || "" });
+    xhr.onerror = () => reject(new Error("Koneksi ke Cloudinary terputus. Upload dapat dicoba kembali."));
+    xhr.ontimeout = () => reject(new Error("Upload Cloudinary melewati batas waktu."));
+    xhr.send(form);
+  });
+  if (result.status >= 200 && result.status < 300) {
+    let asset: Record<string, unknown>;
+    try { asset = JSON.parse(result.body) as Record<string, unknown>; }
+    catch { throw new Error("Respons upload Cloudinary tidak valid."); }
+    if (asset.public_id !== intent.upload.public_id
+      || asset.resource_type !== intent.upload.resource_type
+      || asset.type !== "authenticated"
+      || Number(asset.bytes) !== file.size) {
+      throw new Error("Identitas asset Cloudinary tidak sesuai dengan upload intent.");
+    }
+  } else {
+    let providerMessage = "";
+    try { providerMessage = String((JSON.parse(result.body) as { error?: { message?: string } }).error?.message || ""); }
+    catch { /* Preserve the provider HTTP status. */ }
+    const duplicate = result.status === 409 || /already exists|already uploaded/i.test(providerMessage);
+    if (!duplicate) throw new Error(providerMessage || ("Cloudinary menolak upload (HTTP " + result.status + ")."));
+  }
+  onProgress(95);
+}
+
 
 /** Direct authenticated Cloudinary upload; API reserves and verifies every asset. */
 export async function uploadContentMediaWithCloudinary(
@@ -188,16 +249,7 @@ export async function uploadContentMediaWithCloudinary(
   if (!intent.item?.id || !intent.upload?.upload_url || !intent.upload?.params) {
     throw new Error("Kontrak upload Cloudinary dari API tidak lengkap.");
   }
-  const form = new FormData();
-  form.append("file", file);
-  for (const [key, value] of Object.entries(intent.upload.params)) form.append(key, String(value));
-  const response = await fetch(intent.upload.upload_url, { method: "POST", body: form, cache: "no-store" });
-  if (!response.ok) {
-    let reason = `Cloudinary menolak upload (HTTP ${response.status}).`;
-    try { const body = await response.json(); reason = body?.error?.message || reason; } catch { /* Keep safe provider status. */ }
-    throw new Error(reason);
-  }
-  onProgress(95);
+  await uploadDirectToCloudinary(file, intent, onProgress);
   const completed = await request("/v1/media/complete", {
     method: "POST",
     body: JSON.stringify({ media_id: intent.item.id }),
