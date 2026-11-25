@@ -266,12 +266,6 @@ async def cloudinary_callback(
 async def delete_media(media_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)):
     """Queue owner-scoped provider deletion; bytes are removed by the durable worker."""
     item = await _owned(media_id, str(user["id"]))
-    if item.get("storage_provider") != "cloudinary":
-        raise HTTPException(
-            409,
-            detail={"code": "MEDIA_LEGACY_PROVIDER_DELETE_UNSUPPORTED",
-                    "message": "Media lama harus dihapus melalui lifecycle domain asal."},
-        )
     result = await service_db_request(
         "request_cloudinary_content_media_delete",
         body={"p_media_id": str(media_id), "p_owner_id": str(user["id"])},
@@ -294,6 +288,9 @@ async def delete_media(media_id: uuid.UUID, user: dict[str, Any] = Depends(curre
     if outcome == "provider_identity_missing":
         raise HTTPException(409, detail={"code": "MEDIA_PROVIDER_IDENTITY_MISSING",
                                          "message": "Identitas asset provider tidak lengkap."})
+    if outcome == "media_state_invalid":
+        raise HTTPException(409, detail={"code": "MEDIA_STATE_INVALID",
+                                         "message": "Media masih berada pada state upload yang belum dapat dihapus."})
     if outcome == "domain_delete_not_supported":
         raise HTTPException(409, detail={"code": "MEDIA_DOMAIN_DELETE_UNSUPPORTED",
                                          "message": "Penghapusan harus melalui lifecycle domain asal."})
