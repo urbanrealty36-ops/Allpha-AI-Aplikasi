@@ -218,6 +218,10 @@ class CallbackWorker:
   jobs=await self.rpc("claim_content_lifecycle_jobs",{"p_worker_id":self.worker_id,"p_limit":1,"p_lease_seconds":300,"p_job_type":"provider_callback"}) or []
   for job in jobs:await self.process(job)
   return len(jobs)
+ async def assert_schema_ready(self):
+  result=await self.rpc("cloudinary_media_schema_readiness",{})
+  if not isinstance(result,dict) or result.get("ready") is not True:
+   raise RuntimeError("MEDIA_SCHEMA_NOT_READY")
  async def run(self):
   try:
    while not self.stopping:
@@ -243,6 +247,8 @@ def main():
   return
  worker=CallbackWorker();loop=asyncio.new_event_loop();asyncio.set_event_loop(loop)
  for sig in (signal.SIGINT,signal.SIGTERM):loop.add_signal_handler(sig,lambda:setattr(worker,"stopping",True))
- try:loop.run_until_complete(worker.run())
+ try:
+  loop.run_until_complete(worker.assert_schema_ready())
+  loop.run_until_complete(worker.run())
  finally:loop.close()
 if __name__=="__main__":main()
