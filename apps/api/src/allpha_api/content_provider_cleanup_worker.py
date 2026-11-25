@@ -61,6 +61,10 @@ class CleanupWorker:
      await self.rpc(failure_rpc,{"p_job_id":job["id"],"p_lease_token":job["lease_token"],"p_error_code":type(exc).__name__[:80]})
     except Exception:log.exception("provider cleanup failure could not be recorded")
   return len(jobs)
+ async def assert_schema_ready(self):
+  result=await self.rpc("cloudinary_media_schema_readiness",{})
+  if not isinstance(result,dict) or result.get("ready") is not True:
+   raise RuntimeError("MEDIA_SCHEMA_NOT_READY")
  async def run(self):
   try:
    while not self.stopping:
@@ -83,6 +87,8 @@ def main():
   return
  worker=CleanupWorker();loop=asyncio.new_event_loop();asyncio.set_event_loop(loop)
  for sig in (signal.SIGINT,signal.SIGTERM):loop.add_signal_handler(sig,lambda:setattr(worker,"stopping",True))
- try:loop.run_until_complete(worker.run())
+ try:
+  loop.run_until_complete(worker.assert_schema_ready())
+  loop.run_until_complete(worker.run())
  finally:loop.close()
 if __name__=="__main__":main()
