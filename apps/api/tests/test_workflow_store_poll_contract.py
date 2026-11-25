@@ -63,3 +63,12 @@ def test_workflow_step_heartbeat_uses_service_only_rpc_and_lease_identity():
         "p_run_id":"run-1","p_owner_user_id":"owner-1","p_step_id":"step-1",
         "p_lease_token":"lease-1","p_lease_seconds":45,
     }
+
+def test_workflow_store_resolves_secret_key_from_environment(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://project.supabase.co")
+    monkeypatch.delenv("SUPABASE_SERVICE_ROLE_KEY", raising=False)
+    monkeypatch.setenv("SUPABASE_SECRET_KEY", "canonical-server-secret")
+
+    store = WorkflowStore.from_environment()
+
+    assert store._key == "canonical-server-secret"
