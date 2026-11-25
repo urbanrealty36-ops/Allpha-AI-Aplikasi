@@ -612,7 +612,8 @@ begin
     jsonb_build_object(
       'provider','cloudinary','action','delete_media','media_id',v_media.id,
       'provider_public_id',v_media.provider_public_id,
-      'resource_type',v_media.provider_resource_type
+      'resource_type',v_media.provider_resource_type,
+      'legacy_storage',v_media.provider_metadata->'legacy_storage'
     ),
     v_media.domain,v_media.resource_id,v_media.purpose,v_media.tenant_id,v_media.session_id
   )
