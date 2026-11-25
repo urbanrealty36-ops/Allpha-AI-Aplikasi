@@ -674,14 +674,16 @@ class CanonicalTextGenerationRouter:
                     category="credit_reservation",
                 ) from exc
 
-        async def mark_credit_pending(reason_code: str) -> None:
-            if credit_reservation is not None and self._credit_ledger is not None:
-                try:
-                    await self._credit_ledger.mark_pending(credit_reservation, reason_code)
-                except Exception:
-                    # Never release an uncertain reservation. The durable reservation
-                    # remains available for operator reconciliation if this RPC is down.
-                    pass
+        if credit_reservation is not None and self._credit_ledger is not None:
+            try:
+                # Fence the idempotency key before any provider request. A process
+                # crash after this point can never replay a potentially billable call.
+                await self._credit_ledger.mark_pending(credit_reservation, "provider_execution_fenced")
+            except Exception as exc:
+                raise TextGenerationRouterUnavailable(
+                    "credit reservation could not be fenced for provider execution; call is blocked",
+                    category="credit_reservation",
+                ) from exc
 
         last_safe_failure: TextGenerationProviderTransient | None = None
         for rank in range(start_rank, len(candidates)):
@@ -760,7 +762,6 @@ class CanonicalTextGenerationRouter:
                     except Exception as exc:
                         # The provider may already have charged for this generation. Keep
                         # the reservation pending until usage evidence can be reconciled.
-                        await mark_credit_pending("provider_completed_metering_persistence_failed")
                         raise TextGenerationRouterUnavailable(
                             "generation completed but durable usage evidence could not be recorded; automatic replay is blocked"
                         ) from exc
@@ -768,7 +769,6 @@ class CanonicalTextGenerationRouter:
                         try:
                             await self._credit_ledger.settle(credit_reservation, evidence)
                         except Exception as exc:
-                            await mark_credit_pending("provider_completed_credit_settlement_failed")
                             raise TextGenerationRouterUnavailable(
                                 "generation usage is metered but credit settlement is pending reconciliation"
                             ) from exc
@@ -777,7 +777,6 @@ class CanonicalTextGenerationRouter:
                     return response, evidence
                 except TextGenerationProviderTransient as exc:
                     if not exc.safe_to_retry:
-                        await mark_credit_pending("provider_outcome_unknown")
                         raise TextGenerationRouterUnavailable(
                             "text-generation provider outcome is unknown; automatic replay is blocked"
                         ) from exc
@@ -795,12 +794,10 @@ class CanonicalTextGenerationRouter:
                 except asyncio.TimeoutError as exc:
                     # A timed-out generation may have completed remotely. Keep credits
                     # reserved for reconciliation; never release or replay this request.
-                    await mark_credit_pending("provider_timeout_outcome_unknown")
                     raise TextGenerationRouterUnavailable(
                         "text-generation outcome is unknown after timeout; automatic replay is blocked"
                     ) from exc
                 except Exception as exc:
-                    await mark_credit_pending("provider_outcome_unknown")
                     raise TextGenerationRouterUnavailable(
                         "text-generation provider outcome is unknown; automatic replay is blocked"
                     ) from exc
@@ -810,7 +807,6 @@ class CanonicalTextGenerationRouter:
                 try:
                     await self._credit_ledger.release(credit_reservation, "all_provider_routes_rejected_before_execution")
                 except Exception as exc:
-                    await mark_credit_pending("definitive_failure_credit_release_failed")
                     raise TextGenerationRouterUnavailable(
                         "all providers rejected before execution but credit release is pending reconciliation"
                     ) from exc
