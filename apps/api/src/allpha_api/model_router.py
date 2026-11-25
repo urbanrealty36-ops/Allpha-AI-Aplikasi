@@ -93,11 +93,15 @@ class CanonicalModelRouter:
             raise ModelRouterUnavailable("runtime requires cost budgets, route estimates, and a verifier-confirmed active cost policy approval")
         if not self.has_durable_metering_contract:
             raise ModelRouterUnavailable("runtime requires a durable idempotent metering sink")
+        if any(route.dimensions is None for route in self._routes.values()):
+            raise ModelRouterUnavailable("runtime requires an explicitly approved embedding dimension for every route")
 
     async def embed(self, request: EmbeddingRequest) -> EmbeddingResponse:
         route = self._routes.get(request.sensitivity)
         if route is None:
             raise ModelRouterUnavailable(f"No approved embedding route for sensitivity={request.sensitivity}")
+        if route.dimensions is None:
+            raise ModelRouterUnavailable("approved embedding route must pin an explicit vector dimension")
         cost_authorization = None
         if self._cost_policy_enabled:
             if not self.has_approved_cost_policy:
