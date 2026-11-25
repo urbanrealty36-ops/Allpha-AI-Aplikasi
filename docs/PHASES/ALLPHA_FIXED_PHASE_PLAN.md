@@ -1834,3 +1834,9 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 - **CI failure:** Allpha Smoke `45646721856` passed API pytest, P07/P08 PostgreSQL verifiers, and Web/Native/Super Admin checks, but the P13 disposable PostgreSQL verifier failed while applying the new source migration because its minimal fixture did not include legacy provider columns (`provider_public_id`, asset/batch/callback identity and processing metadata).
 - **Correction:** the source migration now adds those legacy provider/lifecycle columns with `ADD COLUMN IF NOT EXISTS` before applying Cloudinary constraints. This is safe for production schemas where the columns already exist and makes the disposable fixture reflect the minimum contract.
 - **Status:** correction committed separately; P13 verifier rerun pending. Production Supabase remains unchanged; the migration remains source-only.
+
+
+### 40.96.2 — CI coverage label aligned with Cloudinary registry verifier (2026-11-25)
+
+- The P13 PostgreSQL 17 verifier now exercises the Cloudinary canonical registry contract in addition to Cinema playback and subtitle lifecycle. The CI step name is updated to reflect that expanded scope.
+- The prior verifier attempt failed on fixture-only missing provider columns; the source migration now adds the missing columns idempotently. The next Allpha Smoke run is the authoritative result for this correction.
