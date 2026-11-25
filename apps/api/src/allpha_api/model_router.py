@@ -513,6 +513,7 @@ class CanonicalTextGenerationRouter:
         retry_delay_seconds: float = 0.1,
         runtime_preflight: Callable[[str, TextGenerationRoute, TextGenerationPolicy], Awaitable[None]] | None = None,
         fallback_routes: dict[str, tuple[TextGenerationRoute, ...]] | None = None,
+        credit_ledger: TextGenerationCreditLedger | None = None,
     ) -> None:
         self._routes = dict(routes)
         self._adapters = dict(adapters)
@@ -521,6 +522,7 @@ class CanonicalTextGenerationRouter:
         self._metering_sink = metering_sink
         self._retry_delay_seconds = max(0.0, min(retry_delay_seconds, 1.0))
         self._runtime_preflight = runtime_preflight
+        self._credit_ledger = credit_ledger
         for sensitivity, fallbacks in self._fallback_routes.items():
             primary = self._routes.get(sensitivity)
             policy = self._policies.get(sensitivity)
@@ -594,6 +596,8 @@ class CanonicalTextGenerationRouter:
             raise TextGenerationRouterUnavailable("runtime requires a durable idempotent text-generation metering sink", category="metering_sink")
         if self._fallback_routes and self._runtime_preflight is None:
             raise TextGenerationRouterUnavailable("provider fallback requires per-candidate policy and tariff preflight", category="runtime_policy")
+        if self._runtime_preflight is not None and self._credit_ledger is None:
+            raise TextGenerationRouterUnavailable("production text-generation requires an atomic credit reservation and settlement ledger", category="credit_ledger")
 
     async def preflight(self, sensitivity: str) -> dict[str, Any]:
         """Select the first approved route whose provider, policy, active tariff and metering are ready."""
