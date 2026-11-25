@@ -74,8 +74,8 @@ async function request<T>(getAccessToken: Props["getAccessToken"], path: string,
 }
 
 
-type NativeResumableUploadInit = {
-  item: CreatorMedia;
+export type NativeResumableUploadInit = {
+  item: { id: string };
   already_uploaded: boolean;
   tus_endpoint?: string;
   upload_token?: string;
@@ -108,17 +108,18 @@ function base64Ascii(value: string): string {
   return output;
 }
 
-async function uploadNativeFileWithTus(
+export async function uploadNativeFileWithTus(
   file: ExpoFile,
   init: NativeResumableUploadInit,
   apiKey: string,
   mediaId: string,
   onProgress: (percent: number) => void,
+  storageKeyPrefix = "allpha:cinema:tus",
 ): Promise<void> {
   if (!init.tus_endpoint || !init.upload_token || !init.upload_metadata) {
     throw new Error("Kontrak upload resumable dari server tidak lengkap.");
   }
-  const urlKey = "allpha:cinema:tus:" + mediaId;
+  const urlKey = storageKeyPrefix + ":" + mediaId;
   let uploadUrl = await SecureStore.getItemAsync(urlKey);
   const headers = {
     "Tus-Resumable": "1.0.0",
