@@ -1595,3 +1595,10 @@ This is an evidence refresh inside the existing fixed plan. It does not create a
 - **Scope:** API error semantics only; no DB mutation. This removes a false-success path that could otherwise hide missing Knowledge schema contracts from clients and operators.
 - **Status:** source behavior and regression coverage are **implemented**; CI result and production integration are not yet verified. ENG-P07 remains `in_progress`.
 - **Next:** continue source-side policy/retrieval and vector lifecycle work only where decisions are already approved; keep unapproved consent/grant physical schema and vector dimension gated under the exact ADRs.
+
+## 40.72 — ENG-P13 Cinema regression test correction from CI evidence (2026-11-25)
+
+- **CI finding:** the full API test suite reported `1 failed, 1496 passed`; the only failure was `test_cinema_database_client_disables_ambient_proxy_and_redirects`. The production code correctly passes `headers` to `client.request()`; the test incorrectly expected them in the `AsyncClient` constructor kwargs.
+- **Correction:** `f8fcb9453d8afec315b5951b7e5b4afadd439fa7` updates the fake HTTP client to capture request kwargs and assert the apikey/Bearer headers at the actual HTTP request boundary. No production behavior was changed.
+- **Status:** regression test correction is **implemented**; rerun result is pending. The earlier run's other 1,496 tests passed; this does not establish overall API suite success until the corrected run completes.
+- **Next:** confirm the focused/full API run, then continue ENG-P07 source/grant and retrieval integration. ENG-P13 remains `in_progress`; no production completion claim.
