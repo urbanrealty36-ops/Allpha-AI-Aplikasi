@@ -24,11 +24,14 @@ def validate_eager_derivative_contract(media_type: str, eager: Any) -> None:
  elif media_type.startswith("audio/"):
   if len(eager)!=2 or audio_count!=2:
    raise ValueError("PROVIDER_AUDIO_RENDITION_CONTRACT_INVALID")
+ elif media_type.startswith("image/"):
+  if len(eager)!=2 or poster_count!=2:
+   raise ValueError("PROVIDER_IMAGE_RENDITION_CONTRACT_INVALID")
  else:
   raise ValueError("PROVIDER_MEDIA_TYPE_UNSUPPORTED")
 
 
-def provider_derivative_identity(index: int, mime: str) -> tuple[str, str]:
+def provider_derivative_identity(index: int, mime: str, media_type: str = "video/mp4") -> tuple[str, str]:
  """Return a deterministic private-storage name for an allowlisted derivative MIME."""
  if index < 0:
   raise ValueError("PROVIDER_DERIVATIVE_INDEX_INVALID")
@@ -41,7 +44,10 @@ def provider_derivative_identity(index: int, mime: str) -> tuple[str, str]:
  suffix = suffix_by_mime.get(mime)
  if suffix is None:
   raise ValueError("PROVIDER_DERIVATIVE_MIME_INVALID")
- kind = "moderation_poster" if mime == "image/jpeg" else f"rendition_{index + 1}"
+ if mime == "image/jpeg" and media_type.startswith("image/"):
+  kind = "display" if index == 0 else "thumbnail"
+ else:
+  kind = "moderation_poster" if mime == "image/jpeg" else f"rendition_{index + 1}"
  return kind, suffix
 
 
@@ -98,7 +104,10 @@ class CallbackWorker:
     return
    event=callback.get("payload") or {};public_id=str(event.get("public_id",""))
    media_id=str(callback["media_id"]);transcode_job_id=str(callback["job_id"])
-   media_rows=await self.db("GET","content_media",{"select":"id,content_id,owner_id,bucket_id,storage_path,media_type,status,provider_asset_id,provider_public_id,provider_batch_id","id":f"eq.{media_id}","status":"eq.processing","limit":"1"})
+   media_fields="id,content_id,owner_id,bucket_id,storage_path,media_type,status,provider_asset_id,provider_public_id,provider_batch_id"
+   if os.getenv("ALLPHA_MEDIA_STORAGE_PROVIDER","supabase").strip().lower()=="cloudinary":
+    media_fields += ",storage_provider,provider_resource_type,provider_delivery_type,provider_format,provider_version"
+   media_rows=await self.db("GET","content_media",{"select":media_fields,"id":f"eq.{media_id}","status":"eq.processing","limit":"1"})
    if not media_rows:raise ValueError("CALLBACK_MEDIA_NOT_PROCESSING")
    media=media_rows[0]
    transcode=await self.db("GET","content_lifecycle_jobs",{"select":"id,status,payload","id":f"eq.{transcode_job_id}","status":"eq.awaiting_provider","limit":"1"})
@@ -112,10 +121,11 @@ class CallbackWorker:
    async with httpx.AsyncClient(trust_env=False, follow_redirects=False, timeout=httpx.Timeout(90,connect=5)) as provider:
     for index,item in enumerate(eager):
      url=item.get("secure_url");parsed=urlparse(url or "")
-     if parsed.scheme!="https" or parsed.hostname!="res.cloudinary.com" or not parsed.path.startswith(f"/{self.cloud}/video/authenticated/"):
+     resource_type=str(media.get("provider_resource_type") or "video")
+     if resource_type not in {"image","video"} or parsed.scheme!="https" or parsed.hostname!="res.cloudinary.com" or not parsed.path.startswith(f"/{self.cloud}/{resource_type}/authenticated/"):
       raise ValueError("PROVIDER_DERIVATIVE_URL_REJECTED")
      binary,mime=await download_provider_derivative(provider,url)
-     kind,suffix=provider_derivative_identity(index,mime)
+     kind,suffix=provider_derivative_identity(index,mime,str(media["media_type"]))
      await self.scan(binary,f"{kind}.{suffix}",mime)
      path=f"{media['storage_path']}.derived/{kind}.{suffix}"
      storage=f"{self.base}/storage/v1/object/{quote(media['bucket_id'],safe='')}/{quote(path,safe='/')}"

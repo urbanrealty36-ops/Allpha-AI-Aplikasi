@@ -1798,3 +1798,12 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 - **Provider plan:** current media caps remain image <=10 MB and video/audio <=50 MB. Cloudinary requires chunked upload only above 100 MB; the current product caps stay below that threshold, so signed multipart upload is the supported path without assuming a paid feature. Short-lived private downloads use Cloudinary's authenticated download API; token-based CDN access is a premium feature and is not assumed.
 - **Focused tests:** deterministic signature, authenticated upload params, raw resource behavior, private download expiry, webhook freshness/replay body integrity and invalid identity/TTL. The first CI run found a test using HMAC rather than Cloudinary's documented SHA-1/SHA-256 digest of raw body + timestamp + API secret, and a boolean form-encoding mismatch; both were corrected before retry.
 - **Status:** provider adapter is implemented in source; no direct upload intent route, generic asset schema migration, Cloudinary upload or delivery journey is production-verified yet.
+
+
+## 40.95 — Cloudinary image eager derivative contract (2026-11-25)
+
+- **Implementation:** Cloudinary callback contract now validates exactly two JPEG derivatives for image media, classifies them as display and thumbnail, and validates callback URLs against the image or video authenticated resource path according to the stored provider resource type.
+- **Deterministic transformations:** image eager transformations now explicitly request JPEG outputs rather than f_auto, avoiding content-negotiated MIME ambiguity in asynchronous callbacks.
+- **Compatibility:** extended provider metadata is read only when the Cloudinary storage feature flag is enabled, so the current Supabase-backed production path continues to use the existing schema.
+- **Focused tests:** image derivative count, naming and URL resource-type path checks added; CI pending.
+- **Status:** ENG-P13 remains in_progress. Direct signed upload, Cloudinary-only binary persistence and private delivery still require the asset-registry migration and resumable API/client integration.

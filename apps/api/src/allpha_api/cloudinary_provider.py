@@ -86,7 +86,7 @@ def sign_api_params(params: dict[str, object], api_secret: str) -> str:
 def eager_transformations(media_type: str) -> str | None:
     resource = resource_type_for_media_type(media_type)
     if resource == "image":
-        return "c_limit,w_1600,f_auto,q_auto|c_fill,w_320,h_320,g_auto,f_auto,q_auto"
+        return "c_limit,w_1600,f_jpg,q_auto|c_fill,w_320,h_320,g_auto,f_jpg,q_auto"
     if resource == "video":
         if media_type.startswith("video/"):
             return "c_limit,w_1280,vc_h264,f_mp4|c_limit,w_640,vc_h264,f_mp4|so_0,w_640,h_360,c_fill,f_jpg"

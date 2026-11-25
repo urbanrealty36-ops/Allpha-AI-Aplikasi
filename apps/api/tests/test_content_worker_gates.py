@@ -253,3 +253,21 @@ def test_provider_derivative_identity_rejects_unsupported_mime_and_index():
         provider_derivative_identity(0, "application/octet-stream")
     with pytest.raises(ValueError, match="PROVIDER_DERIVATIVE_INDEX_INVALID"):
         provider_derivative_identity(-1, "video/mp4")
+
+
+@pytest.mark.parametrize(("index", "expected"), [(0, ("display", "jpg")), (1, ("thumbnail", "jpg"))])
+def test_image_provider_derivative_identity(index, expected):
+    from allpha_api.content_provider_callback_worker import provider_derivative_identity
+
+    assert provider_derivative_identity(index, "image/jpeg", "image/jpeg") == expected
+
+
+def test_image_eager_contract_requires_two_jpeg_derivatives():
+    from allpha_api.content_provider_callback_worker import validate_eager_derivative_contract
+
+    validate_eager_derivative_contract("image/jpeg", [
+        {"format": "jpg", "status": "success"},
+        {"format": "jpg", "status": "success"},
+    ])
+    with pytest.raises(ValueError, match="PROVIDER_IMAGE_RENDITION_CONTRACT_INVALID"):
+        validate_eager_derivative_contract("image/jpeg", [{"format": "jpg", "status": "success"}])
