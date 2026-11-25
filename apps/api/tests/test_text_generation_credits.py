@@ -163,6 +163,29 @@ def test_credit_ledger_releases_only_definitive_failure_and_marks_unknown_pendin
     assert "/rest/v1/rpc/credit_ledger_mark_pending" in observed
 
 
+def test_credit_reserve_retries_lost_rpc_response_with_same_idempotency_key():
+    reserve_commands = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        if req.method == "GET":
+            return httpx.Response(200, json=[policy_row()])
+        if req.url.path.endswith("/credit_ledger_reserve"):
+            reserve_commands.append(req.read().decode())
+            if len(reserve_commands) == 1:
+                # Simulate the response being lost after the database may have committed.
+                return httpx.Response(503, json={"message": "temporary response failure"})
+            return httpx.Response(200, json={
+                "reservation_id": RESERVATION, "account_id": OWNER,
+                "task_id": "task-1", "reserved_credits": 5, "state": "reserved",
+            })
+        return httpx.Response(404)
+
+    reservation = asyncio.run(ledger(handler).reserve(request(), policy()))
+    assert reservation.reservation_id == RESERVATION
+    assert len(reserve_commands) == 2
+    assert reserve_commands[0] == reserve_commands[1]
+
+
 def test_credit_ledger_fails_closed_without_request_unit_or_matching_cost_policy():
     for row in (policy_row(usage_unit="tokens"), policy_row(max_cost=101)):
         calls = []
