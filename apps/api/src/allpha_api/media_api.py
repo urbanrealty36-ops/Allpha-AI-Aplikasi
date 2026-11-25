@@ -4,7 +4,7 @@ import os, uuid, re, hashlib, json
 from datetime import datetime, timezone
 from pydantic import BaseModel, ConfigDict, Field
 from allpha_api.auth import user_db_request, service_db_request
-from allpha_api.cloudinary_provider import CloudinaryConfig, CloudinaryConfigurationError, build_signed_upload_intent, verify_cloudinary_webhook, build_signed_private_download_url, build_signed_authenticated_delivery_url
+from allpha_api.cloudinary_provider import CloudinaryConfig, CloudinaryConfigurationError, build_signed_upload_intent, fetch_cloudinary_resource, CloudinaryProviderError, verify_cloudinary_webhook, build_signed_private_download_url, build_signed_authenticated_delivery_url
 from typing import Any
 import httpx
 from urllib.parse import quote
@@ -171,7 +171,7 @@ async def create_upload_intent(payload: UploadIntent, request: Request, user: di
         raise HTTPException(422, detail={"code":"MEDIA_TENANT_SESSION_UNSUPPORTED","message":"Tenant dan session binding belum tersedia pada kontrak media ini."})
     try:
         cfg = CloudinaryConfig.from_environment(require_callback=True)
-        intent = build_signed_upload_intent(config=cfg,media_id=str(media_id),media_type=media_type,ttl_seconds=600)
+        intent = build_signed_upload_intent(config=cfg,media_id=str(media_id),media_type=media_type,ttl_seconds=600,context={"allpha_media_id":str(media_id)})
     except (CloudinaryConfigurationError,ValueError) as exc:
         raise HTTPException(503,detail={"code":"CLOUDINARY_NOT_READY","message":"Upload Cloudinary belum siap."}) from exc
     filename = re.sub(r"[^A-Za-z0-9._-]+","-",payload.filename.split("/")[-1])[:120]
@@ -196,17 +196,22 @@ async def complete_upload(payload: UploadCompletion,user:dict[str,Any]=Depends(c
         return {"item":media_item_response(item),"idempotent_replay":True}
     if item.get("status")!="uploading":
         raise HTTPException(409,detail={"code":"MEDIA_STATE_INVALID","message":"Status media tidak dapat dikonfirmasi."})
-    cfg=CloudinaryConfig.from_environment()
-    url=f"https://api.cloudinary.com/v1_1/{cfg.cloud_name}/resources/{item['provider_resource_type']}/authenticated"
+    cfg = CloudinaryConfig.from_environment()
     try:
-        async with httpx.AsyncClient(timeout=12,trust_env=False,follow_redirects=False) as client:
-            response=await client.get(url,params={"public_ids":[item["provider_public_id"]]},auth=(cfg.api_key,cfg.api_secret))
-        if response.status_code!=200:
-            raise HTTPException(409,detail={"code":"CLOUDINARY_ASSET_NOT_FOUND","message":"Asset belum ditemukan."})
-        asset=(response.json().get("resources") or [])[0]
-    except (httpx.HTTPError,ValueError,IndexError,KeyError,TypeError) as exc:
-        raise HTTPException(503,detail={"code":"CLOUDINARY_METADATA_UNAVAILABLE","message":"Metadata asset belum dapat diverifikasi."}) from exc
-    if asset.get("public_id")!=item.get("provider_public_id") or asset.get("resource_type")!=item.get("provider_resource_type") or asset.get("type")!="authenticated" or int(asset.get("bytes") or 0)!=int(item.get("size_bytes") or 0):
+        async with httpx.AsyncClient(timeout=12, trust_env=False, follow_redirects=False) as client:
+            asset = await fetch_cloudinary_resource(
+                config=cfg,
+                public_id=str(item["provider_public_id"]),
+                resource_type=str(item["provider_resource_type"]),
+                client=client,
+            )
+    except CloudinaryProviderError as exc:
+        if exc.code == "CLOUDINARY_ASSET_NOT_FOUND":
+            raise HTTPException(409, detail={"code": exc.code, "message": "Asset belum ditemukan."}) from exc
+        if exc.code == "CLOUDINARY_ASSET_NOT_AUTHENTICATED":
+            raise HTTPException(403, detail={"code": exc.code, "message": "Asset tidak menggunakan delivery privat."}) from exc
+        raise HTTPException(503, detail={"code": "CLOUDINARY_METADATA_UNAVAILABLE", "message": "Metadata asset belum dapat diverifikasi."}) from exc
+    if int(asset.get("bytes") or 0)!=int(item.get("size_bytes") or 0):
         raise HTTPException(403,detail={"code":"CLOUDINARY_ASSET_IDENTITY_MISMATCH","message":"Identitas asset tidak cocok."})
     result=await service_db_request("complete_cloudinary_content_media_upload",body={
         "p_media_id":str(payload.media_id),"p_owner_id":str(user["id"]),"p_asset_id":asset.get("asset_id"),
