@@ -316,10 +316,11 @@ assert.ok(spatialThemeCatalog.includes("Coba lagi"), "Web Theme catalog must pro
 // are canonical-API-backed and must remain reachable from the Feed shell.
 const webCreate = readFileSync(new URL("../app/create/page.tsx", import.meta.url), "utf8");
 for (const contract of [
-  '"/v1/content"', '"/v1/content/"', '"/media"', '"/publish"',
-  "session.access_token", "FormData", "visibility", "content_type", "allowedMedia", "maxBytes", "file.size",
+  '"/v1/content"', '"/v1/content/"', '"/publish"', "uploadContentMediaWithTus", "draftId", "uploadId",
+  "session.access_token", "visibility", "content_type", "allowedMedia", "maxBytes", "file.size",
   "Konten belum", 'role="alert"', "moderation === \"approved\""
 ]) assert.ok(webCreate.includes(contract), "missing Web Create lifecycle contract: " + contract);
+assert.doesNotMatch(webCreate, /new FormData\(\)/, "Web Create must use the shared resumable TUS upload service");
 assert.doesNotMatch(webCreate, /SUPABASE_SERVICE_ROLE_KEY|service_role|mockContentItems|fakeFeed/);
 
 assert.doesNotMatch(webCreate, /aria-label="Navigasi utama"/, "Create must use shared global navigation without a duplicate local nav");
@@ -338,9 +339,12 @@ for (const contract of ["/v1/feed", "/v1/feed/preferences", "session.access_toke
 assert.doesNotMatch(webFeed, /mockFeedItems|fakeFeed/);
 
 const webStories = readFileSync(new URL("../app/stories/page.tsx", import.meta.url), "utf8");
-for (const contract of ["/v1/stories", "/v1/content/", "/media", "/publish", "session.access_token", "FormData"]) {
+for (const contract of ["/v1/stories", "/v1/content/", "/publish", "uploadContentMediaWithTus", "draftId", "uploadId", "session.access_token"]) {
   assert.ok(webStories.includes(contract), "missing Web Stories lifecycle contract: " + contract);
 }
+assert.doesNotMatch(webStories, /new FormData\(\)/, "Web Stories must use the shared resumable TUS upload service");
+assert.ok(webFeed.includes("uploadContentMediaWithTus"), "Web Feed composer must use the shared resumable TUS upload service");
+assert.doesNotMatch(webFeed, /new FormData\(\)/, "Web Feed composer must not use one-shot multipart media upload");
 assert.doesNotMatch(webStories, /mockStories|fakeStoryItems/);
 
 const webReels = readFileSync(new URL("../app/reels/page.tsx", import.meta.url), "utf8");
