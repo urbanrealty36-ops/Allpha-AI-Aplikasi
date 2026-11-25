@@ -311,7 +311,7 @@ async def get_media(media_id:uuid.UUID,user:dict[str,Any]=Depends(current_user))
     await _require_cloudinary_media_schema()
     base,key=_config()
     async with httpx.AsyncClient(timeout=12,trust_env=False,follow_redirects=False) as client:
-        response=await client.get(f"{base}/rest/v1/content_media",params={"select":"id,content_id,domain,purpose,resource_id,filename,media_type,size_bytes,sha256,status,scan_status,storage_provider,provider_resource_type,provider_delivery_type,provider_format,provider_version,provider_width,provider_height,provider_duration,provider_bytes,provider_delete_state,upload_expires_at,upload_completed_at,provider_deleted_at,provider_callback_verified_at,derivatives,created_at,processed_at,updated_at","id":f"eq.{media_id}","owner_id":f"eq.{user['id']}","limit":"1"},headers={"apikey":key,"Authorization":f"Bearer {key}"})
+        response=await client.get(f"{base}/rest/v1/content_media",params={"select":"id,content_id,domain,purpose,resource_id,filename,media_type,size_bytes,sha256,status,scan_status,storage_provider,provider_public_id,provider_resource_type,provider_delivery_type,provider_format,provider_version,provider_width,provider_height,provider_duration,provider_bytes,provider_delete_state,upload_expires_at,upload_completed_at,provider_deleted_at,provider_callback_verified_at,derivatives,created_at,processed_at,updated_at","id":f"eq.{media_id}","owner_id":f"eq.{user['id']}","limit":"1"},headers={"apikey":key,"Authorization":f"Bearer {key}"})
     if response.status_code>=300:
         raise HTTPException(503,detail={"code":"MEDIA_DB_UNAVAILABLE","message":"Media status unavailable."})
     rows=response.json()
