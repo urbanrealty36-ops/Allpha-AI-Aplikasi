@@ -125,6 +125,7 @@ def test_content_media_workers_disable_ambient_proxy_and_redirects():
         "content_transcode_worker.py",
         "content_provider_callback_worker.py",
         "content_provider_cleanup_worker.py",
+        "content_retention_worker.py",
     )
     for filename in worker_files:
         tree = ast.parse((package_dir / filename).read_text(encoding="utf-8"))
