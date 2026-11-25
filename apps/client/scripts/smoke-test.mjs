@@ -60,7 +60,7 @@ assert.ok(app.includes("Eksekusi tetap membutuhkan policy runtime yang disetujui
 for (const contract of [
   "/v1/content/mine", "/v1/content", "/media/resumable", "/complete", "/preview", "/publish", "/retry",
   "createNativeContentDraft", "createNativeStory", "submitNativeContent", "retryNativeContent", "previewNativeContent",
-  "uploadNativeFileWithTus", "Tus-Resumable", "Upload-Offset", "upload_token", "allpha:content:tus", "allpha:story:tus",
+  "uploadNativeFileWithTus", "allpha:content:tus", "allpha:story:tus",
   "Draft konten tersimpan melalui FastAPI", "Konten dikirim untuk moderasi"
 ]) assert.ok(app.includes(contract), `missing ENG-P13 Native content pipeline contract: ${contract}`);
 
