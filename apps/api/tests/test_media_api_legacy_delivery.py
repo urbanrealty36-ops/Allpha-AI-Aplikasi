@@ -1,8 +1,7 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
-
-import pytest
 
 from allpha_api import media_api
 
@@ -16,8 +15,7 @@ class _Response:
         return self._payload
 
 
-@pytest.mark.asyncio
-async def test_legacy_supabase_media_delivery_returns_signed_original_and_derivative_urls(monkeypatch):
+def test_legacy_supabase_media_delivery_returns_signed_original_and_derivative_urls(monkeypatch):
     owner_id = "8f4eec9e-8c5e-4d8c-bd0e-6d7d5e8b7c90"
     media_id = uuid.UUID("1c4c1b6b-9b0a-4e9c-8e39-4a9b8d1b5c61")
     base = "https://allpha-test.supabase.co"
@@ -64,7 +62,7 @@ async def test_legacy_supabase_media_delivery_returns_signed_original_and_deriva
     monkeypatch.setattr(media_api, "_config", lambda: (base, "server-only-key"))
     monkeypatch.setattr(media_api.httpx, "AsyncClient", _Client)
 
-    result = await media_api.get_media(media_id, {"id": owner_id})
+    result = asyncio.run(media_api.get_media(media_id, {"id": owner_id}))
 
     signed_url = f"{base}/storage/v1/object/sign/content-media/signed-object?token=short-lived"
     assert result["delivery"]["url"] == signed_url
