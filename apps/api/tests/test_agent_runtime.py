@@ -154,6 +154,7 @@ def test_consumer_tool_execution_requires_tool_scope_and_exact_allowlist_without
         task_id="consumer-task", trace_id="consumer-trace", idempotency_key="consumer-idem",
         sensitivity="public", prompt="  hello   world  ", max_output_tokens=64, timeout_ms=5000,
         owner_id="owner-1", agent_id="agent-1", source_id="skill-1", source_version=2,
+        billing_account_id="owner-1",
     )
     router = FakeRouter()
     result = asyncio.run(AgentRuntime().execute_skill_generation(
