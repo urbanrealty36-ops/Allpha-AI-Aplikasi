@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import Link from "next/link";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
+import { uploadContentMediaWithTus } from "../../lib/resumable-media-upload";
 import StoriesViewerModal, { type StoryItem } from "../../components/reference-ui/StoriesViewerModal";
 type StoryMedia = { id: string; filename: string; media_type: string; preview_url?: string | null };
 type Story = {
@@ -28,6 +29,9 @@ export default function StoriesPage() {
   const [visibility, setVisibility] = useState<"public" | "followers" | "private">("public");
   const [ttl, setTtl] = useState(24);
   const [file, setFile] = useState<File | null>(null);
+  const [draftId, setDraftId] = useState("");
+  const [uploadId, setUploadId] = useState("");
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -115,23 +119,35 @@ export default function StoriesPage() {
 
   async function createStory(event: FormEvent) {
     event.preventDefault();
-    if (!body.trim() && !file) { setError("Isi teks atau pilih gambar/video terlebih dahulu."); return; }
-    setBusy(true); setError(""); setNotice("");
+    if (!body.trim() && !file && !draftId) { setError("Isi teks atau pilih gambar/video terlebih dahulu."); return; }
+    setBusy(true); setError(""); setNotice(""); setUploadProgress(0);
     try {
-      const created = await request("/v1/stories", {
-        method: "POST",
-        body: JSON.stringify({ body: body.trim(), visibility, expires_after_hours: ttl }),
-      }) as { item: Story };
-      if (file) {
-        const form = new FormData(); form.append("file", file);
-        await request("/v1/content/" + encodeURIComponent(created.item.id) + "/media", { method: "POST", body: form });
+      let storyId = draftId;
+      let createdItem: Story | null = null;
+      if (!storyId) {
+        const created = await request("/v1/stories", {
+          method: "POST",
+          body: JSON.stringify({ body: body.trim(), visibility, expires_after_hours: ttl }),
+        }) as { item: Story };
+        storyId = created.item.id;
+        createdItem = created.item;
+        setDraftId(storyId);
+      } else {
+        const mineResult = await request("/v1/stories/mine?limit=50") as { items?: Story[] };
+        createdItem = mineResult.items?.find(item => item.id === storyId) ?? null;
+        if (!createdItem) throw new Error("Draft Story yang dilanjutkan tidak ditemukan pada akun ini.");
       }
-      const submitted = await request("/v1/content/" + encodeURIComponent(created.item.id) + "/publish", { method: "POST" }) as { item?: Story; message?: string };
-      setBody(""); setFile(null);
+      if (file) {
+        const key = uploadId || crypto.randomUUID();
+        setUploadId(key);
+        await uploadContentMediaWithTus(request, storyId, file, key, setUploadProgress);
+      }
+      const submitted = await request("/v1/content/" + encodeURIComponent(storyId) + "/publish", { method: "POST" }) as { item?: Story; message?: string };
+      setBody(""); setFile(null); setDraftId(""); setUploadId(""); setUploadProgress(0);
       const picker = document.getElementById("story-media") as HTMLInputElement | null;
       if (picker) picker.value = "";
-      const status = submitted.item?.status ?? created.item.status;
-      const moderation = submitted.item?.moderation_status ?? created.item.moderation_status;
+      const status = submitted.item?.status ?? createdItem?.status ?? "unknown";
+      const moderation = submitted.item?.moderation_status ?? createdItem?.moderation_status ?? "unknown";
       setNotice(submitted.message
         ? `${submitted.message} Status: ${status}; moderasi: ${moderation}.`
         : `Story diterima API. Status: ${status}; moderasi: ${moderation}.`);
@@ -224,11 +240,12 @@ export default function StoriesPage() {
               </select>
             </label>
             <label className="text-sm">Gambar / video
-              <input id="story-media" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm" onChange={e => setFile(e.target.files?.[0] ?? null)} className="mt-1 block w-full text-sm" />
+              <input id="story-media" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm" onChange={e => { const next = e.target.files?.[0] ?? null; const same = Boolean(file && next && file.name === next.name && file.size === next.size && file.type === next.type); setFile(next); if (!next) setUploadId(""); else if (!same) setUploadId(crypto.randomUUID()); }} className="mt-1 block w-full text-sm" />
             </label>
           </div>
           {file && <p className="text-xs text-slate-500">{file.name} · {(file.size / 1048576).toFixed(2)} MB</p>}
-          <button disabled={busy} className="rounded-xl bg-indigo-300 px-5 py-3 text-sm font-semibold text-slate-950 disabled:opacity-50">{busy ? "Mengirim…" : "Kirim ke moderasi"}</button>
+          {uploadProgress > 0 && <p className="text-xs text-slate-500">Unggah resumable: {uploadProgress}%</p>}
+          <button disabled={busy} className="rounded-xl bg-indigo-300 px-5 py-3 text-sm font-semibold text-slate-950 disabled:opacity-50">{busy ? "Mengirim…" : draftId ? "Lanjutkan draft Story" : "Kirim ke moderasi"}</button>
         </form>
         {error && <p role="alert" className="mb-4 rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950 dark:text-red-200">{error}</p>}
         {notice && <p role="status" className="mb-4 rounded-xl border border-emerald-300 p-3 text-sm">{notice}</p>}
