@@ -1740,3 +1740,11 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 - **Correction:** the four legacy endpoint-test modules are explicitly skipped while Spatial is locked; the dedicated test_spatial_access_lock.py remains the active access-policy regression contract. Native smoke now asserts the Theme screen displays the development notice and does not request or render Spatial assets.
 - **Commits:** f5ea33a65cb6d57cca7ac3eec98629a5f66141c9; 69b1abefe198b0b5cb8eaf2c7fa7e8cbba233df0; d39c35571696e07c7f5eb6dcac882e339aa87a13; cdafa10ac228ddbcf2ae7eafad03e96e4bf6929f; bff0276390bed6e44f2213aa31e6ef80568447cf.
 - **Verification:** corrected CI has been triggered by direct commits to main; results pending. No full product phase completion is implied.
+
+
+## 40.88 — Public static Spatial preview asset lock (2026-11-25)
+
+- **Additional surface found:** the Web public directory contains legacy 3D Universe preview images under /assets/menggu3d and one Spatial district reference image. Route-level layouts do not protect files served directly from the public directory.
+- **Implementation:** apps/web/middleware.ts now returns a non-cacheable 404 for direct requests to /assets/menggu3d/* and the named Spatial district preview image. This complements the FastAPI route lock, Web route layouts, Super Admin layouts, and Native notice screens.
+- **Commit:** c86dd96ea12ec8fe0174b19eb1f7b539e0c730ff.
+- **Verification:** middleware source committed to main; latest Web build and direct asset request verification pending. Private Supabase object URLs previously issued remain subject to their original signed-token expiry; no storage object was deleted or modified.
