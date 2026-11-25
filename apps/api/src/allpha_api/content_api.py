@@ -16,7 +16,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from allpha_api.auth import current_user, user_db_request
 from allpha_api.operator_security import require_operator_scope, write_operator_audit
-from allpha_api.cloudinary_provider import (\n    CloudinaryConfig, CloudinaryConfigurationError, build_signed_private_download_url,\n    resource_type_for_media_type, verify_cloudinary_webhook,\n)
+from allpha_api.cloudinary_provider import (
+    CloudinaryConfig, CloudinaryConfigurationError, build_signed_private_download_url,
+    resource_type_for_media_type, verify_cloudinary_webhook,
+)
 
 router = APIRouter(prefix="/v1/content", tags=["content"])
 TEXT_LIMIT = 10_000
