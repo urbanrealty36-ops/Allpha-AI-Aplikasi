@@ -1,10 +1,10 @@
 """Authenticated media API foundation backed by canonical content_media."""
 from __future__ import annotations
-import os, uuid, re
+import os, uuid, re, hashlib, json
 from datetime import datetime, timezone
 from pydantic import BaseModel, ConfigDict, Field
 from allpha_api.auth import user_db_request, service_db_request
-from allpha_api.cloudinary_provider import CloudinaryConfig, CloudinaryConfigurationError, build_signed_upload_intent
+from allpha_api.cloudinary_provider import CloudinaryConfig, CloudinaryConfigurationError, build_signed_upload_intent, verify_cloudinary_webhook, build_signed_private_download_url
 from typing import Any
 import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
@@ -94,6 +94,70 @@ async def complete_upload(payload: UploadCompletion,user:dict[str,Any]=Depends(c
         raise HTTPException(409,detail={"code":"MEDIA_COMPLETION_UNCONFIRMED","message":"Konfirmasi asset belum tersimpan."})
     return {"item":result["media"],"idempotent_replay":bool(result.get("idempotent_replay"))}
 
+@router.post("/cloudinary/callback", status_code=202)
+async def cloudinary_callback(
+    request: Request,
+    timestamp: str | None = Header(default=None, alias="X-Cld-Timestamp"),
+    signature: str | None = Header(default=None, alias="X-Cld-Signature"),
+):
+    """Verify Cloudinary's exact webhook body, then atomically enqueue its lifecycle event."""
+    raw = await request.body()
+    if not raw or len(raw) > 1024 * 1024:
+        raise HTTPException(413, detail={"code":"CLOUDINARY_CALLBACK_BODY_INVALID","message":"Payload callback tidak valid."})
+    try:
+        cfg = CloudinaryConfig.from_environment()
+    except CloudinaryConfigurationError as exc:
+        raise HTTPException(503, detail={"code":"CLOUDINARY_CALLBACK_NOT_CONFIGURED","message":"Verifikasi callback belum dikonfigurasi."}) from exc
+    verdict = verify_cloudinary_webhook(raw_body=raw, timestamp=timestamp or "", signature=signature or "",
+        secret=cfg.webhook_secret or cfg.api_secret, max_age_seconds=7200)
+    if verdict != "valid":
+        raise HTTPException(408 if verdict == "expired" else 401,
+            detail={"code":"CLOUDINARY_CALLBACK_SIGNATURE_INVALID","message":"Signature atau timestamp callback tidak valid."})
+    try:
+        event = json.loads(raw)
+    except (ValueError, UnicodeDecodeError) as exc:
+        raise HTTPException(400, detail={"code":"CLOUDINARY_CALLBACK_JSON_INVALID","message":"Payload callback bukan JSON valid."}) from exc
+    if not isinstance(event, dict) or event.get("notification_type") != "eager":
+        raise HTTPException(422, detail={"code":"CLOUDINARY_CALLBACK_TYPE_UNSUPPORTED","message":"Jenis callback Cloudinary tidak didukung."})
+    public_id, asset_id, batch_id = event.get("public_id"), event.get("asset_id"), event.get("batch_id")
+    if not isinstance(public_id, str) or not public_id.startswith("allpha/") or not isinstance(asset_id, str) or not isinstance(batch_id, str) or not batch_id:
+        raise HTTPException(422, detail={"code":"CLOUDINARY_CALLBACK_IDENTITY_INVALID","message":"Identitas asset callback tidak lengkap."})
+    base, key = _config()
+    headers = {"apikey":key,"Authorization":f"Bearer {key}"}
+    async with httpx.AsyncClient(timeout=12, trust_env=False, follow_redirects=False) as client:
+        media_response = await client.get(f"{base}/rest/v1/content_media", params={
+            "select":"id,provider_asset_id,provider_public_id,provider_batch_id,status,storage_provider",
+            "provider_public_id":f"eq.{public_id}","provider_asset_id":f"eq.{asset_id}",
+            "storage_provider":"eq.cloudinary","status":"eq.processing","limit":"1",
+        }, headers=headers)
+        if media_response.status_code >= 300:
+            raise HTTPException(503, detail={"code":"MEDIA_DB_UNAVAILABLE","message":"Registry media tidak tersedia."})
+        media_rows = media_response.json()
+        if not media_rows:
+            raise HTTPException(404, detail={"code":"MEDIA_CALLBACK_ASSET_NOT_FOUND","message":"Asset callback tidak cocok dengan media aktif."})
+        media = media_rows[0]
+        if media.get("provider_batch_id") and media["provider_batch_id"] != batch_id:
+            raise HTTPException(409, detail={"code":"MEDIA_CALLBACK_BATCH_MISMATCH","message":"Batch callback tidak cocok."})
+        job_response = await client.get(f"{base}/rest/v1/content_lifecycle_jobs", params={
+            "select":"id,payload","media_id":f"eq.{media['id']}","job_type":"eq.media_transcode",
+            "status":"eq.awaiting_provider","limit":"1",
+        }, headers=headers)
+        if job_response.status_code >= 300:
+            raise HTTPException(503, detail={"code":"MEDIA_JOB_LOOKUP_FAILED","message":"Job transcode tidak tersedia."})
+        jobs = job_response.json()
+    if not jobs:
+        raise HTTPException(409, detail={"code":"MEDIA_TRANSCODE_NOT_WAITING","message":"Job transcode tidak sedang menunggu callback."})
+    event_id = hashlib.sha256(raw).hexdigest()
+    queued = await service_db_request("enqueue_content_provider_callback", body={
+        "p_provider_event_id":event_id,"p_media_id":media["id"],"p_transcode_job_id":jobs[0]["id"],
+        "p_payload_sha256":event_id,"p_payload":event,
+    })
+    outcome = queued.get("outcome") if isinstance(queued, dict) else None
+    if outcome not in {"queued","already_processed"}:
+        raise HTTPException(409, detail={"code":"MEDIA_CALLBACK_REJECTED","message":"Callback tidak dapat dimasukkan ke lifecycle media."})
+    return {"accepted":True,"outcome":outcome,"event_id":event_id}
+
+
 @router.get("/{media_id}")
 async def get_media(media_id:uuid.UUID,user:dict[str,Any]=Depends(current_user)):
     base,key=_config()
@@ -104,4 +168,13 @@ async def get_media(media_id:uuid.UUID,user:dict[str,Any]=Depends(current_user))
     rows=response.json()
     if not rows:
         raise HTTPException(404,detail={"code":"MEDIA_NOT_FOUND","message":"Media not found."})
-    return {"item":rows[0]}
+    item=rows[0]
+    delivery=None
+    if item.get("storage_provider")=="cloudinary" and item.get("status")=="ready":
+        try:
+            cfg=CloudinaryConfig.from_environment()
+            delivery=build_signed_private_download_url(config=cfg,public_id=str(item["provider_public_id"]),
+                resource_type=str(item["provider_resource_type"]),format=str(item["provider_format"]),expires_in=300)
+        except (CloudinaryConfigurationError,ValueError,KeyError):
+            raise HTTPException(503,detail={"code":"MEDIA_DELIVERY_NOT_READY","message":"Private media delivery belum siap."})
+    return {"item":item,"delivery":{"url":delivery,"expires_in_seconds":300} if delivery else None}
