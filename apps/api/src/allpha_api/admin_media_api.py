@@ -1,7 +1,7 @@
 """Read-only Super Admin media operations backed by canonical media/job registries."""
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
