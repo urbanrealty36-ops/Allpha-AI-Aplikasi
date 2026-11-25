@@ -159,7 +159,7 @@ class SupabaseKnowledgePolicySnapshotProvider:
 def build_provider() -> SupabaseKnowledgePolicySnapshotProvider:
     """Entry point for ALLPHA_KNOWLEDGE_POLICY_FACTORY."""
     supabase_url = os.getenv("SUPABASE_URL", "").strip()
-    service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+    service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip() or os.getenv("SUPABASE_SECRET_KEY", "").strip()
     if not supabase_url or not service_role_key:
         raise KnowledgePolicyUnavailable("server-side Supabase credentials are not configured")
     return SupabaseKnowledgePolicySnapshotProvider(
