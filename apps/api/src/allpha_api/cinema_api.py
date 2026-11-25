@@ -356,15 +356,41 @@ async def _title_media_owner_ids(title: dict[str,Any]) -> set[str]:
             owners.add(str(grant["collaborator_user_id"]))
     return owners
 
-def _production_document_media_ids(document: CinemaProductionDocument) -> set[str]:
-    ids = {
-        str(shot.image_media_id) for shot in document.storyboard
-        if shot.image_media_id is not None
-    }
+def _production_document_media_requirements(document: CinemaProductionDocument) -> dict[str, list[tuple[set[str], str]]]:
+    requirements: dict[str, list[tuple[set[str], str]]] = {}
+
+    def add(media_id: uuid.UUID, roles: set[str], media_kind: str) -> None:
+        requirements.setdefault(str(media_id), []).append((roles, media_kind))
+
+    for shot in document.storyboard:
+        if shot.image_media_id is not None:
+            add(shot.image_media_id, {"storyboard", "generated_image"}, "image")
     for track in document.timeline.tracks:
-        ids.update(str(clip.media_id) for clip in track.clips)
-    ids.update(str(track.media_id) for track in document.audio_tracks)
-    return ids
+        roles, media_kind = {
+            "video": ({"source_video", "generated_video", "trailer"}, "video"),
+            "audio": ({"source_audio", "music"}, "audio"),
+            "subtitle": ({"subtitle"}, "subtitle"),
+        }[track.kind]
+        for clip in track.clips:
+            add(clip.media_id, roles, media_kind)
+    for track in document.audio_tracks:
+        add(track.media_id, {"source_audio", "music"}, "audio")
+    return requirements
+
+
+def _cinema_asset_role_matches(asset_role: str, media_type: str) -> bool:
+    kind = str(media_type or "").lower()
+    if asset_role in {"cover", "storyboard", "generated_image"}:
+        return kind.startswith("image/")
+    if asset_role in {"source_video", "generated_video", "trailer"}:
+        return kind.startswith("video/")
+    if asset_role in {"source_audio", "music"}:
+        return kind.startswith("audio/")
+    if asset_role == "subtitle":
+        return kind in {"text/vtt", "application/x-subrip"}
+    if asset_role == "reference":
+        return kind.startswith(("image/", "video/", "audio/"))
+    return False
 
 
 @router.get("/creator/titles/{title_id}/production")
@@ -395,20 +421,61 @@ async def save_cinema_production(
     encoded = document.model_dump(mode="json")
     if len(json.dumps(encoded, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")) > 262144:
         raise HTTPException(422, detail={"code": "CINEMA_PRODUCTION_DOCUMENT_TOO_LARGE", "message": "Production document melebihi batas 256 KiB."})
-    media_ids = _production_document_media_ids(document)
+    requirements = _production_document_media_requirements(document)
+    media_ids = set(requirements)
     if media_ids:
         assets = await _db("GET", "cinema_assets", params={
-            "select": "media_id", "title_id": "eq." + str(title_id),
+            "select": "media_id,asset_role", "title_id": "eq." + str(title_id),
             "owner_id": "eq." + str(title["owner_id"]),
             "media_id": "in.(" + ",".join(sorted(media_ids)) + ")", "limit": "1000",
         })
-        linked_ids = {str(item.get("media_id")) for item in assets or []}
+        roles_by_media: dict[str, set[str]] = {}
+        for asset in assets or []:
+            roles_by_media.setdefault(str(asset.get("media_id")), set()).add(str(asset.get("asset_role")))
+        linked_ids = set(roles_by_media)
         if linked_ids != media_ids:
             raise HTTPException(422, detail={
                 "code": "CINEMA_PRODUCTION_ASSET_NOT_LINKED",
                 "message": "Semua media pada storyboard, timeline, dan audio harus lebih dahulu ditautkan ke Asset Library film.",
                 "unlinked_media_ids": sorted(media_ids - linked_ids),
             })
+        owners = await _title_media_owner_ids(title)
+        media_rows = await _db("GET", "content_media", params={
+            "select": "id,owner_id,media_type,status,scan_status,processed_at,derivatives",
+            "id": "in.(" + ",".join(sorted(media_ids)) + ")",
+            "owner_id": "in.(" + ",".join(sorted(owners)) + ")", "limit": "1000",
+        })
+        media_by_id = {str(item.get("id")): item for item in media_rows or []}
+        for media_id, uses in requirements.items():
+            media = media_by_id.get(media_id)
+            if (not media or media.get("status") != "ready" or media.get("scan_status") != "clean"
+                    or not media.get("processed_at")):
+                raise HTTPException(409, detail={
+                    "code": "CINEMA_PRODUCTION_MEDIA_NOT_READY",
+                    "message": "Setiap media produksi harus tetap dimiliki, selesai diproses, dan lolos pemindaian.",
+                })
+            for required_roles, media_kind in uses:
+                if not required_roles.intersection(roles_by_media.get(media_id, set())):
+                    raise HTTPException(422, detail={
+                        "code": "CINEMA_PRODUCTION_ASSET_ROLE_MISMATCH",
+                        "message": "Peran Asset Library tidak sesuai dengan track produksi.",
+                        "media_id": media_id,
+                    })
+                media_type = str(media.get("media_type") or "").lower()
+                if ((media_kind == "subtitle" and media_type not in {"text/vtt", "application/x-subrip"})
+                        or (media_kind != "subtitle" and not media_type.startswith(media_kind + "/"))):
+                    raise HTTPException(422, detail={
+                        "code": "CINEMA_PRODUCTION_MEDIA_TYPE_MISMATCH",
+                        "message": "Format media tidak sesuai dengan track produksi.",
+                        "media_id": media_id,
+                    })
+                if media_kind != "subtitle" and (
+                    not isinstance(media.get("derivatives"), list) or not media.get("derivatives")
+                ):
+                    raise HTTPException(409, detail={
+                        "code": "CINEMA_PRODUCTION_MEDIA_NOT_READY",
+                        "message": "Media visual/audio belum memiliki derivative hasil pemrosesan.",
+                    })
     rows = await _db("PATCH", "cinema_titles", params={
         "id": "eq." + str(title_id), "owner_id": "eq." + str(title["owner_id"]),
         "status": "in.(draft,rejected)", "version": "eq." + str(payload.expected_version),
@@ -774,10 +841,17 @@ async def attach_cinema_asset(
     if not media_rows:
         raise HTTPException(404, detail={"code": "CINEMA_ASSET_NOT_FOUND", "message": "Media tidak ditemukan atau bukan milik pemilik/collaborator yang berhak."})
     media = media_rows[0]
+    media_type = str(media.get("media_type") or "").lower()
+    if not _cinema_asset_role_matches(payload.asset_role, media_type):
+        raise HTTPException(422, detail={
+            "code": "CINEMA_ASSET_ROLE_MEDIA_TYPE_MISMATCH",
+            "message": "Peran asset tidak sesuai dengan tipe media yang diunggah.",
+        })
+    needs_derivatives = payload.asset_role != "subtitle"
     if (media.get("status") != "ready" or media.get("scan_status") != "clean"
             or not media.get("processed_at") or not isinstance(media.get("derivatives"), list)
-            or not media.get("derivatives")):
-        raise HTTPException(409, detail={"code": "CINEMA_ASSET_NOT_READY", "message": "Media harus selesai diproses, lolos scan, dan memiliki derivative sebelum ditautkan."})
+            or (needs_derivatives and not media.get("derivatives"))):
+        raise HTTPException(409, detail={"code": "CINEMA_ASSET_NOT_READY", "message": "Media harus selesai diproses, lolos scan, dan memiliki hasil pemrosesan sebelum ditautkan."})
     rows = await _db("POST", "cinema_assets", payload={
         "title_id": str(title_id), "owner_id": str(title["owner_id"]),
         "media_id": str(payload.media_id), "asset_role": payload.asset_role,

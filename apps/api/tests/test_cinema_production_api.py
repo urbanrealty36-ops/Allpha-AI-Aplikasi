@@ -10,6 +10,8 @@ from allpha_api.main import app
 OWNER = "11111111-1111-4111-8111-111111111111"
 TITLE = "22222222-2222-4222-8222-222222222222"
 MEDIA = "33333333-3333-4333-8333-333333333333"
+IMAGE_MEDIA = MEDIA
+VIDEO_MEDIA = "66666666-6666-4666-8666-666666666666"
 
 
 def _client(monkeypatch):
@@ -25,7 +27,17 @@ def test_cinema_production_document_saves_only_linked_ready_assets(monkeypatch):
 
     async def fake_db(method, table, *, params=None, payload=None, prefer=None):
         if method == "GET" and table == "cinema_assets":
-            return [{"media_id": MEDIA}]
+            return [
+                {"media_id": IMAGE_MEDIA, "asset_role": "storyboard"},
+                {"media_id": VIDEO_MEDIA, "asset_role": "source_video"},
+            ]
+        if method == "GET" and table == "content_media":
+            return [
+                {"id": IMAGE_MEDIA, "owner_id": OWNER, "media_type": "image/png", "status": "ready",
+                 "scan_status": "clean", "processed_at": "2026-11-20T00:00:00Z", "derivatives": [{"kind": "display"}]},
+                {"id": VIDEO_MEDIA, "owner_id": OWNER, "media_type": "video/mp4", "status": "ready",
+                 "scan_status": "clean", "processed_at": "2026-11-20T00:00:00Z", "derivatives": [{"kind": "hls_manifest"}]},
+            ]
         if method == "PATCH" and table == "cinema_titles":
             captured["params"] = params
             captured["payload"] = payload
@@ -46,13 +58,13 @@ def test_cinema_production_document_saves_only_linked_ready_assets(monkeypatch):
                 "screenplay": {"logline": "Logline", "synopsis": "Synopsis", "draft": "INT. ROOM - DAY"},
                 "storyboard": [{
                     "scene_number": 1, "shot_number": 1, "description": "Wide establishing shot",
-                    "image_media_id": MEDIA, "duration_ms": 3000,
+                    "image_media_id": IMAGE_MEDIA, "duration_ms": 3000,
                 }],
                 "scenes": [],
                 "timeline": {"tracks": [{
                     "track_id": str(uuid.uuid4()), "kind": "video", "label": "V1",
                     "clips": [{
-                        "clip_id": str(uuid.uuid4()), "media_id": MEDIA,
+                        "clip_id": str(uuid.uuid4()), "media_id": VIDEO_MEDIA,
                         "start_ms": 0, "duration_ms": 3000,
                     }],
                 }]},
@@ -64,7 +76,7 @@ def test_cinema_production_document_saves_only_linked_ready_assets(monkeypatch):
         assert response.json()["item"]["version"] == 5
         assert captured["params"]["version"] == "eq.4"
         assert captured["payload"]["version"] == 5
-        assert captured["payload"]["production_document"]["storyboard"][0]["image_media_id"] == MEDIA
+        assert captured["payload"]["production_document"]["storyboard"][0]["image_media_id"] == IMAGE_MEDIA
     finally:
         app.dependency_overrides.pop(current_user, None)
 
@@ -203,5 +215,68 @@ def test_cinema_episode_rejects_unprocessed_or_non_video_media(monkeypatch):
         })
         assert response.status_code == 409
         assert response.json()["error"]["code"] == "CINEMA_EPISODE_MEDIA_NOT_READY"
+    finally:
+        app.dependency_overrides.pop(current_user, None)
+
+
+def test_cinema_subtitle_asset_can_be_linked_without_visual_derivatives(monkeypatch):
+    async def title_access(*args, **kwargs):
+        return {"id": TITLE, "owner_id": OWNER, "status": "draft", "version": 4, "title": "Test Film"}
+
+    async def media_owners(*args, **kwargs):
+        return {OWNER}
+
+    async def fake_db(method, table, *, params=None, payload=None, prefer=None):
+        if method == "GET" and table == "content_media":
+            return [{
+                "id": MEDIA, "owner_id": OWNER, "filename": "id.vtt", "media_type": "text/vtt",
+                "size_bytes": 100, "status": "ready", "scan_status": "clean",
+                "processed_at": "2026-11-25T00:00:00Z", "derivatives": [],
+            }]
+        if method == "POST" and table == "cinema_assets":
+            return [{"id": str(uuid.uuid4()), "title_id": TITLE, "media_id": MEDIA,
+                     "asset_role": "subtitle", "display_name": "Indonesian subtitles"}]
+        raise AssertionError((method, table, params, payload))
+
+    monkeypatch.setattr(cinema_api, "_title_access", title_access)
+    monkeypatch.setattr(cinema_api, "_title_media_owner_ids", media_owners)
+    monkeypatch.setattr(cinema_api, "_db", fake_db)
+    client = _client(monkeypatch)
+    try:
+        response = client.post(f"/v1/cinema/creator/titles/{TITLE}/assets", json={
+            "media_id": MEDIA, "asset_role": "subtitle", "display_name": "Indonesian subtitles",
+        })
+        assert response.status_code == 201
+        assert response.json()["item"]["asset_role"] == "subtitle"
+    finally:
+        app.dependency_overrides.pop(current_user, None)
+
+
+def test_cinema_asset_rejects_role_and_media_type_mismatch(monkeypatch):
+    async def title_access(*args, **kwargs):
+        return {"id": TITLE, "owner_id": OWNER, "status": "draft", "version": 4, "title": "Test Film"}
+
+    async def media_owners(*args, **kwargs):
+        return {OWNER}
+
+    async def fake_db(method, table, *, params=None, payload=None, prefer=None):
+        if method == "GET" and table == "content_media":
+            return [{
+                "id": MEDIA, "owner_id": OWNER, "filename": "poster.png", "media_type": "image/png",
+                "size_bytes": 100, "status": "ready", "scan_status": "clean",
+                "processed_at": "2026-11-25T00:00:00Z", "derivatives": [{"kind": "display"}],
+            }]
+        raise AssertionError("mismatched media must be rejected before inserting asset link")
+
+    monkeypatch.setattr(cinema_api, "_title_access", title_access)
+    monkeypatch.setattr(cinema_api, "_title_media_owner_ids", media_owners)
+    monkeypatch.setattr(cinema_api, "_db", fake_db)
+    client = _client(monkeypatch)
+    try:
+        response = client.post(f"/v1/cinema/creator/titles/{TITLE}/assets", json={
+            "media_id": MEDIA, "asset_role": "subtitle", "display_name": "Wrong role",
+        })
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "CINEMA_ASSET_ROLE_MEDIA_TYPE_MISMATCH"
     finally:
         app.dependency_overrides.pop(current_user, None)
