@@ -7,6 +7,7 @@ from allpha_api.auth import user_db_request, service_db_request
 from allpha_api.cloudinary_provider import CloudinaryConfig, CloudinaryConfigurationError, build_signed_upload_intent, verify_cloudinary_webhook, build_signed_private_download_url, build_signed_authenticated_delivery_url
 from typing import Any
 import httpx
+from urllib.parse import quote
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from allpha_api.auth import current_user
 router = APIRouter(prefix="/v1/media", tags=["media"])
@@ -342,12 +343,12 @@ async def get_media(media_id:uuid.UUID,user:dict[str,Any]=Depends(current_user))
     raw_item=rows[0]
     item=media_item_response(raw_item)
     delivery=None
+    derivative_deliveries=[]
     if raw_item.get("status")=="ready" and raw_item.get("scan_status")=="clean" and raw_item.get("storage_provider")=="cloudinary":
         try:
             cfg=CloudinaryConfig.from_environment()
             delivery=build_signed_private_download_url(config=cfg,public_id=str(raw_item["provider_public_id"]),
                 resource_type=str(raw_item["provider_resource_type"]),format=str(raw_item["provider_format"]),expires_in=300)
-            derivative_deliveries=[]
             for derivative in raw_item.get("derivatives") or []:
                 if not isinstance(derivative,dict) or derivative.get("provider")!="cloudinary":
                     continue
