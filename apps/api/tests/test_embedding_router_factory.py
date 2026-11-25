@@ -254,3 +254,23 @@ def test_embedding_profile_keeps_token_budget_independent_from_utf8_byte_ceiling
         assert router.has_approved_cost_policy is True
 
     asyncio.run(scenario())
+
+def test_embedding_router_accepts_supabase_secret_key_without_legacy_service_role(monkeypatch):
+    configure_profile(monkeypatch)
+    monkeypatch.delenv("SUPABASE_SERVICE_ROLE_KEY", raising=False)
+    monkeypatch.setenv("SUPABASE_SECRET_KEY", "canonical-secret-key")
+    observed = []
+
+    def handler(request):
+        observed.append(request)
+        assert request.headers["apikey"] == "canonical-secret-key"
+        assert request.headers["Authorization"] == "Bearer canonical-secret-key"
+        return httpx.Response(200, json=[model_cost_row()])
+
+    async def scenario():
+        router = await build_embedding_router_from_environment(transport=httpx.MockTransport(handler))
+        assert router is not None
+        assert router.has_approved_cost_policy is True
+        assert len(observed) == 1
+
+    asyncio.run(scenario())
