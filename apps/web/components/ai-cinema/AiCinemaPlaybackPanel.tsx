@@ -23,14 +23,23 @@ export default function AiCinemaPlaybackPanel({ titles }: { titles: Title[] }) {
   const [watchlistItems, setWatchlistItems] = useState<WatchlistItem[]>([]);
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
   const [watchlistBusy, setWatchlistBusy] = useState<string | null>(null);
+  const [viewerSignedIn, setViewerSignedIn] = useState(false);
+  const [viewerDataError, setViewerDataError] = useState("");
 
   useEffect(() => {
     let active = true;
-    void (async () => {
+    const auth = getBrowserSupabase();
+    if (!auth) { setViewerSignedIn(false); return; }
+    const loadViewerData = async () => {
       try {
-        const auth = getBrowserSupabase();
-        const session = auth ? (await auth.auth.getSession()).data.session : null;
-        if (!session?.access_token) return;
+        const session = (await auth.auth.getSession()).data.session;
+        if (!session?.access_token) {
+          if (active) {
+            setViewerSignedIn(false); setWatchlistItems([]); setWatchlistIds([]);
+            setHistoryItems([]); setViewerDataError("");
+          }
+          return;
+        }
         const headers = { Authorization: "Bearer " + session.access_token, Accept: "application/json" };
         const [watchResponse, historyResponse] = await Promise.all([
           fetch(apiBase + "/v1/cinema/watchlist", { cache: "no-store", headers }),
@@ -40,15 +49,20 @@ export default function AiCinemaPlaybackPanel({ titles }: { titles: Title[] }) {
         const [watchBody, historyBody] = await Promise.all([watchResponse.json(), historyResponse.json()]);
         if (active) {
           const items: WatchlistItem[] = Array.isArray(watchBody?.items) ? watchBody.items : [];
-          setWatchlistItems(items);
-          setWatchlistIds(items.map(item => item.title_id));
+          setViewerSignedIn(true); setViewerDataError("");
+          setWatchlistItems(items); setWatchlistIds(items.map(item => item.title_id));
           setHistoryItems(Array.isArray(historyBody?.items) ? historyBody.items : []);
         }
       } catch {
-        if (active) { setWatchlistItems([]); setHistoryItems([]); }
+        if (active) {
+          setViewerSignedIn(true);
+          setViewerDataError("Watchlist atau riwayat belum tersedia dari server. Coba muat ulang setelah layanan siap.");
+        }
       }
-    })();
-    return () => { active = false; };
+    };
+    void loadViewerData();
+    const { data: { subscription } } = auth.auth.onAuthStateChange(() => { void loadViewerData(); });
+    return () => { active = false; subscription.unsubscribe(); };
   }, []);
 
   async function toggleWatchlist(title: Title) {
@@ -145,8 +159,12 @@ export default function AiCinemaPlaybackPanel({ titles }: { titles: Title[] }) {
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {titles.map(title => <article key={title.id} className="flex flex-col justify-between gap-3 rounded-xl border border-slate-200 p-4 dark:border-slate-700"><div className="min-w-0"><h3 className="truncate font-semibold">{title.title}</h3><p className="text-xs text-slate-500">Judul terbit · katalog terverifikasi</p></div><div className="flex flex-wrap gap-2"><button onClick={() => void openTitle(title)} disabled={busy !== null} className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">{busy === title.id ? "Memuat…" : "Lihat episode"}</button><button onClick={() => void toggleWatchlist(title)} disabled={watchlistBusy !== null} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold dark:border-slate-600 disabled:opacity-50">{watchlistBusy === title.id ? "Menyimpan…" : watchlistIds.includes(title.id) ? "Hapus Watchlist" : "Simpan Watchlist"}</button></div></article>)}
     </div>
+    {viewerDataError && <p role="status" className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{viewerDataError}</p>}
+    {!viewerSignedIn && <p className="mt-4 text-sm text-slate-500">Masuk untuk melihat Watchlist dan riwayat pemutaran akun.</p>}
+    {viewerSignedIn && !viewerDataError && watchlistItems.length === 0 && <p className="mt-4 text-sm text-slate-500">Watchlist masih kosong.</p>}
     {watchlistItems.length > 0 && <div className="mt-5 rounded-2xl border border-slate-200 p-4 dark:border-slate-700"><h3 className="font-semibold">Watchlist saya</h3><div className="mt-3 flex flex-wrap gap-2">{watchlistItems.map(item => <button key={item.title_id} type="button" onClick={() => void openTitle(item.title)} disabled={busy !== null} className="rounded-lg border border-slate-300 px-3 py-2 text-xs dark:border-slate-600">{item.title?.title || item.title_id}</button>)}</div></div>}
-    {historyItems.length > 0 && <div className="mt-5 rounded-2xl border border-slate-200 p-4 dark:border-slate-700"><h3 className="font-semibold">Riwayat & lanjutkan menonton</h3><div className="mt-3 grid gap-2 sm:grid-cols-2">{historyItems.map(item => <article key={item.id} className="rounded-xl bg-slate-50 p-3 dark:bg-slate-900"><p className="font-medium">{item.title?.title || item.title_id}</p><p className="mt-1 text-xs text-slate-500">Episode {item.episode?.episode_number ?? "—"} · {item.episode?.title || item.episode_id}</p><p className="mt-1 text-xs text-slate-500">{item.status} · {item.progress_percent === null ? "Progress belum tersedia" : item.progress_percent + "%"} · lanjut dari {Math.floor(item.resume_position_seconds / 60)}:{String(item.resume_position_seconds % 60).padStart(2,"0")}</p></article>)}</div></div>}
+    {viewerSignedIn && !viewerDataError && historyItems.length === 0 && <p className="mt-4 text-sm text-slate-500">Belum ada riwayat pemutaran.</p>}
+    {historyItems.length > 0 && <div className="mt-5 rounded-2xl border border-slate-200 p-4 dark:border-slate-700"><h3 className="font-semibold">Riwayat & lanjutkan menonton</h3><div className="mt-3 grid gap-2 sm:grid-cols-2">{historyItems.map(item => <article key={item.id} className="rounded-xl bg-slate-50 p-3 dark:bg-slate-900"><p className="font-medium">{item.title?.title || item.title_id}</p><p className="mt-1 text-xs text-slate-500">Episode {item.episode?.episode_number ?? "—"} · {item.episode?.title || item.episode_id}</p><p className="mt-1 text-xs text-slate-500">{item.status} · {item.progress_percent === null ? "Progress belum tersedia" : item.progress_percent + "%"} · lanjut dari {Math.floor(item.resume_position_seconds / 60)}:{String(item.resume_position_seconds % 60).padStart(2,"0")}</p><button type="button" onClick={() => void openTitle({id:item.title_id,title:item.title?.title || item.title_id})} disabled={busy !== null} className="mt-3 rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold dark:border-slate-600">Buka & lanjutkan</button></article>)}</div></div>}
     {error && <p role="alert" className="mt-4 rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
     {selected && <div className="mt-5 rounded-2xl border border-slate-200 p-4 dark:border-slate-700">
       <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-xl font-semibold">{selected.title.title}</h3><p className="text-xs text-slate-500">Maturity: {selected.title.maturity_rating} · Hak akses dan entitlement diperiksa ulang oleh server saat sesi dimulai.</p></div><button onClick={() => setSelected(null)} className="rounded-lg border border-slate-300 px-3 py-2 text-xs">Tutup</button></div>

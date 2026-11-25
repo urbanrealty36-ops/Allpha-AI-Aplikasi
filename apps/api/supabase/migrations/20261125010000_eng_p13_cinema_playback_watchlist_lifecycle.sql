@@ -59,7 +59,7 @@ grant all on public.cinema_playback_sessions,public.cinema_playback_session_even
 
 create or replace function public.cinema_record_playback_heartbeat(
  p_session_id uuid,p_owner_user_id uuid,p_session_token_hash text,p_event_id uuid,p_position_seconds integer
-) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $function$
+) returns jsonb language plpgsql security definer set search_path=pg_catalog,public,pg_temp as $function$
 declare v_session public.cinema_playback_sessions%rowtype; v_event public.cinema_playback_session_events%rowtype; v_inserted integer;
 begin
  if p_event_id is null or p_position_seconds is null or p_position_seconds<0 or p_position_seconds>86400
@@ -101,7 +101,7 @@ end;$function$;
 
 create or replace function public.cinema_finish_playback_session(
  p_session_id uuid,p_owner_user_id uuid,p_session_token_hash text,p_event_id uuid,p_position_seconds integer
-) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $function$
+) returns jsonb language plpgsql security definer set search_path=pg_catalog,public,pg_temp as $function$
 declare v_session public.cinema_playback_sessions%rowtype; v_event public.cinema_playback_session_events%rowtype; v_inserted integer;
 begin
  if p_event_id is null or p_position_seconds is null or p_position_seconds<0 or p_position_seconds>86400

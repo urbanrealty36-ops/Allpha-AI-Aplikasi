@@ -77,3 +77,29 @@ def test_watchlist_delete_is_scoped_to_authenticated_owner(monkeypatch):
         assert response.status_code==200 and response.json()["removed"] is True
         assert captured["params"]=={"owner_user_id":"eq."+OWNER,"title_id":"eq."+TITLE}
     finally: app.dependency_overrides.pop(current_user,None)
+
+
+def test_watchlist_get_is_owner_scoped_and_hides_unavailable_titles(monkeypatch):
+    owner_filter = {}
+    async def fake_db(method, table, *, params=None, payload=None, prefer=None):
+        if method == "GET" and table == "cinema_watchlist_items":
+            owner_filter.update(params)
+            return [
+                {"id": "watch-1", "title_id": TITLE, "created_at": "2026-11-25T00:00:00Z"},
+                {"id": "watch-2", "title_id": EPISODE, "created_at": "2026-11-24T00:00:00Z"},
+            ]
+        if method == "GET" and table == "cinema_titles":
+            assert params["status"] == "eq.published"
+            assert params["moderation_status"] == "eq.approved"
+            assert params["rights_status"] == "eq.cleared"
+            return [{"id": TITLE, "title": "Film"}]
+        raise AssertionError((method, table, params))
+    monkeypatch.setattr(cinema_lifecycle_api, "_db", fake_db)
+    client = _client()
+    try:
+        response = client.get("/v1/cinema/watchlist")
+        assert response.status_code == 200
+        assert owner_filter["owner_user_id"] == "eq." + OWNER
+        assert [item["title_id"] for item in response.json()["items"]] == [TITLE]
+    finally:
+        app.dependency_overrides.pop(current_user, None)
