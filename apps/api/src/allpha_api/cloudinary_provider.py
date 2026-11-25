@@ -171,6 +171,50 @@ def build_signed_private_download_url(
     )
 
 
+
+def build_signed_authenticated_delivery_url(
+    *,
+    config: CloudinaryConfig,
+    public_id: str,
+    resource_type: str,
+    format: str,
+    transformation: str,
+    version: int | None = None,
+) -> str:
+    """Build a signed CDN URL for a pre-generated authenticated Cloudinary derivative.
+
+    The signature covers the exact transformation, optional version, public ID
+    and output extension. Never accept arbitrary caller-provided transformations.
+    """
+    if resource_type not in _ALLOWED_RESOURCE_TYPES or not re.fullmatch(
+        r"allpha/[A-Za-z0-9_./-]{1,180}", public_id
+    ) or ".." in public_id or "//" in public_id:
+        raise ValueError("CLOUDINARY_ASSET_IDENTITY_INVALID")
+    if not re.fullmatch(r"[A-Za-z0-9]{1,16}", format):
+        raise ValueError("CLOUDINARY_FORMAT_INVALID")
+    if not isinstance(transformation, str) or not re.fullmatch(
+        r"[A-Za-z0-9_,./:=\-]{1,512}", transformation
+    ) or ".." in transformation or "//" in transformation:
+        raise ValueError("CLOUDINARY_TRANSFORMATION_INVALID")
+    if version is not None and (isinstance(version, bool) or int(version) <= 0):
+        raise ValueError("CLOUDINARY_VERSION_INVALID")
+
+    components = [transformation]
+    if version is not None:
+        components.append(f"v{int(version)}")
+    components.append(f"{public_id}.{format.lower()}")
+    signed_path = "/".join(components)
+    digest = hashlib.sha1((signed_path + config.api_secret).encode("utf-8")).digest()
+    signature = __import__("base64").urlsafe_b64encode(digest).decode("ascii")[:8]
+    path = "/".join((
+        config.cloud_name,
+        resource_type,
+        "authenticated",
+        f"s--{signature}--",
+        signed_path,
+    ))
+    return f"https://res.cloudinary.com/{path}"
+
 def verify_cloudinary_webhook(
     *,
     raw_body: bytes,
