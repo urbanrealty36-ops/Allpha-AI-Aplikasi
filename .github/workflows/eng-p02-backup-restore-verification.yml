@@ -110,15 +110,15 @@ jobs:
         run: |
           set -euo pipefail
           docker exec -u postgres "$SUPABASE_DB_CONTAINER" \
-            psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c \
+            psql -U supabase_admin -d postgres -v ON_ERROR_STOP=1 -c \
             "ALTER SYSTEM SET cron.database_name = 'allpha_p02_restore_verification';"
           docker exec -u postgres "$SUPABASE_DB_CONTAINER" \
-            psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c \
+            psql -U supabase_admin -d postgres -v ON_ERROR_STOP=1 -c \
             "ALTER SYSTEM SET cron.launch_active_jobs = 'off';"
           docker restart "$SUPABASE_DB_CONTAINER"
           for attempt in $(seq 1 60); do
             if docker exec -u postgres "$SUPABASE_DB_CONTAINER" pg_isready -U postgres -d postgres >/dev/null 2>&1; then
-              cron_config="$(docker exec -u postgres "$SUPABASE_DB_CONTAINER" psql -U postgres -d postgres -Atc \
+              cron_config="$(docker exec -u postgres "$SUPABASE_DB_CONTAINER" psql -U supabase_admin -d postgres -Atc \
                 "select current_setting('cron.database_name') || '|' || current_setting('cron.launch_active_jobs')")"
               if [ "$cron_config" = "allpha_p02_restore_verification|off" ]; then
                 echo "Disposable pg_cron database configured; scheduled jobs remain disabled."
