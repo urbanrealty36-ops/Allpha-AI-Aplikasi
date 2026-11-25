@@ -288,7 +288,7 @@ async def service_db_request(function_name: str, *, body: dict[str, Any]) -> Any
         is_media_rpc = function_name.startswith((
             "reserve_cloudinary_media_upload", "complete_cloudinary_content_media_upload",
             "complete_cloudinary_content_provider_job", "handoff_cloudinary_content_provider_job",
-            "request_cloudinary_content_media_delete",
+            "confirm_cloudinary_provider_callback_identity", "request_cloudinary_content_media_delete",
             "complete_cloudinary_media_delete_job", "fail_cloudinary_media_delete_job",
             "enqueue_content_provider_callback", "cloudinary_media_schema_readiness",
         ))
