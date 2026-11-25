@@ -187,9 +187,10 @@ begin
       v_job_type:='subtitle_validate'; v_job_status:='pending';
     elsif new.storage_provider='cloudinary' then
       v_job_type:='media_transcode'; v_job_status:='awaiting_provider';
-    elsif new.media_type like 'image/%' then
-      v_job_type:='image_process'; v_job_status:='pending';
     else
+      -- All binary media from the legacy TUS/Supabase ingress is promoted to
+      -- Cloudinary by the single transcode dispatcher. No new derivative is
+      -- written back to Supabase Storage.
       v_job_type:='media_transcode'; v_job_status:='pending';
     end if;
     insert into public.content_lifecycle_jobs(
