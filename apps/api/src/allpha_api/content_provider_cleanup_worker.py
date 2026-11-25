@@ -54,21 +54,31 @@ class CleanupWorker:
   for job in jobs:
    try:
     payload=job.get("payload") or {}
-    if payload.get("provider")!="cloudinary":raise ValueError("PROVIDER_CLEANUP_PAYLOAD_INVALID")
-    resource_type=str(payload.get("resource_type") or "")
-    if resource_type not in {"image","video","raw"}:raise ValueError("PROVIDER_CLEANUP_PAYLOAD_INVALID")
-    await self.delete_asset(str(payload["provider_public_id"]),resource_type)
-    if payload.get("action")=="delete_media":
-     legacy_storage=payload.get("legacy_storage")
-     if legacy_storage is not None:
-      await self.delete_legacy_storage_object(legacy_storage)
-     completion=await self.rpc("complete_cloudinary_media_delete_job",{
+    provider=str(payload.get("provider") or "")
+    action=str(payload.get("action") or "")
+    if provider=="cloudinary":
+     resource_type=str(payload.get("resource_type") or "")
+     if resource_type not in {"image","video","raw"}:raise ValueError("PROVIDER_CLEANUP_PAYLOAD_INVALID")
+     await self.delete_asset(str(payload["provider_public_id"]),resource_type)
+     if action=="delete_media" and payload.get("legacy_storage") is not None:
+      await self.delete_legacy_storage_object(payload["legacy_storage"])
+     if action=="delete_media":
+      completion=await self.rpc("complete_cloudinary_media_delete_job",{
+       "p_job_id":job["id"],"p_lease_token":job["lease_token"],"p_media_id":job["media_id"],
+      })
+     else:
+      completion=await self.rpc("complete_content_provider_cleanup_job",{
+       "p_job_id":job["id"],"p_lease_token":job["lease_token"],
+      })
+    elif provider=="supabase_storage" and action=="delete_media":
+     await self.delete_legacy_storage_object({
+      "bucket_id":payload.get("bucket_id"),"storage_path":payload.get("storage_path"),
+     })
+     completion=await self.rpc("complete_legacy_content_media_delete_job",{
       "p_job_id":job["id"],"p_lease_token":job["lease_token"],"p_media_id":job["media_id"],
      })
     else:
-     completion=await self.rpc("complete_content_provider_cleanup_job",{
-      "p_job_id":job["id"],"p_lease_token":job["lease_token"],
-     })
+     raise ValueError("PROVIDER_CLEANUP_PROVIDER_INVALID")
     if completion!="succeeded":raise ValueError("PROVIDER_CLEANUP_LEASE_LOST")
    except Exception as exc:
     log.exception("provider cleanup failed job=%s",job["id"])
