@@ -273,7 +273,7 @@ begin
 
  raise exception 'MEMORY_ACTION_UNHANDLED' using errcode='22023';
 end;
-$function$
+$function$;
 
 revoke all on function public.agent_memory_transition(text,uuid,uuid,uuid,jsonb) from public,anon,authenticated;
 grant execute on function public.agent_memory_transition(text,uuid,uuid,uuid,jsonb) to service_role;
