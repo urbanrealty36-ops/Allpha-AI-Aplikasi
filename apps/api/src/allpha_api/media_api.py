@@ -218,6 +218,15 @@ async def delete_media(media_id: uuid.UUID, user: dict[str, Any] = Depends(curre
     if outcome == "provider_identity_missing":
         raise HTTPException(409, detail={"code": "MEDIA_PROVIDER_IDENTITY_MISSING",
                                          "message": "Identitas asset provider tidak lengkap."})
+    if outcome == "domain_delete_not_supported":
+        raise HTTPException(409, detail={"code": "MEDIA_DOMAIN_DELETE_UNSUPPORTED",
+                                         "message": "Penghapusan harus melalui lifecycle domain asal."})
+    if outcome == "legal_hold":
+        raise HTTPException(409, detail={"code": "MEDIA_LEGAL_HOLD",
+                                         "message": "Media terkait konten yang sedang berada dalam legal hold."})
+    if outcome == "media_in_use":
+        raise HTTPException(409, detail={"code": "MEDIA_IN_USE",
+                                         "message": "Media masih digunakan oleh konten aktif."})
     raise HTTPException(409, detail={"code": "MEDIA_DELETE_REJECTED", "message": "Media tidak dapat dihapus pada status saat ini."})
 
 
