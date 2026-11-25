@@ -1,15 +1,16 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
-type MemoryType="working"|"episodic"|"semantic"|"procedural"|"long_term";
-type MemoryPolicy={id:string;memory_type:MemoryType;enabled:boolean;consent_version?:string|null;allowed_purposes:string[];allowed_sensitivities:string[];retention_days:number;policy_version:number;consent_revoked_at?:string|null};
-type MemoryItem={id:string;memory_type:MemoryType;purpose:string;classification:string;content:string;status:string;confidence?:number|null;retention_expires_at:string;created_at:string;version:number;pinned_at?:string|null};
+type PersistentMemoryType="working"|"episodic"|"semantic"|"procedural"|"long_term";
+type PolicyMemoryType=PersistentMemoryType|"conversation";
+type MemoryPolicy={id:string;memory_type:PolicyMemoryType;enabled:boolean;consent_version?:string|null;allowed_purposes:string[];allowed_sensitivities:string[];retention_days:number;policy_version:number;consent_revoked_at?:string|null};
+type MemoryItem={id:string;memory_type:PersistentMemoryType;purpose:string;classification:string;content:string;status:string;confidence?:number|null;retention_expires_at:string;created_at:string;version:number;pinned_at?:string|null};
 type MemoryEvent={id:string;event_type:string;details:Record<string,unknown>;created_at:string};
 type KnowledgeHit={source_id:string;source_version:number;chunk_id:string;content:string;content_sha256:string;source_location:Record<string,unknown>;sensitivity:string;retrieval_method:"vector"|"keyword"|"hybrid";score:number;provider_id?:string|null;model_id?:string|null;model_version?:string|null;index_generation?:string|null};
 type Props={apiBase:string;agentId:string;getAccessToken:()=>Promise<string>;onBack:()=>void};
 
-const TYPES:MemoryType[]=["working","episodic","semantic","procedural","long_term"];
-const LABELS:Record<MemoryType,string>={working:"Working",episodic:"Episodic",semantic:"Semantic",procedural:"Procedural",long_term:"Long-term"};
+const TYPES:PolicyMemoryType[]=["conversation","working","episodic","semantic","procedural","long_term"];
+const LABELS:Record<PolicyMemoryType,string>={conversation:"Conversation",working:"Working",episodic:"Episodic",semantic:"Semantic",procedural:"Procedural",long_term:"Long-term"};
 const PURPOSES=["agent_generation_context","agent_runtime_context","workflow_context","personalization_context"];
 const SENSITIVITIES=["public","internal"];
 
@@ -60,13 +61,13 @@ export function AgentMemoryCenter({apiBase,agentId,getAccessToken,onBack}:Props)
 
  useEffect(()=>{void load();},[load]);
 
- async function savePolicy(type:MemoryType,enabled:boolean){
+ async function savePolicy(type:PolicyMemoryType,enabled:boolean){
   const existing=policies.find(item=>item.memory_type===type);
   setBusy(true);setError("");setNotice("");
   try{
    await request("/v1/memory/policies/"+type,{method:"PUT",body:JSON.stringify({
     agent_id:agentId,enabled,consent_version:enabled?"allpha.memory.v1":null,
-    allowed_purposes:enabled?PURPOSES:[],allowed_sensitivities:enabled?SENSITIVITIES:[],
+    allowed_purposes:enabled?PURPOSES:[],allowed_sensitivities:enabled?(type==="conversation"?["restricted"]:SENSITIVITIES):[],
     retention_days:existing?.retention_days??(type==="working"?1:30),
    })});
    setNotice(enabled?LABELS[type]+" Memory aktif dengan persetujuan eksplisit.":"Persetujuan "+LABELS[type]+" Memory dicabut; retrieval dibatasi.");
@@ -183,7 +184,7 @@ export function AgentMemoryCenter({apiBase,agentId,getAccessToken,onBack}:Props)
   </View>
   <View style={card}>
    <Text style={{color:"#FFFFFF",fontWeight:"800",fontSize:15}}>Persetujuan dan retensi</Text>
-   <Text style={{color:"#AAB5CA",fontSize:12,lineHeight:18,marginTop:6}}>Memory hanya disimpan setelah pemilik mengaktifkan kelasnya. Usulan tetap menunggu persetujuan. Pencabutan consent langsung membatasi retrieval; Working Memory dibatasi satu hari.</Text>
+   <Text style={{color:"#AAB5CA",fontSize:12,lineHeight:18,marginTop:6}}>Memory hanya dipakai setelah pemilik mengaktifkan kelasnya. Conversation membaca pesan dari Messaging kanonis, read-only, tidak disalin ke Memory items, dan memerlukan consent Restricted. Usulan persistent Memory tetap menunggu persetujuan; Working Memory dibatasi satu hari.</Text>
    {TYPES.map(type=>{
     const policy=policies.find(item=>item.memory_type===type);
     const enabled=policy?.enabled===true&&!policy.consent_revoked_at;

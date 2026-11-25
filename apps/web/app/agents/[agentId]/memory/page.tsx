@@ -5,13 +5,15 @@ import Link from "next/link";
 import type {Session} from "@supabase/supabase-js";
 import {getBrowserSupabase} from "../../../../lib/supabase";
 
-type T="working"|"episodic"|"semantic"|"procedural"|"long_term";
+type PersistentT="working"|"episodic"|"semantic"|"procedural"|"long_term";
+type T=PersistentT|"conversation";
 type Policy={id:string;memory_type:T;enabled:boolean;retention_days:number;policy_version:number};
-type Item={id:string;memory_type:T;content:string;classification:string;purpose:string;status:string;version:number;retention_expires_at:string;pinned_at?:string|null};
-type RetrievedItem={id:string;memory_type:T;content:string;classification:string;purpose:string;retrieval_method:"keyword"|"metadata";retrieval_score:number};
+type Item={id:string;memory_type:PersistentT;content:string;classification:string;purpose:string;status:string;version:number;retention_expires_at:string;pinned_at?:string|null};
+type RetrievedItem={id:string;memory_type:PersistentT;content:string;classification:string;purpose:string;retrieval_method:"keyword"|"metadata";retrieval_score:number};
 type MemoryEvent={id:string;event_type:string;details:Record<string,unknown>;created_at:string};
 const api=(process.env.NEXT_PUBLIC_API_BASE_URL||(process.env.NODE_ENV==="production"?"https://api.allpha.web.id":"http://localhost:8000")).replace(/\/$/,"");
 const defs:{key:T;title:string;description:string;days:number}[]=[
+{key:"conversation",title:"Conversation Memory",description:"Konteks baca-saja dari Messaging kanonis. Tidak disalin ke Memory items; memerlukan consent Restricted dan dibatasi retensi.",days:30},
 {key:"working",title:"Working Memory",description:"Konteks tugas/sesi sementara, maksimum 24 jam.",days:1},
 {key:"episodic",title:"Episodic Memory",description:"Ringkasan kejadian dengan aktor, waktu dan provenance.",days:30},
 {key:"semantic",title:"Semantic Memory",description:"Fakta dan konsep dengan sumber, confidence dan scope.",days:90},
@@ -26,7 +28,7 @@ export default function AgentMemoryPage(){
  const [loading,setLoading]=useState(true),[saving,setSaving]=useState(""),[error,setError]=useState(""),[notice,setNotice]=useState("");
  const [editing,setEditing]=useState(""),[draft,setDraft]=useState("");
  const [retrievalQuery,setRetrievalQuery]=useState(""),[retrievalPurpose,setRetrievalPurpose]=useState("agent_generation_context"),[retrievalMaxSensitivity,setRetrievalMaxSensitivity]=useState(""),[retrievalMode,setRetrievalMode]=useState(""),[retrievalResults,setRetrievalResults]=useState<RetrievedItem[]>([]),[retrievalBusy,setRetrievalBusy]=useState(false);
- const [proposalType,setProposalType]=useState<T>("episodic"),[proposalPurpose,setProposalPurpose]=useState("agent_generation_context"),[proposalClass,setProposalClass]=useState("internal"),[proposalText,setProposalText]=useState("");
+ const [proposalType,setProposalType]=useState<PersistentT>("episodic"),[proposalPurpose,setProposalPurpose]=useState("agent_generation_context"),[proposalClass,setProposalClass]=useState("internal"),[proposalText,setProposalText]=useState("");
  const load=useCallback(async(s:Session)=>{
   setLoading(true);setError("");
   try{
@@ -56,7 +58,7 @@ export default function AgentMemoryPage(){
    const r=await fetch(api+"/v1/memory/policies/"+type,{method:"PUT",headers:{Authorization:"Bearer "+session.access_token,"Content-Type":"application/json"},
     body:JSON.stringify({agent_id:agentId,enabled:on,consent_version:on?"allpha.memory.v1":null,
      allowed_purposes:on?["agent_generation_context","agent_runtime_context"]:[],
-     allowed_sensitivities:on?["public","internal","confidential"]:[],retention_days:type==="working"?1:Number(retention[type]??30)})});
+     allowed_sensitivities:on?(type==="conversation"?["restricted"]:["public","internal","confidential"]):[],retention_days:type==="working"?1:Number(retention[type]??30)})});
    if(!r.ok)throw new Error(await err(r));setNotice(on?"Policy Memory diaktifkan dengan approval manual.":"Policy dinonaktifkan; retrieval akan berhenti.");await load(session);
   }catch(e){setError(e instanceof Error?e.message:"Policy gagal disimpan.");}finally{setSaving("");}
  }
@@ -142,7 +144,7 @@ export default function AgentMemoryPage(){
     <div className="mt-3 flex flex-wrap items-center justify-between gap-2"><label className="flex items-center gap-2 text-xs text-neutral-600">Retensi (hari)<input type="number" min={1} max={3650} disabled={d.key==="working"||!on} value={retention[d.key]??d.days} onChange={e=>setRetention(v=>({...v,[d.key]:Number(e.target.value)}))} className="w-24 rounded-lg border px-2 py-1 text-sm text-neutral-900 disabled:opacity-50"/></label><button disabled={saving===d.key||(on&&!consent)} onClick={()=>void savePolicy(d.key)} className="rounded-xl bg-neutral-900 px-4 py-2 text-sm text-white disabled:opacity-50">{saving===d.key?"Menyimpan…":"Simpan kebijakan"}</button></div>
    </article>;})}</div>
   </section>
-  <section className="rounded-2xl border p-4 sm:p-5"><h2 className="text-lg font-semibold">Conversation Memory</h2><p className="mt-1 text-sm text-neutral-600">Riwayat percakapan menggunakan tabel conversations/messages kanonis. Konteks dibatasi berdasarkan participant dan panjang pesan; tidak diduplikasi ke tabel Memory.</p><span className="mt-3 inline-flex rounded-full border px-2 py-1 text-xs">Canonical message store · Read-only</span></section>
+  <section className="rounded-2xl border p-4 sm:p-5"><h2 className="text-lg font-semibold">Conversation Memory · Messaging kanonis</h2><p className="mt-1 text-sm text-neutral-600">Aktifkan consent terpisah di atas untuk mengizinkan Agent membaca konteks percakapan milik participant yang terverifikasi. Pesan tetap berada di conversations/messages, tidak disalin ke agent_memory_items, tidak dapat diubah dari Memory Studio, dan retrieval memakai klasifikasi Restricted serta batas retensi policy.</p><span className="mt-3 inline-flex rounded-full border px-2 py-1 text-xs">Participant-scoped · Read-only · Consent-gated</span></section>
   <section className="space-y-3 rounded-2xl border p-4 sm:p-5">
    <div><h2 className="text-lg font-semibold">Cari konteks Memory</h2><p className="mt-1 text-sm text-neutral-600">Gunakan retrieval API dengan scope Agent dan tujuan yang dipilih. Pencarian memakai ranking full-text PostgreSQL atau recency metadata, selalu mengikuti consent, klasifikasi, policy version, retensi dan ownership di backend.</p></div>
    <div className="flex flex-col gap-2 sm:flex-row"><input value={retrievalQuery} onChange={e=>setRetrievalQuery(e.target.value)} maxLength={300} placeholder="Cari fakta atau konteks (opsional)" className="min-w-0 flex-1 rounded-xl border px-3 py-2 text-sm"/><select value={retrievalPurpose} onChange={e=>setRetrievalPurpose(e.target.value)} className="rounded-xl border bg-white px-3 py-2 text-sm text-neutral-900"><option value="agent_generation_context">Generation</option><option value="agent_runtime_context">Agent Runtime</option></select><select value={retrievalMaxSensitivity} onChange={e=>setRetrievalMaxSensitivity(e.target.value)} aria-label="Batas klasifikasi Memory" className="rounded-xl border bg-white px-3 py-2 text-sm text-neutral-900"><option value="">Semua klasifikasi yang diizinkan</option><option value="public">Maks. Public</option><option value="internal">Maks. Internal</option><option value="confidential">Maks. Confidential</option><option value="restricted">Maks. Restricted</option></select><button disabled={retrievalBusy||!policies.some(p=>p.enabled)} onClick={()=>void retrieveMemory()} className="rounded-xl bg-neutral-900 px-4 py-2 text-sm text-white disabled:opacity-50">{retrievalBusy?"Mencari…":"Cari Memory"}</button></div>
@@ -152,7 +154,7 @@ export default function AgentMemoryPage(){
   <section className="space-y-3 rounded-2xl border p-4 sm:p-5">
    <div><h2 className="text-lg font-semibold">Ajukan Memory secara manual</h2><p className="mt-1 text-sm text-neutral-600">Buat proposal manual, atau gunakan instruksi eksplisit “ingat bahwa…” di Agent Chat milik owner. Instruksi tersebut hanya membuat proposal pending jika consent Long-term Memory aktif; tidak ada ekstraksi inferensial oleh model. Persetujuan tetap diperlukan.</p></div>
    <div className="grid gap-3 sm:grid-cols-3">
-    <label className="space-y-1 text-xs font-medium text-neutral-600">Kelas Memory<select value={proposalType} onChange={e=>setProposalType(e.target.value as T)} className="w-full rounded-xl border bg-white px-3 py-2 text-sm text-neutral-900">{defs.map(d=><option key={d.key} value={d.key} disabled={!policies.find(p=>p.memory_type===d.key)?.enabled}>{d.title}{policies.find(p=>p.memory_type===d.key)?.enabled?"":" · consent nonaktif"}</option>)}</select></label>
+    <label className="space-y-1 text-xs font-medium text-neutral-600">Kelas Memory<select value={proposalType} onChange={e=>setProposalType(e.target.value as PersistentT)} className="w-full rounded-xl border bg-white px-3 py-2 text-sm text-neutral-900">{defs.map(d=><option key={d.key} value={d.key} disabled={!policies.find(p=>p.memory_type===d.key)?.enabled}>{d.title}{policies.find(p=>p.memory_type===d.key)?.enabled?"":" · consent nonaktif"}</option>)}</select></label>
     <label className="space-y-1 text-xs font-medium text-neutral-600">Tujuan<select value={proposalPurpose} onChange={e=>setProposalPurpose(e.target.value)} className="w-full rounded-xl border bg-white px-3 py-2 text-sm text-neutral-900"><option value="agent_generation_context">Generation context</option><option value="agent_runtime_context">Agent runtime context</option></select></label>
     <label className="space-y-1 text-xs font-medium text-neutral-600">Klasifikasi<select value={proposalClass} onChange={e=>setProposalClass(e.target.value)} className="w-full rounded-xl border bg-white px-3 py-2 text-sm text-neutral-900"><option value="public">Public</option><option value="internal">Internal</option><option value="confidential">Confidential</option></select></label>
    </div>
