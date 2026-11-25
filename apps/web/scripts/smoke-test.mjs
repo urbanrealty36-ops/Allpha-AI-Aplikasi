@@ -316,7 +316,7 @@ assert.ok(spatialThemeCatalog.includes("Coba lagi"), "Web Theme catalog must pro
 // are canonical-API-backed and must remain reachable from the Feed shell.
 const webCreate = readFileSync(new URL("../app/create/page.tsx", import.meta.url), "utf8");
 for (const contract of [
-  '"/v1/content"', '"/v1/content/"', '"/publish"', "uploadContentMediaWithTus", "draftId", "uploadId",
+  '"/v1/content"', '"/v1/content/"', '"/publish"', "uploadContentMediaWithCloudinary", "draftId", "uploadId",
   "session.access_token", "visibility", "content_type", "allowedMedia", "maxBytes", "file.size",
   "Konten belum", 'role="alert"', "moderation === \"approved\""
 ]) assert.ok(webCreate.includes(contract), "missing Web Create lifecycle contract: " + contract);
