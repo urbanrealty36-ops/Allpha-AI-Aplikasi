@@ -14,7 +14,8 @@ import { CanonicalNativeWorldRenderer } from "./components/spatial/CanonicalNati
 import { SpatialNavigationScreen } from "./components/spatial/SpatialNavigationScreen";
 import { SpatialThemeCatalogScreen } from "./components/spatial/SpatialThemeCatalogScreen";
 import { ContentAppealsPanel } from "./components/ContentAppealsPanel";
-import { AiCinemaCreatorWorkspace } from "./components/AiCinemaCreatorWorkspace";
+import { AiCinemaCreatorWorkspace, uploadNativeFileWithTus, type NativeResumableUploadInit } from "./components/AiCinemaCreatorWorkspace";
+import { File as ExpoFile } from "expo-file-system";
 import { NotificationsInbox } from "./components/NotificationsInbox";
 import { BillingCenter } from "./components/BillingCenter";
 import { AiCinemaPlaybackCenter } from "./components/AiCinemaPlaybackCenter";
@@ -517,6 +518,7 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
   const [contentVisibility, setContentVisibility] = useState<"public" | "followers" | "private">("public");
   const [contentFile, setContentFile] = useState<NativeContentFile | null>(null);
   const [contentUploadId, setContentUploadId] = useState("");
+  const [contentUploadProgress, setContentUploadProgress] = useState(0);
   const [contentDraftId, setContentDraftId] = useState<string | null>(null);
   const [contentBusy, setContentBusy] = useState(false);
   const [feedItems, setFeedItems] = useState<NativeFeedItem[]>([]);
@@ -532,6 +534,9 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
   const [storyVisibility, setStoryVisibility] = useState<"public" | "followers" | "private">("public");
   const [storyTtl, setStoryTtl] = useState(24);
   const [storyFile, setStoryFile] = useState<NativeContentFile | null>(null);
+  const [storyDraftId, setStoryDraftId] = useState("");
+  const [storyUploadId, setStoryUploadId] = useState("");
+  const [storyUploadProgress, setStoryUploadProgress] = useState(0);
   const [storyBusy, setStoryBusy] = useState(false);
   const [reelsCursor, setReelsCursor] = useState<string | null>(null);
   const [reelsBusy, setReelsBusy] = useState(false);
@@ -965,20 +970,42 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
       const max = asset.mimeType.startsWith("video/") ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
       if (asset.size && asset.size > max) throw new Error("Ukuran media melampaui batas.");
       setStoryFile({ uri: asset.uri, name: asset.name, mimeType: asset.mimeType, size: asset.size });
+      setStoryUploadId(createClientUuid()); setStoryUploadProgress(0);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Pemilihan media Story gagal."); }
   }
   async function createNativeStory() {
-    if (!storyBody.trim() && !storyFile) { setError("Isi teks atau pilih gambar/video terlebih dahulu."); return; }
-    setStoryBusy(true); setError(""); setMessage("");
+    if (!storyBody.trim() && !storyFile && !storyDraftId) { setError("Isi teks atau pilih gambar/video terlebih dahulu."); return; }
+    setStoryBusy(true); setError(""); setMessage(""); setStoryUploadProgress(0);
     try {
-      const created = await apiRequest("/v1/stories", { method: "POST", body: JSON.stringify({ body: storyBody.trim(), visibility: storyVisibility, expires_after_hours: storyTtl }) }) as { item: NativeStory };
-      if (storyFile) {
-        const form = new FormData();
-        form.append("file", { uri: storyFile.uri, name: storyFile.name, type: storyFile.mimeType } as unknown as Blob);
-        await apiRequest("/v1/content/" + encodeURIComponent(created.item.id) + "/media", { method: "POST", body: form });
+      let contentId = storyDraftId;
+      if (!contentId) {
+        const created = await apiRequest("/v1/stories", { method: "POST", body: JSON.stringify({ body: storyBody.trim(), visibility: storyVisibility, expires_after_hours: storyTtl }) }) as { item: NativeStory };
+        contentId = created.item.id;
+        setStoryDraftId(contentId);
       }
-      const result = await apiRequest("/v1/content/" + encodeURIComponent(created.item.id) + "/publish", { method: "POST" }) as { message?: string };
-      setStoryBody(""); setStoryFile(null); setMessage(result.message || "Story dikirim untuk moderasi.");
+      if (storyFile) {
+        const uploadKey = storyUploadId || createClientUuid();
+        setStoryUploadId(uploadKey);
+        const file = new ExpoFile(storyFile.uri);
+        if (!Number.isSafeInteger(file.size) || file.size <= 0) throw new Error("Ukuran file media tidak dapat dibaca untuk upload resumable.");
+        const init = await apiRequest("/v1/content/" + encodeURIComponent(contentId) + "/media/resumable", {
+          method: "POST",
+          headers: { "Idempotency-Key": uploadKey },
+          body: JSON.stringify({ filename: storyFile.name, media_type: storyFile.mimeType || "", size_bytes: file.size }),
+        }) as NativeResumableUploadInit;
+        if (!init.already_uploaded) {
+          try {
+            await uploadNativeFileWithTus(file, init, supabaseKey, init.item.id, setStoryUploadProgress, "allpha:story:tus");
+          } catch (cause) {
+            if (!(cause instanceof Error) || cause.message !== "MEDIA_OBJECT_ALREADY_EXISTS") throw cause;
+          }
+          await apiRequest("/v1/content/" + encodeURIComponent(contentId) + "/media/" + encodeURIComponent(init.item.id) + "/complete", { method: "POST" });
+        }
+        await SecureStore.deleteItemAsync("allpha:story:tus:" + init.item.id);
+      }
+      const result = await apiRequest("/v1/content/" + encodeURIComponent(contentId) + "/publish", { method: "POST" }) as { message?: string };
+      setStoryBody(""); setStoryFile(null); setStoryDraftId(""); setStoryUploadId(""); setStoryUploadProgress(0);
+      setMessage(result.message || "Story dikirim untuk moderasi.");
       await loadNativeStories();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Story tidak dapat disimpan."); }
     finally { setStoryBusy(false); }
@@ -1138,19 +1165,26 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
       if (contentFile) {
         const uploadKey = contentUploadId || createClientUuid();
         setContentUploadId(uploadKey);
-        const form = new FormData();
-        form.append("file", { uri: contentFile.uri, name: contentFile.name, type: contentFile.mimeType } as unknown as Blob);
-        const response = await fetch(apiBase + "/v1/content/" + encodeURIComponent(contentId) + "/media", {
+        const file = new ExpoFile(contentFile.uri);
+        if (!Number.isSafeInteger(file.size) || file.size <= 0) throw new Error("Ukuran file media tidak dapat dibaca untuk upload resumable.");
+        const init = await apiRequest("/v1/content/" + encodeURIComponent(contentId) + "/media/resumable", {
           method: "POST",
-          headers: { Authorization: "Bearer " + session.access_token, Accept: "application/json", "Idempotency-Key": uploadKey },
-          body: form,
-        });
-        const result = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(result?.error?.message || result?.detail?.message || "Unggah media gagal. Draft tetap tersimpan dan dapat dicoba lagi.");
+          headers: { "Idempotency-Key": uploadKey },
+          body: JSON.stringify({ filename: contentFile.name, media_type: contentFile.mimeType || "", size_bytes: file.size }),
+        }) as NativeResumableUploadInit;
+        if (!init.already_uploaded) {
+          try {
+            await uploadNativeFileWithTus(file, init, supabaseKey, init.item.id, setContentUploadProgress, "allpha:content:tus");
+          } catch (cause) {
+            if (!(cause instanceof Error) || cause.message !== "MEDIA_OBJECT_ALREADY_EXISTS") throw cause;
+          }
+          await apiRequest("/v1/content/" + encodeURIComponent(contentId) + "/media/" + encodeURIComponent(init.item.id) + "/complete", { method: "POST" });
+        }
+        await SecureStore.deleteItemAsync("allpha:content:tus:" + init.item.id);
       }
       const result = await apiRequest("/v1/content/mine") as { items?: NativeContentItem[] };
       setContentItems(result.items ?? []);
-      setContentBody(""); setContentFile(null); setContentUploadId(""); setContentDraftId(null);
+      setContentBody(""); setContentFile(null); setContentUploadId(""); setContentUploadProgress(0); setContentDraftId(null);
       setMessage("Draft konten tersimpan melalui FastAPI.");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Draft gagal disimpan.");
@@ -2283,6 +2317,7 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
         <Text style={s.kicker}>AUDIENCE</Text><View style={{flexDirection:"row",gap:8,flexWrap:"wrap"}}><Button title={storyVisibility==="public"?"✓ Publik":"Publik"} secondary={storyVisibility!=="public"} onPress={()=>setStoryVisibility("public")}/><Button title={storyVisibility==="followers"?"✓ Pengikut":"Pengikut"} secondary={storyVisibility!=="followers"} onPress={()=>setStoryVisibility("followers")}/><Button title={storyVisibility==="private"?"✓ Pribadi":"Pribadi"} secondary={storyVisibility!=="private"} onPress={()=>setStoryVisibility("private")}/></View>
         <Text style={s.kicker}>MASA AKTIF</Text><View style={{flexDirection:"row",gap:8,flexWrap:"wrap"}}>{([6,12,24,48,72,168] as const).map(hours=><Button key={hours} title={(storyTtl===hours?"✓ ":"")+(hours===168?"7 hari":hours+" jam")} secondary={storyTtl!==hours} onPress={()=>setStoryTtl(hours)}/>)}</View>
         <Button title={storyFile ? "Media: "+storyFile.name : "Pilih gambar/video"} secondary disabled={storyBusy} onPress={()=>void chooseStoryMedia()}/>{storyFile && <Text style={s.muted}>{storyFile.mimeType} · {storyFile.size ? (storyFile.size/1048576).toFixed(2)+" MB" : "ukuran tidak diketahui"}</Text>}
+        {storyUploadProgress > 0 && <Text style={s.muted}>Unggah resumable: {storyUploadProgress}%</Text>}
         <Button title={storyBusy ? "Memproses…" : "Kirim Story ke moderasi"} disabled={storyBusy || (!storyBody.trim() && !storyFile)} onPress={()=>void createNativeStory()}/><Button title="Muat ulang Stories" secondary disabled={storyBusy} onPress={()=>void loadNativeStories()}/>
         <Text style={s.kicker}>MOMEN AKTIF</Text>{activeStories.length===0 ? <Text style={s.muted}>Belum ada Story aktif yang dapat Anda lihat.</Text> : activeStories.map(story=><View key={story.id} style={s.socialRow}><Text style={s.body}>{story.body || "Momen media"}</Text><Text style={s.muted}>{story.visibility} · {story.expires_at ? "Berakhir "+new Date(story.expires_at).toLocaleString("id-ID") : "Expiry belum tersedia"}</Text>{(story.media||[]).map(media=>media.preview_url?<Button key={media.id} title={"Buka "+media.filename} secondary onPress={()=>void Linking.openURL(media.preview_url!)}/>:null)}</View>)}
         <Text style={s.kicker}>STORIES SAYA</Text>{storyItems.length===0 ? <Text style={s.muted}>Belum ada Story pada akun ini.</Text> : storyItems.map(story=><View key={story.id} style={s.socialRow}><Text style={s.body}>{story.status} · {story.moderation_status}</Text><Text style={s.muted}>{story.body || "Momen media"} · {story.expires_at ? "Expiry: "+new Date(story.expires_at).toLocaleString("id-ID") : "Expiry dimulai setelah publikasi disetujui"}</Text>{story.status!=="archived" && story.status!=="deleted" && <Button title="Arsipkan Story" secondary disabled={storyBusy} onPress={()=>void archiveNativeStory(story)}/>}</View>)}
@@ -2499,6 +2534,7 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
         <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}><Button title={contentVisibility === "public" ? "✓ Publik" : "Publik"} secondary={contentVisibility !== "public"} onPress={() => setContentVisibility("public")}/><Button title={contentVisibility === "followers" ? "✓ Pengikut" : "Pengikut"} secondary={contentVisibility !== "followers"} onPress={() => setContentVisibility("followers")}/><Button title={contentVisibility === "private" ? "✓ Pribadi" : "Pribadi"} secondary={contentVisibility !== "private"} onPress={() => setContentVisibility("private")}/></View>
         <Button title={contentFile ? "Media: " + contentFile.name : "Pilih gambar/video/audio"} secondary onPress={() => void chooseContentMedia()}/>
         {contentFile && <Text style={s.muted}>{contentFile.mimeType} · {contentFile.size ? (contentFile.size / 1048576).toFixed(2) + " MB" : "ukuran tidak diketahui"}</Text>}
+        {contentUploadProgress > 0 && <Text style={s.muted}>Unggah resumable: {contentUploadProgress}%</Text>}
         <Button title={contentBusy ? "Memproses…" : "Simpan draft"} disabled={contentBusy || (!contentBody.trim() && !contentFile)} onPress={() => void createNativeContentDraft()}/>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}><Text style={s.kicker}>KONTEN SAYA ({contentItems.length})</Text><View style={{flexDirection:"row",gap:8}}><Button title="Muat ulang" secondary disabled={contentBusy} onPress={() => void loadMyContent()}/><Button title="Tampilkan dihapus" secondary disabled={contentBusy} onPress={() => void loadMyContent(true)}/></View></View>
         {contentItems.length === 0 ? <Text style={s.muted}>Belum ada konten.</Text> : contentItems.map(item => <View key={item.id} style={s.socialRow}><Text style={s.body}>{item.body || item.media?.map(media => media.filename).join(", ") || "Konten media"}</Text><Text style={s.muted}>{item.content_type} · v{item.version} · {item.status}/{item.moderation_status}</Text><View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}><Button title="Pratinjau" secondary disabled={contentBusy} onPress={() => void previewNativeContent(item)}/>{["draft","failed"].includes(item.status) && <Button title="Edit draft" secondary disabled={contentBusy} onPress={() => { setContentDraftId(item.id); setContentBody(item.body || ""); setContentVisibility(item.visibility as "public" | "followers" | "private"); setContentFile(null); setContentUploadId(""); }}/>}{item.status === "failed" && <Button title="Pulihkan draft" secondary disabled={contentBusy} onPress={() => void retryNativeContent(item)}/>}{["draft","failed"].includes(item.status) && <Button title="Kirim review" disabled={contentBusy} onPress={() => void submitNativeContent(item)}/>}{["draft","failed","published"].includes(item.status) && <Button title="Arsipkan" secondary disabled={contentBusy} onPress={() => confirmArchiveNativeContent(item)}/>}{["draft","failed","archived"].includes(item.status) && <Button title="Hapus" secondary disabled={contentBusy} onPress={() => confirmDeleteNativeContent(item)}/>}{item.status === "deleted" && <Button title="Pulihkan (30 hari)" secondary disabled={contentBusy} onPress={() => void restoreNativeContent(item)}/>}</View></View>)}
