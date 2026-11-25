@@ -511,6 +511,12 @@ begin
   if v_media.domain<>'content' or v_media.content_id is null then
     return jsonb_build_object('outcome','domain_delete_not_supported');
   end if;
+  if v_media.provider_delete_state='deleted' then
+    return jsonb_build_object('outcome','already_deleted','media',to_jsonb(v_media));
+  end if;
+  if v_media.provider_delete_state in ('queued','deleting') then
+    return jsonb_build_object('outcome','already_queued','media',to_jsonb(v_media));
+  end if;
   if exists(
     select 1 from public.content_retention_holds h
     where h.content_id=v_media.content_id and h.released_at is null
@@ -522,12 +528,6 @@ begin
     where c.id=v_media.content_id and c.status not in ('draft','failed','deleted')
   ) then
     return jsonb_build_object('outcome','media_in_use');
-  end if;
-  if v_media.provider_delete_state='deleted' then
-    return jsonb_build_object('outcome','already_deleted','media',to_jsonb(v_media));
-  end if;
-  if v_media.provider_delete_state in ('queued','deleting') then
-    return jsonb_build_object('outcome','already_queued','media',to_jsonb(v_media));
   end if;
   if v_media.provider_public_id is null or v_media.provider_resource_type is null or v_media.provider_resource_type not in ('image','video','raw') then
     return jsonb_build_object('outcome','provider_identity_missing');
