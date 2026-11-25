@@ -986,6 +986,7 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
       if (storyFile) {
         const uploadKey = storyUploadId || createClientUuid();
         setStoryUploadId(uploadKey);
+        if (!supabaseKey) throw new Error("Kunci publik Supabase belum dikonfigurasi untuk upload resumable.");
         const file = new ExpoFile(storyFile.uri);
         if (!Number.isSafeInteger(file.size) || file.size <= 0) throw new Error("Ukuran file media tidak dapat dibaca untuk upload resumable.");
         const init = await apiRequest("/v1/content/" + encodeURIComponent(contentId) + "/media/resumable", {
@@ -1165,6 +1166,7 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
       if (contentFile) {
         const uploadKey = contentUploadId || createClientUuid();
         setContentUploadId(uploadKey);
+        if (!supabaseKey) throw new Error("Kunci publik Supabase belum dikonfigurasi untuk upload resumable.");
         const file = new ExpoFile(contentFile.uri);
         if (!Number.isSafeInteger(file.size) || file.size <= 0) throw new Error("Ukuran file media tidak dapat dibaca untuk upload resumable.");
         const init = await apiRequest("/v1/content/" + encodeURIComponent(contentId) + "/media/resumable", {
