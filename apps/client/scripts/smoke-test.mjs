@@ -60,13 +60,17 @@ assert.ok(app.includes("Eksekusi tetap membutuhkan policy runtime yang disetujui
 for (const contract of [
   "/v1/content/mine", "/v1/content", "/preview", "/publish", "/retry",
   "createNativeContentDraft", "createNativeStory", "submitNativeContent", "retryNativeContent", "previewNativeContent",
-  "uploadNativeFileWithCloudinary", "allpha:content:tus", "allpha:story:tus",
+  "uploadNativeFileWithProvider", "allpha:content:tus", "allpha:story:tus",
   "Draft konten tersimpan melalui FastAPI", "Konten dikirim untuk moderasi"
 ]) assert.ok(app.includes(contract), `missing ENG-P13 Native content pipeline contract: ${contract}`);
 
 const nativeCloudinaryMedia = readFileSync(new URL("../components/AiCinemaCreatorWorkspace.tsx", import.meta.url), "utf8");
-for (const contract of ["/v1/media/upload-intents", "/v1/media/complete", "uploadNativeFileWithCloudinary", "Crypto.CryptoDigestAlgorithm.SHA256", "authenticated", "upload_url", "Idempotency-Key"]) {
-  assert.ok(nativeCloudinaryMedia.includes(contract), `missing Native Cloudinary media contract: ${contract}`);
+for (const contract of [
+  "/v1/media/upload-intents", "/v1/media/complete", "uploadNativeFileWithCloudinary",
+  "uploadNativeFileWithProvider", "uploadNativeFileWithTus", "EXPO_PUBLIC_ALLPHA_CLOUDINARY_MEDIA_ENABLED",
+  "Crypto.CryptoDigestAlgorithm.SHA256", "authenticated", "upload_url", "Idempotency-Key"
+]) {
+  assert.ok(nativeCloudinaryMedia.includes(contract), `missing Native gated Cloudinary/TUS media contract: ${contract}`);
 }
 
 for (const contract of [
