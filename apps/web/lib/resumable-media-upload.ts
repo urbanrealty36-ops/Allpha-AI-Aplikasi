@@ -44,8 +44,13 @@ export async function uploadContentMediaWithTus(
     body: JSON.stringify({ filename: file.name, media_type: file.type, size_bytes: file.size }),
   });
   const init = initialized as ResumableMediaInit;
-  if (init.already_uploaded) return init.item;
-  if (!init.item?.id || !init.tus_endpoint || !init.upload_token || !init.upload_metadata) {
+  if (!init.item?.id) throw new Error("API tidak mengembalikan identitas media untuk upload resumable.");
+  const sessionKey = `allpha:content:tus:${contentId}:${init.item.id}`;
+  if (init.already_uploaded) {
+    try { sessionStorage.removeItem(sessionKey); } catch { /* Ignore unavailable session storage. */ }
+    return init.item;
+  }
+  if (!init.tus_endpoint || !init.upload_token || !init.upload_metadata) {
     throw new Error("Kontrak upload resumable dari server tidak lengkap.");
   }
   const apiKey = getBrowserSupabasePublishableKey();
@@ -55,7 +60,6 @@ export async function uploadContentMediaWithTus(
     apikey: apiKey,
     "x-signature": init.upload_token,
   };
-  const sessionKey = `allpha:content:tus:${contentId}:${init.item.id}`;
   let uploadUrl: string | null = null;
   try { uploadUrl = sessionStorage.getItem(sessionKey); } catch { /* Current-page chunking still works without tab persistence. */ }
 
@@ -86,6 +90,7 @@ export async function uploadContentMediaWithTus(
         `/v1/content/${encodeURIComponent(contentId)}/media/${encodeURIComponent(init.item.id)}/complete`,
         { method: "POST" },
       ) as { item: { id: string } };
+      try { sessionStorage.removeItem(sessionKey); } catch { /* Ignore unavailable session storage. */ }
       return completed.item;
     }
     if (created.status !== 201) throw new Error(await responseError(created));
