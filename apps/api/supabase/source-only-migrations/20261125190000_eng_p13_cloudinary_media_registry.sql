@@ -647,6 +647,90 @@ begin
 end;
 $function$;
 
+create or replace function public.cloudinary_media_schema_readiness()
+returns jsonb
+language plpgsql
+security definer
+set search_path=pg_catalog,public,storage
+as $function$
+declare
+  v_missing_columns text[];
+  v_missing_tables text[];
+  v_missing_rpcs text[];
+begin
+  select array_agg(req.table_name||'.'||req.column_name order by req.table_name,req.column_name)
+  into v_missing_columns
+  from (values
+    ('content_media','id'),('content_media','owner_id'),('content_media','content_id'),
+    ('content_media','bucket_id'),('content_media','storage_path'),('content_media','filename'),
+    ('content_media','media_type'),('content_media','size_bytes'),('content_media','sha256'),
+    ('content_media','status'),('content_media','storage_provider'),('content_media','domain'),
+    ('content_media','purpose'),('content_media','resource_id'),('content_media','tenant_id'),
+    ('content_media','session_id'),('content_media','provider_asset_id'),
+    ('content_media','provider_public_id'),('content_media','provider_batch_id'),
+    ('content_media','provider_resource_type'),('content_media','provider_delivery_type'),
+    ('content_media','provider_version'),('content_media','provider_format'),
+    ('content_media','provider_width'),('content_media','provider_height'),
+    ('content_media','provider_duration'),('content_media','provider_bytes'),
+    ('content_media','provider_tags'),('content_media','provider_metadata'),
+    ('content_media','upload_expires_at'),('content_media','upload_completed_at'),
+    ('content_media','upload_idempotency_key'),('content_media','provider_deleted_at'),
+    ('content_media','provider_delete_state'),('content_media','provider_callback_verified_at'),
+    ('content_media','scan_receipt'),('content_media','derivatives'),
+    ('content_media','processing_version'),('content_media','processing_attempt'),
+    ('content_media','updated_at'),
+    ('content_lifecycle_jobs','id'),('content_lifecycle_jobs','job_type'),
+    ('content_lifecycle_jobs','status'),('content_lifecycle_jobs','payload'),
+    ('content_lifecycle_jobs','media_id'),('content_lifecycle_jobs','lease_token'),
+    ('content_lifecycle_jobs','lease_expires_at'),('content_lifecycle_jobs','attempts'),
+    ('content_lifecycle_jobs','max_attempts'),('content_lifecycle_jobs','run_at'),
+    ('content_lifecycle_jobs','idempotency_key'),('content_lifecycle_jobs','updated_at'),
+    ('content_lifecycle_events','event_key'),('content_lifecycle_events','event_type'),
+    ('content_lifecycle_events','media_id'),('content_lifecycle_events','owner_id'),
+    ('content_lifecycle_events','payload')
+  ) as req(table_name,column_name)
+  where not exists(
+    select 1 from information_schema.columns c
+    where c.table_schema='public' and c.table_name=req.table_name and c.column_name=req.column_name
+  );
+
+  select array_agg(req.table_name order by req.table_name)
+  into v_missing_tables
+  from (values
+    ('content_media'),('content_lifecycle_jobs'),('content_lifecycle_events'),
+    ('content_provider_callbacks')
+  ) as req(table_name)
+  where to_regclass('public.'||req.table_name) is null;
+
+  select array_agg(req.signature order by req.signature)
+  into v_missing_rpcs
+  from (values
+    ('public.claim_content_lifecycle_jobs(text,integer,integer,text)'),
+    ('public.complete_content_subtitle_job(uuid,uuid,uuid,jsonb,integer)'),
+    ('public.reserve_cloudinary_media_upload(uuid,uuid,uuid,text,text,uuid,uuid,uuid,text,text,bigint,text,text,text,text,timestamptz,text)'),
+    ('public.complete_cloudinary_content_media_upload(uuid,uuid,text,text,text,text,text,bigint,text,integer,integer,numeric,bigint,text[],jsonb)'),
+    ('public.complete_cloudinary_content_provider_job(uuid,uuid,text,text,text,text,text,jsonb,text,jsonb)'),
+    ('public.request_cloudinary_content_media_delete(uuid,uuid)'),
+    ('public.complete_cloudinary_media_delete_job(uuid,uuid,uuid)'),
+    ('public.fail_cloudinary_media_delete_job(uuid,uuid,text)')
+  ) as req(signature)
+  where to_regprocedure(req.signature) is null;
+
+  return jsonb_build_object(
+    'contract_version',1,
+    'ready',coalesce(cardinality(v_missing_columns),0)=0
+      and coalesce(cardinality(v_missing_tables),0)=0
+      and coalesce(cardinality(v_missing_rpcs),0)=0,
+    'missing_columns',coalesce(to_jsonb(v_missing_columns),'[]'::jsonb),
+    'missing_tables',coalesce(to_jsonb(v_missing_tables),'[]'::jsonb),
+    'missing_rpcs',coalesce(to_jsonb(v_missing_rpcs),'[]'::jsonb)
+  );
+end;
+$function$;
+
+revoke all on function public.cloudinary_media_schema_readiness() from public,anon,authenticated;
+grant execute on function public.cloudinary_media_schema_readiness() to service_role;
+
 update storage.buckets
 set allowed_mime_types=array(
   select distinct mime from unnest(coalesce(allowed_mime_types,array[]::text[]) || array['text/vtt','application/x-subrip']) as mime
