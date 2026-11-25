@@ -658,6 +658,7 @@ declare
   v_missing_tables text[];
   v_missing_rpcs text[];
   v_missing_constraints text[];
+  v_missing_rls text[];
 begin
   select array_agg(req.table_name||'.'||req.column_name order by req.table_name,req.column_name)
   into v_missing_columns
@@ -736,16 +737,30 @@ begin
     and position(req.required_fragment in pg_get_constraintdef(con.oid))>0
   );
 
+  select array_agg(req.table_name order by req.table_name)
+  into v_missing_rls
+  from (values
+    ('content_media'),('content_lifecycle_jobs'),('content_lifecycle_events'),
+    ('content_provider_callbacks')
+  ) as req(table_name)
+  where not exists(
+    select 1
+    from pg_class rel join pg_namespace ns on ns.oid=rel.relnamespace
+    where ns.nspname='public' and rel.relname=req.table_name and rel.relrowsecurity
+  );
+
   return jsonb_build_object(
     'contract_version',1,
     'ready',coalesce(cardinality(v_missing_columns),0)=0
       and coalesce(cardinality(v_missing_tables),0)=0
       and coalesce(cardinality(v_missing_rpcs),0)=0
-      and coalesce(cardinality(v_missing_constraints),0)=0,
+      and coalesce(cardinality(v_missing_constraints),0)=0
+      and coalesce(cardinality(v_missing_rls),0)=0,
     'missing_columns',coalesce(to_jsonb(v_missing_columns),'[]'::jsonb),
     'missing_tables',coalesce(to_jsonb(v_missing_tables),'[]'::jsonb),
     'missing_rpcs',coalesce(to_jsonb(v_missing_rpcs),'[]'::jsonb),
-    'missing_constraints',coalesce(to_jsonb(v_missing_constraints),'[]'::jsonb)
+    'missing_constraints',coalesce(to_jsonb(v_missing_constraints),'[]'::jsonb),
+    'missing_rls',coalesce(to_jsonb(v_missing_rls),'[]'::jsonb)
   );
 end;
 $function$;
