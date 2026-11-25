@@ -16,8 +16,10 @@ from allpha_api.model_router import (
 
 
 class FakeAdapter:
-    def __init__(self, *, model_id: str = "model-a", cost: int = 3):
+    def __init__(self, *, provider_id: str = "provider-a", model_id: str = "model-a", model_version: str = "version-a", cost: int = 3):
+        self.provider_id = provider_id
         self.model_id = model_id
+        self.model_version = model_version
         self.cost = cost
         self.calls = 0
 
@@ -26,9 +28,9 @@ class FakeAdapter:
         return TextGenerationResponse(
             task_id=request.task_id,
             trace_id=request.trace_id,
-            provider_id="provider-a",
+            provider_id=self.provider_id,
             model_id=self.model_id,
-            model_version="version-a",
+            model_version=self.model_version,
             output_text='{"answer":"grounded test output"}',
             input_tokens=11,
             output_tokens=7,
@@ -188,3 +190,77 @@ def test_runtime_preflight_blocks_provider_call_when_active_tariff_is_missing():
     with pytest.raises(TextGenerationRouterUnavailable, match="active model-cost configuration"):
         asyncio.run(router.generate(request()))
     assert adapter.calls == 0
+
+
+def test_text_generation_fails_over_only_when_primary_preflight_is_unavailable():
+    primary = FakeAdapter(provider_id="provider-a")
+    fallback = FakeAdapter(provider_id="provider-b")
+    seen = []
+
+    async def verify(sensitivity, route, policy):
+        seen.append(route.provider_id)
+        if route.provider_id == "provider-a":
+            raise TextGenerationRouterUnavailable("primary tariff is not active", category="active_tariff")
+
+    policy = TextGenerationPolicy(
+        policy_id="policy-test", policy_version="v1", approved=True,
+        max_prompt_bytes=1024, max_output_tokens=100, max_cost_microunits=10,
+        max_latency_ms=5000, cost_unit="approved-unit", pricing_version="pricing-v1",
+    )
+    router = CanonicalTextGenerationRouter(
+        routes={"private": TextGenerationRoute("provider-a", "model-a", "version-a")},
+        fallback_routes={"private": (TextGenerationRoute("provider-b", "model-a", "version-a"),)},
+        adapters={"provider-a": primary, "provider-b": fallback},
+        policies={"private": policy}, metering_sink=MemorySink(), runtime_preflight=verify,
+    )
+    ready = asyncio.run(router.preflight("private"))
+    assert ready["route"]["provider_id"] == "provider-b"
+    assert ready["route"]["fallback_used"] is True
+    response, evidence = asyncio.run(router.generate(request()))
+    assert response.provider_id == "provider-b"
+    assert evidence.provider_id == "provider-b"
+    assert primary.calls == 0
+    assert fallback.calls == 1
+    assert seen == ["provider-a", "provider-b", "provider-a", "provider-b"]
+
+
+def test_text_generation_does_not_fallback_after_provider_outcome_becomes_unknown():
+    class UnknownOutcomeAdapter(FakeAdapter):
+        async def generate(self, request, *, model_id):
+            self.calls += 1
+            raise RuntimeError("connection lost after request dispatch")
+
+    primary = UnknownOutcomeAdapter(provider_id="provider-a")
+    fallback = FakeAdapter(provider_id="provider-b")
+    async def verify(*args):
+        return None
+    policy = TextGenerationPolicy(
+        policy_id="policy-test", policy_version="v1", approved=True,
+        max_prompt_bytes=1024, max_output_tokens=100, max_cost_microunits=10,
+        max_latency_ms=5000, cost_unit="approved-unit", pricing_version="pricing-v1",
+    )
+    router = CanonicalTextGenerationRouter(
+        routes={"private": TextGenerationRoute("provider-a", "model-a", "version-a")},
+        fallback_routes={"private": (TextGenerationRoute("provider-b", "model-a", "version-a"),)},
+        adapters={"provider-a": primary, "provider-b": fallback},
+        policies={"private": policy}, metering_sink=MemorySink(), runtime_preflight=verify,
+    )
+    with pytest.raises(TextGenerationRouterUnavailable, match="outcome is unknown"):
+        asyncio.run(router.generate(request()))
+    assert primary.calls == 1
+    assert fallback.calls == 0
+
+
+def test_text_generation_fallback_must_preserve_model_identity():
+    policy = TextGenerationPolicy(
+        policy_id="policy-test", policy_version="v1", approved=True,
+        max_prompt_bytes=1024, max_output_tokens=100, max_cost_microunits=10,
+        max_latency_ms=5000, cost_unit="approved-unit", pricing_version="pricing-v1",
+    )
+    with pytest.raises(ValueError, match="preserve the quoted model id and version"):
+        CanonicalTextGenerationRouter(
+            routes={"private": TextGenerationRoute("provider-a", "model-a", "version-a")},
+            fallback_routes={"private": (TextGenerationRoute("provider-b", "other-model", "version-a"),)},
+            adapters={"provider-a": FakeAdapter(), "provider-b": FakeAdapter(provider_id="provider-b")},
+            policies={"private": policy}, metering_sink=MemorySink(),
+        )

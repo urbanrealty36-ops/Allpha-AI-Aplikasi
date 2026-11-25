@@ -451,3 +451,66 @@ def test_approved_runtime_policy_verifier_rejects_unapproved_or_incomplete_polic
         )
         with pytest.raises(RuntimeError):
             asyncio.run(verifier.verify())
+
+
+def test_router_factory_registers_explicit_same_model_provider_fallback(monkeypatch):
+    from allpha_api.text_generation_adapters import build_text_generation_router_from_environment
+    values = {
+        "ALLPHA_TEXTGEN_BASE_URL":"https://provider.invalid/v1",
+        "ALLPHA_TEXTGEN_API_KEY":"server-only-test-secret",
+        "ALLPHA_TEXTGEN_PROVIDER_ID":"provider-test",
+        "ALLPHA_TEXTGEN_MODEL_ID":"model-test",
+        "ALLPHA_TEXTGEN_MODEL_VERSION":"model-v1",
+        "ALLPHA_TEXTGEN_POLICY_ID":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "ALLPHA_TEXTGEN_POLICY_VERSION":"policy-v1",
+        "ALLPHA_TEXTGEN_PRICING_VERSION":"pricing-v1",
+        "ALLPHA_TEXTGEN_COST_UNIT":"USD",
+        "ALLPHA_TEXTGEN_INPUT_MICRO_COST_PER_TOKEN":"1",
+        "ALLPHA_TEXTGEN_OUTPUT_MICRO_COST_PER_TOKEN":"2",
+        "ALLPHA_TEXTGEN_MAX_COST_MICROUNITS":"1000",
+        "ALLPHA_TEXTGEN_MAX_PROMPT_BYTES":"16384",
+        "ALLPHA_TEXTGEN_MAX_OUTPUT_TOKENS":"1024",
+        "ALLPHA_TEXTGEN_MAX_LATENCY_MS":"30000",
+        "SUPABASE_URL":"https://db.invalid",
+        "SUPABASE_SERVICE_ROLE_KEY":"service-test",
+        "ALLPHA_TEXTGEN_POLICY_APPROVED":"false",
+        "ALLPHA_TEXTGEN_FALLBACK_1_BASE_URL":"https://fallback.invalid/v1",
+        "ALLPHA_TEXTGEN_FALLBACK_1_API_KEY":"fallback-server-secret",
+        "ALLPHA_TEXTGEN_FALLBACK_1_PROVIDER_ID":"provider-fallback",
+    }
+    for key, value in values.items():
+        monkeypatch.setenv(key, value)
+    router = build_text_generation_router_from_environment()
+    assert router is not None
+    snapshot = router.route_snapshot_for("private")
+    assert snapshot["fallback_routes"] == [{
+        "provider_id": "provider-fallback", "model_id": "model-test", "model_version": "model-v1",
+    }]
+
+
+def test_router_factory_fails_closed_on_partial_fallback_configuration(monkeypatch):
+    from allpha_api.text_generation_adapters import build_text_generation_router_from_environment
+    values = {
+        "ALLPHA_TEXTGEN_BASE_URL":"https://provider.invalid/v1",
+        "ALLPHA_TEXTGEN_API_KEY":"server-only-test-secret",
+        "ALLPHA_TEXTGEN_PROVIDER_ID":"provider-test",
+        "ALLPHA_TEXTGEN_MODEL_ID":"model-test",
+        "ALLPHA_TEXTGEN_MODEL_VERSION":"model-v1",
+        "ALLPHA_TEXTGEN_POLICY_ID":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "ALLPHA_TEXTGEN_POLICY_VERSION":"policy-v1",
+        "ALLPHA_TEXTGEN_PRICING_VERSION":"pricing-v1",
+        "ALLPHA_TEXTGEN_COST_UNIT":"USD",
+        "ALLPHA_TEXTGEN_INPUT_MICRO_COST_PER_TOKEN":"1",
+        "ALLPHA_TEXTGEN_OUTPUT_MICRO_COST_PER_TOKEN":"2",
+        "ALLPHA_TEXTGEN_MAX_COST_MICROUNITS":"1000",
+        "ALLPHA_TEXTGEN_MAX_PROMPT_BYTES":"16384",
+        "ALLPHA_TEXTGEN_MAX_OUTPUT_TOKENS":"1024",
+        "ALLPHA_TEXTGEN_MAX_LATENCY_MS":"30000",
+        "SUPABASE_URL":"https://db.invalid",
+        "SUPABASE_SERVICE_ROLE_KEY":"service-test",
+        "ALLPHA_TEXTGEN_POLICY_APPROVED":"false",
+        "ALLPHA_TEXTGEN_FALLBACK_1_BASE_URL":"https://fallback.invalid/v1",
+    }
+    for key, value in values.items():
+        monkeypatch.setenv(key, value)
+    assert build_text_generation_router_from_environment() is None

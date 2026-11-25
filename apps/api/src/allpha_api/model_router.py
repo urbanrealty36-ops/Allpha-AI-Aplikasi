@@ -469,8 +469,9 @@ class CanonicalTextGenerationRouter:
     """Provider-neutral text-generation path for Agent/Skill execution.
 
     Route, approved policy and provider adapters are supplied by deployment-owned
-    configuration. This class deliberately chooses no provider, model, tariff or
-    fallback. Runtime use requires an idempotent metering sink.
+    configuration. Ordered fallbacks are allowed only for the same quoted model id,
+    model version and pricing/policy contract. Failover is preflight-only; a provider
+    call with an unknown outcome is never replayed. Runtime use requires durable metering.
     """
 
     def __init__(
@@ -482,43 +483,98 @@ class CanonicalTextGenerationRouter:
         metering_sink: TextGenerationMeteringSink | None,
         retry_delay_seconds: float = 0.1,
         runtime_preflight: Callable[[str, TextGenerationRoute, TextGenerationPolicy], Awaitable[None]] | None = None,
+        fallback_routes: dict[str, tuple[TextGenerationRoute, ...]] | None = None,
     ) -> None:
         self._routes = dict(routes)
         self._adapters = dict(adapters)
         self._policies = dict(policies)
+        self._fallback_routes = {key: tuple(value) for key, value in (fallback_routes or {}).items()}
         self._metering_sink = metering_sink
         self._retry_delay_seconds = max(0.0, min(retry_delay_seconds, 1.0))
         self._runtime_preflight = runtime_preflight
+        for sensitivity, fallbacks in self._fallback_routes.items():
+            primary = self._routes.get(sensitivity)
+            policy = self._policies.get(sensitivity)
+            if primary is None or policy is None or not policy.approved:
+                raise ValueError("fallback routes require a configured primary route and approved policy")
+            seen = {primary.provider_id}
+            for fallback in fallbacks:
+                if fallback.provider_id in seen:
+                    raise ValueError("text-generation fallback provider identities must be unique")
+                if (fallback.model_id, fallback.model_version) != (primary.model_id, primary.model_version):
+                    raise ValueError("fallback routes must preserve the quoted model id and version")
+                seen.add(fallback.provider_id)
+
+    def _candidate_routes(self, sensitivity: str) -> tuple[TextGenerationRoute, ...]:
+        primary = self._routes.get(sensitivity)
+        if primary is None:
+            return ()
+        return (primary, *self._fallback_routes.get(sensitivity, ()))
+
+    def _candidate_snapshot(self, sensitivity: str, route: TextGenerationRoute, rank: int) -> dict[str, Any]:
+        policy = self._policies[sensitivity]
+        return {
+            "provider_id": route.provider_id, "model_id": route.model_id,
+            "model_version": route.model_version, "policy_id": policy.policy_id,
+            "policy_version": policy.policy_version, "cost_unit": policy.cost_unit,
+            "pricing_version": policy.pricing_version,
+            "max_prompt_bytes": policy.max_prompt_bytes,
+            "max_output_tokens": policy.max_output_tokens,
+            "max_cost_microunits": policy.max_cost_microunits,
+            "max_latency_ms": policy.max_latency_ms,
+            "fallback_rank": rank, "fallback_used": rank > 0,
+        }
+
+    async def _select_preflight_route(self, sensitivity: str) -> tuple[TextGenerationRoute, int]:
+        if self._runtime_preflight is None:
+            raise TextGenerationRouterUnavailable("runtime policy and active tariff verifier are not configured", category="runtime_policy")
+        candidates = self._candidate_routes(sensitivity)
+        failures: list[TextGenerationRouterUnavailable] = []
+        for rank, route in enumerate(candidates):
+            if route.provider_id not in self._adapters:
+                failures.append(TextGenerationRouterUnavailable("registered text-generation provider adapter is missing", category="provider_route"))
+                continue
+            try:
+                await self._runtime_preflight(sensitivity, route, self._policies[sensitivity])
+                return route, rank
+            except TextGenerationRouterUnavailable as exc:
+                failures.append(exc)
+            except Exception as exc:
+                failures.append(TextGenerationRouterUnavailable(
+                    "approved runtime policy or active tariff could not be verified",
+                    category=getattr(exc, "category", "runtime_policy"),
+                ))
+        if len(candidates) == 1 and failures:
+            raise failures[0]
+        if failures:
+            last = failures[-1]
+            raise TextGenerationRouterUnavailable(
+                "no configured approved text-generation route passed policy and active-tariff preflight; provider execution is blocked",
+                category=last.category,
+            ) from last
+        raise TextGenerationRouterUnavailable("no configured text-generation route candidate is available", category="provider_route")
 
     def require_runtime_ready(self, sensitivity: str) -> None:
         route = self._routes.get(sensitivity)
         policy = self._policies.get(sensitivity)
         if route is None or policy is None or not policy.approved:
             raise TextGenerationRouterUnavailable("no approved text-generation route and policy for this sensitivity", category="runtime_policy")
-        if route.provider_id not in self._adapters:
-            raise TextGenerationRouterUnavailable("registered text-generation provider adapter is missing", category="provider_route")
+        if not any(candidate.provider_id in self._adapters for candidate in self._candidate_routes(sensitivity)):
+            raise TextGenerationRouterUnavailable("no registered text-generation provider adapter is available for primary or fallback route", category="provider_route")
         if self._metering_sink is None or not callable(getattr(self._metering_sink, "write_idempotent", None)):
             raise TextGenerationRouterUnavailable("runtime requires a durable idempotent text-generation metering sink", category="metering_sink")
 
     async def preflight(self, sensitivity: str) -> dict[str, Any]:
-        """Verify configured route, approved runtime policy, active tariff and metering before generation."""
+        """Select the first approved route whose provider, policy, active tariff and metering are ready."""
         self.require_runtime_ready(sensitivity)
-        route = self._routes[sensitivity]
-        policy = self._policies[sensitivity]
-        if self._runtime_preflight is None:
-            raise TextGenerationRouterUnavailable("runtime policy and active tariff verifier are not configured", category="runtime_policy")
-        try:
-            await self._runtime_preflight(sensitivity, route, policy)
-        except TextGenerationRouterUnavailable:
-            raise
-        except Exception as exc:
-            raise TextGenerationRouterUnavailable(
-                "approved runtime policy or active tariff could not be verified",
-                category=getattr(exc, "category", "runtime_policy"),
-            ) from exc
+        route, rank = await self._select_preflight_route(sensitivity)
         return {
             "status": "ready",
-            "route": self.route_snapshot_for(sensitivity),
+            "route": self._candidate_snapshot(sensitivity, route, rank),
+            "fallback_routes": [
+                {"provider_id": item.provider_id, "model_id": item.model_id, "model_version": item.model_version}
+                for item in self._fallback_routes.get(sensitivity, ())
+            ],
             "metering_sink": "configured",
             "runtime_policy": "approved",
             "active_tariff": "verified",
@@ -538,35 +594,32 @@ class CanonicalTextGenerationRouter:
 
     def route_snapshot_for(self, sensitivity: str) -> dict[str, Any]:
         self.require_runtime_ready(sensitivity)
-        route = self._routes[sensitivity]
-        policy = self._policies[sensitivity]
+        candidates = self._candidate_routes(sensitivity)
+        selected_rank = next((i for i, route in enumerate(candidates) if route.provider_id in self._adapters), 0)
+        selected = candidates[selected_rank]
         return {
-            "provider_id": route.provider_id, "model_id": route.model_id,
-            "model_version": route.model_version, "policy_id": policy.policy_id,
-            "policy_version": policy.policy_version, "cost_unit": policy.cost_unit,
-            "pricing_version": policy.pricing_version,
-            "max_prompt_bytes": policy.max_prompt_bytes,
-            "max_output_tokens": policy.max_output_tokens,
-            "max_cost_microunits": policy.max_cost_microunits,
-            "max_latency_ms": policy.max_latency_ms,
+            **self._candidate_snapshot(sensitivity, selected, selected_rank),
+            "fallback_routes": [
+                {"provider_id": item.provider_id, "model_id": item.model_id, "model_version": item.model_version}
+                for item in self._fallback_routes.get(sensitivity, ())
+            ],
         }
 
     async def generate(self, request: TextGenerationRequest) -> tuple[TextGenerationResponse, TextGenerationEvidence]:
         self.require_runtime_ready(request.sensitivity)
-        route = self._routes[request.sensitivity]
         policy = self._policies[request.sensitivity]
-        # Production factories may verify the operator-managed active tariff in the
-        # canonical Supabase registry before each billable provider call. Static
-        # model-policy approval and active tariff are separate gates.
+        # Fail over only before any provider call, when a candidate fails policy/tariff
+        # preflight. Once a provider call starts, an unknown outcome is never replayed.
         if self._runtime_preflight is not None:
-            try:
-                await self._runtime_preflight(request.sensitivity, route, policy)
-            except TextGenerationRouterUnavailable:
-                raise
-            except Exception as exc:
-                raise TextGenerationRouterUnavailable(
-                    "active model-cost configuration could not be verified; provider execution is blocked"
-                ) from exc
+            route, _fallback_rank = await self._select_preflight_route(request.sensitivity)
+        else:
+            route = next(
+                (candidate for candidate in self._candidate_routes(request.sensitivity)
+                 if candidate.provider_id in self._adapters),
+                None,
+            )
+            if route is None:
+                raise TextGenerationRouterUnavailable("no configured provider adapter is available", category="provider_route")
         combined_prompt = request.prompt_material()
         if len(combined_prompt.encode("utf-8")) > policy.max_prompt_bytes:
             raise TextGenerationRouterRejected("combined system and user prompt exceeds approved policy bound")

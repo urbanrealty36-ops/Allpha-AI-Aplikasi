@@ -438,7 +438,8 @@ def build_text_generation_router_from_environment() -> CanonicalTextGenerationRo
             cost_unit=cost_unit,
             pricing_version=pricing_version,
         )
-        tariff_verifier = SupabaseActiveModelCostVerifier(
+        tariff_verifiers = {}
+        tariff_verifiers[(provider_id, model_id, model_version)] = SupabaseActiveModelCostVerifier(
             supabase_url=os.environ["SUPABASE_URL"],
             service_role_key=os.environ["SUPABASE_SERVICE_ROLE_KEY"],
             provider_id=provider_id,
@@ -455,16 +456,65 @@ def build_text_generation_router_from_environment() -> CanonicalTextGenerationRo
             max_output_tokens=max_output_tokens,
             max_latency_ms=max_latency_ms,
         )
+        adapters = {provider_id: adapter}
+        fallback_routes = []
+        seen_providers = {provider_id}
+        for slot in range(1, 4):
+            prefix = f"ALLPHA_TEXTGEN_FALLBACK_{slot}_"
+            base_url = os.getenv(prefix + "BASE_URL", "").strip()
+            api_key = os.getenv(prefix + "API_KEY", "")
+            fallback_provider_id = os.getenv(prefix + "PROVIDER_ID", "").strip()
+            configured = bool(base_url or api_key or fallback_provider_id)
+            if not configured:
+                continue
+            if not all((base_url, api_key.strip(), fallback_provider_id)):
+                return None
+            if fallback_provider_id in seen_providers:
+                return None
+            fallback_adapter = OpenAICompatibleTextGenerationAdapter(
+                base_url=base_url,
+                api_key=api_key,
+                provider_id=fallback_provider_id,
+                model_version=model_version,
+                pricing_version=pricing_version,
+                cost_unit=cost_unit,
+                input_cost_microunits_per_token=input_rate,
+                output_cost_microunits_per_token=output_rate,
+            )
+            adapters[fallback_provider_id] = fallback_adapter
+            fallback_routes.append(TextGenerationRoute(
+                fallback_provider_id, model_id, model_version, max_attempts=1,
+            ))
+            tariff_verifiers[(fallback_provider_id, model_id, model_version)] = SupabaseActiveModelCostVerifier(
+                supabase_url=os.environ["SUPABASE_URL"],
+                service_role_key=os.environ["SUPABASE_SERVICE_ROLE_KEY"],
+                provider_id=fallback_provider_id,
+                model_id=model_id,
+                model_version=model_version,
+                pricing_version=pricing_version,
+                cost_unit=cost_unit,
+                input_cost_microunits_per_token=input_rate,
+                output_cost_microunits_per_token=output_rate,
+                max_cost_microunits=max_cost,
+                policy_id=os.environ["ALLPHA_TEXTGEN_POLICY_ID"].strip(),
+                policy_version=os.environ["ALLPHA_TEXTGEN_POLICY_VERSION"].strip(),
+                max_prompt_bytes=max_prompt_bytes,
+                max_output_tokens=max_output_tokens,
+                max_latency_ms=max_latency_ms,
+            )
+            seen_providers.add(fallback_provider_id)
 
         async def verify_active_tariff(sensitivity, selected_route, selected_policy):
             if sensitivity != "private":
                 raise RuntimeError("no active tariff verifier is configured for this sensitivity")
-            if (selected_route.provider_id, selected_route.model_id, selected_route.model_version) != (provider_id, model_id, model_version):
-                raise RuntimeError("selected model route differs from the verified tariff")
+            identity = (selected_route.provider_id, selected_route.model_id, selected_route.model_version)
+            verifier = tariff_verifiers.get(identity)
+            if verifier is None:
+                raise TextGenerationRouterUnavailable("no active tariff verifier is configured for selected route", category="active_tariff")
             if (selected_policy.cost_unit, selected_policy.pricing_version, selected_policy.max_cost_microunits) != (cost_unit, pricing_version, max_cost):
                 raise RuntimeError("selected model policy differs from the verified tariff")
             try:
-                await tariff_verifier.verify()
+                await verifier.verify()
             except Exception as exc:
                 raise TextGenerationRouterUnavailable(
                     "active model tariff verification failed",
@@ -473,7 +523,8 @@ def build_text_generation_router_from_environment() -> CanonicalTextGenerationRo
 
         router = CanonicalTextGenerationRouter(
             routes={"private": TextGenerationRoute(provider_id, model_id, model_version, max_attempts=1)},
-            adapters={provider_id: adapter},
+            fallback_routes={"private": tuple(fallback_routes)},
+            adapters=adapters,
             policies={"private": policy},
             metering_sink=SupabaseTextGenerationMeteringSink.from_environment(),
             runtime_preflight=verify_active_tariff,
