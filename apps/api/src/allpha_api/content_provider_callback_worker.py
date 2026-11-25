@@ -55,7 +55,7 @@ class CallbackWorker:
    if len(eager)<expected or any(not isinstance(item,dict) or item.get("status")=="failed" for item in eager):
     raise ValueError("PROVIDER_EAGER_DERIVATIVES_INCOMPLETE")
    derivatives=[]
-   async with httpx.AsyncClient(trust_env=False, follow_redirects=False, timeout=httpx.Timeout(90,connect=5),follow_redirects=False) as provider:
+   async with httpx.AsyncClient(trust_env=False, follow_redirects=False, timeout=httpx.Timeout(90,connect=5)) as provider:
     for index,item in enumerate(eager):
      url=item.get("secure_url");parsed=urlparse(url or "")
      if parsed.scheme!="https" or parsed.hostname!="res.cloudinary.com" or not parsed.path.startswith(f"/{self.cloud}/video/authenticated/"):
