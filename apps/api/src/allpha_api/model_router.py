@@ -217,7 +217,7 @@ import json
 import time
 from datetime import datetime, timezone
 from dataclasses import asdict
-from typing import Any, Awaitable, Callable, Literal
+from typing import Any, Awaitable, Callable, Literal, Protocol
 
 
 @dataclass(frozen=True)
@@ -450,11 +450,27 @@ class TextGenerationEvidence:
     evidence_sha256: str
     billing_account_id: str | None = None
     completed_at: str = ""
+    usage_units: int = 0
+    usage_unit: str = "tokens_total"
 
 
 class TextGenerationMeteringSink(Protocol):
     async def write_idempotent(self, evidence: TextGenerationEvidence) -> None:
         """Persist usage with a unique task/idempotency identity; must be durable."""
+
+
+class TextGenerationCreditLedger(Protocol):
+    async def reserve(self, request: TextGenerationRequest, policy: TextGenerationPolicy) -> Any:
+        """Atomically reserve one approved billable generation unit."""
+
+    async def settle(self, reservation: Any, evidence: TextGenerationEvidence) -> None:
+        """Settle only after durable model usage evidence exists."""
+
+    async def release(self, reservation: Any, reason_code: str) -> None:
+        """Release only when every provider confirms pre-execution failure."""
+
+    async def mark_pending(self, reservation: Any, reason_code: str) -> None:
+        """Keep credits reserved when provider outcome or settlement is unknown."""
 
 
 class TextGenerationRouterUnavailable(RuntimeError):
