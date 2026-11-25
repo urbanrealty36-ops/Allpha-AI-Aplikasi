@@ -22,6 +22,7 @@ from allpha_api.model_router import (
     TextGenerationResponse,
     TextGenerationRoute,
     TextGenerationRouterUnavailable,
+    TextGenerationProviderTransient,
 )
 
 
@@ -97,8 +98,31 @@ class OpenAICompatibleTextGenerationAdapter:
                 response = await client.post(self._url, headers=headers, json=body)
                 response.raise_for_status()
                 payload = response.json()
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 429:
+                retry_after_ms = None
+                raw_retry_after = exc.response.headers.get("retry-after", "").strip()
+                if raw_retry_after:
+                    try:
+                        retry_after_ms = max(0, min(int(float(raw_retry_after) * 1000), 30_000))
+                    except (TypeError, ValueError, OverflowError):
+                        retry_after_ms = None
+                raise TextGenerationProviderTransient(
+                    "provider explicitly rate-limited the request before generation",
+                    safe_to_retry=True,
+                    retry_after_ms=retry_after_ms,
+                ) from exc
+            # Other HTTP responses may follow partial provider execution.
+            raise TextGenerationProviderError("provider HTTP failure; outcome may be unknown") from exc
+        except (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout) as exc:
+            # No request body reached the provider: connection establishment or
+            # pool acquisition failed before dispatch, so an approved fallback is safe.
+            raise TextGenerationProviderTransient(
+                "provider connection failed before request dispatch",
+                safe_to_retry=True,
+            ) from exc
         except (httpx.HTTPError, ValueError) as exc:
-            # The request may have reached the provider. The caller must not blindly replay.
+            # Read/write/protocol failures can happen after dispatch; never replay them.
             raise TextGenerationProviderError("provider call failed or returned invalid JSON; outcome may be unknown") from exc
 
         try:
