@@ -696,7 +696,7 @@ begin
   update public.content_media
   set status='deleted',provider_delete_state='deleted',provider_deleted_at=coalesce(provider_deleted_at,now()),updated_at=now()
   where id=p_media_id and owner_id=v_job.owner_id and status='deleting'
-    and storage_provider='cloudinary'
+    and provider_delete_state='queued' and storage_provider='cloudinary'
     and provider_public_id=v_job.payload->>'provider_public_id'
   returning * into v_media;
   if not found then return 'media_not_deleting'; end if;
@@ -735,7 +735,7 @@ begin
 
   select * into v_media from public.content_media
   where id=p_media_id and owner_id=v_job.owner_id and status='deleting'
-    and storage_provider='supabase' and bucket_id=v_job.payload->>'bucket_id'
+    and provider_delete_state='queued' and storage_provider='supabase' and bucket_id=v_job.payload->>'bucket_id'
     and storage_path=v_job.payload->>'storage_path'
   for update;
   if not found then return 'media_not_deleting'; end if;
