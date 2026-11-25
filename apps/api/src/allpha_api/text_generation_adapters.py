@@ -167,7 +167,7 @@ class SupabaseTextGenerationMeteringSink:
     def from_environment(cls) -> "SupabaseTextGenerationMeteringSink":
         return cls(
             supabase_url=os.getenv("SUPABASE_URL", ""),
-            service_role_key=os.getenv("SUPABASE_SERVICE_ROLE_KEY", ""),
+            service_role_key=(os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip() or os.getenv("SUPABASE_SECRET_KEY", "").strip()),
         )
 
     async def write_idempotent(self, evidence: TextGenerationEvidence) -> None:
@@ -194,7 +194,10 @@ class SupabaseTextGenerationMeteringSink:
             "payload_fingerprint": evidence.evidence_sha256,
         }
         try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=3.0), transport=self._transport) as client:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(10.0, connect=3.0), transport=self._transport,
+                follow_redirects=False, trust_env=False,
+            ) as client:
                 response = await client.post(
                     self._url,
                     headers={
@@ -248,6 +251,7 @@ class SupabaseApprovedRuntimePolicyVerifier:
         try:
             async with httpx.AsyncClient(
                 timeout=httpx.Timeout(5.0, connect=2.0), transport=self._transport,
+                follow_redirects=False, trust_env=False,
             ) as client:
                 response = await client.get(
                     self._url, params=params,
@@ -344,7 +348,10 @@ class SupabaseActiveModelCostVerifier(SupabaseApprovedRuntimePolicyVerifier):
             "limit": "2",
         }
         try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(5.0, connect=2.0), transport=self._transport) as client:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(5.0, connect=2.0), transport=self._transport,
+                follow_redirects=False, trust_env=False,
+            ) as client:
                 response = await client.get(
                     self._url,
                     params=params,
@@ -399,9 +406,12 @@ def build_text_generation_router_from_environment() -> CanonicalTextGenerationRo
         "ALLPHA_TEXTGEN_OUTPUT_MICRO_COST_PER_TOKEN",
         "ALLPHA_TEXTGEN_MAX_COST_MICROUNITS",
         "SUPABASE_URL",
-        "SUPABASE_SERVICE_ROLE_KEY",
     )
-    if any(not os.getenv(name, "").strip() for name in required):
+    service_role_key = (
+        os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+        or os.getenv("SUPABASE_SECRET_KEY", "").strip()
+    )
+    if any(not os.getenv(name, "").strip() for name in required) or not service_role_key:
         return None
     try:
         provider_id = os.environ["ALLPHA_TEXTGEN_PROVIDER_ID"].strip()
@@ -441,7 +451,7 @@ def build_text_generation_router_from_environment() -> CanonicalTextGenerationRo
         tariff_verifiers = {}
         tariff_verifiers[(provider_id, model_id, model_version)] = SupabaseActiveModelCostVerifier(
             supabase_url=os.environ["SUPABASE_URL"],
-            service_role_key=os.environ["SUPABASE_SERVICE_ROLE_KEY"],
+            service_role_key=service_role_key,
             provider_id=provider_id,
             model_id=model_id,
             model_version=model_version,
@@ -487,7 +497,7 @@ def build_text_generation_router_from_environment() -> CanonicalTextGenerationRo
             ))
             tariff_verifiers[(fallback_provider_id, model_id, model_version)] = SupabaseActiveModelCostVerifier(
                 supabase_url=os.environ["SUPABASE_URL"],
-                service_role_key=os.environ["SUPABASE_SERVICE_ROLE_KEY"],
+                service_role_key=service_role_key,
                 provider_id=fallback_provider_id,
                 model_id=model_id,
                 model_version=model_version,
