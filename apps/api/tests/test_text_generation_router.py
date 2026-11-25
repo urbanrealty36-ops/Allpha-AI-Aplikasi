@@ -12,6 +12,7 @@ from allpha_api.model_router import (
     TextGenerationRoute,
     TextGenerationRouterRejected,
     TextGenerationRouterUnavailable,
+    TextGenerationProviderTransient,
 )
 
 
@@ -222,6 +223,52 @@ def test_text_generation_fails_over_only_when_primary_preflight_is_unavailable()
     assert primary.calls == 0
     assert fallback.calls == 1
     assert seen == ["provider-a", "provider-b", "provider-a", "provider-b"]
+
+
+def test_text_generation_fails_over_after_explicit_pre_execution_rate_limit():
+    class RateLimitedAdapter(FakeAdapter):
+        async def generate(self, request, *, model_id):
+            self.calls += 1
+            raise TextGenerationProviderTransient(
+                "HTTP 429 rate limited", safe_to_retry=True, retry_after_ms=0,
+            )
+
+    primary = RateLimitedAdapter(provider_id="provider-a")
+    fallback = FakeAdapter(provider_id="provider-b")
+    verified = []
+
+    async def verify(sensitivity, route, policy):
+        verified.append(route.provider_id)
+
+    policy = TextGenerationPolicy(
+        policy_id="policy-test", policy_version="v1", approved=True,
+        max_prompt_bytes=1024, max_output_tokens=100, max_cost_microunits=10,
+        max_latency_ms=5000, cost_unit="approved-unit", pricing_version="pricing-v1",
+    )
+    router = CanonicalTextGenerationRouter(
+        routes={"private": TextGenerationRoute("provider-a", "model-a", "version-a")},
+        fallback_routes={"private": (TextGenerationRoute("provider-b", "model-a", "version-a"),)},
+        adapters={"provider-a": primary, "provider-b": fallback},
+        policies={"private": policy}, metering_sink=MemorySink(), runtime_preflight=verify,
+    )
+    response, evidence = asyncio.run(router.generate(request()))
+    assert response.provider_id == "provider-b"
+    assert evidence.provider_id == "provider-b"
+    assert primary.calls == 1
+    assert fallback.calls == 1
+    assert verified == ["provider-a", "provider-b"]
+
+
+def test_text_generation_rejects_request_timeout_above_approved_latency_budget():
+    adapter = FakeAdapter()
+    router = make_router(adapter)
+    slow_request = TextGenerationRequest(
+        task_id="task-slow", trace_id="trace-slow", idempotency_key="slow-key",
+        sensitivity="private", prompt="short", max_output_tokens=16, timeout_ms=6000,
+    )
+    with pytest.raises(TextGenerationRouterRejected, match="latency budget"):
+        asyncio.run(router.generate(slow_request))
+    assert adapter.calls == 0
 
 
 def test_text_generation_does_not_fallback_after_provider_outcome_becomes_unknown():
