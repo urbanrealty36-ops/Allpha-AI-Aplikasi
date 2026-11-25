@@ -141,3 +141,50 @@ export async function uploadContentMediaWithTus(
   try { sessionStorage.removeItem(sessionKey); } catch { /* Ignore unavailable session storage. */ }
   return completed.item;
 }
+
+
+export type CloudinaryUploadIntent = {
+  item: { id: string };
+  upload: { upload_url: string; params: Record<string, string | number | boolean>; expires_at: number };
+  expires_in_seconds: number;
+};
+
+/** Direct authenticated Cloudinary upload; API reserves and verifies every asset. */
+export async function uploadContentMediaWithCloudinary(
+  request: AuthenticatedMediaRequest,
+  contentId: string,
+  file: File,
+  idempotencyKey: string,
+  onProgress: (percent: number) => void,
+): Promise<{ id: string }> {
+  if (!Number.isSafeInteger(file.size) || file.size <= 0) throw new Error("Ukuran file media tidak valid.");
+  if (!file.type) throw new Error("Tipe MIME file wajib tersedia.");
+  const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+  const sha256 = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  const raw = await request("/v1/media/upload-intents", {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify({ content_id: contentId, filename: file.name, media_type: file.type, size_bytes: file.size, sha256 }),
+  });
+  const intent = raw as CloudinaryUploadIntent;
+  if (!intent.item?.id || !intent.upload?.upload_url || !intent.upload?.params) {
+    throw new Error("Kontrak upload Cloudinary dari API tidak lengkap.");
+  }
+  const form = new FormData();
+  form.append("file", file);
+  for (const [key, value] of Object.entries(intent.upload.params)) form.append(key, String(value));
+  const response = await fetch(intent.upload.upload_url, { method: "POST", body: form, cache: "no-store" });
+  if (!response.ok) {
+    let reason = `Cloudinary menolak upload (HTTP ${response.status}).`;
+    try { const body = await response.json(); reason = body?.error?.message || reason; } catch { /* Keep safe provider status. */ }
+    throw new Error(reason);
+  }
+  onProgress(95);
+  const completed = await request("/v1/media/complete", {
+    method: "POST",
+    body: JSON.stringify({ media_id: intent.item.id }),
+  }) as { item?: { id?: string } };
+  if (!completed.item?.id) throw new Error("API belum mengonfirmasi penyelesaian upload media.");
+  onProgress(100);
+  return { id: completed.item.id };
+}
