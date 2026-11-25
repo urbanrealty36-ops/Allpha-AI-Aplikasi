@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
-import { uploadContentMediaWithTus } from "../../lib/resumable-media-upload";
+import { uploadContentMedia } from "../../lib/resumable-media-upload";
 import FeedView from "../../components/reference-ui/FeedView";
 import CreatePostModal from "../../components/reference-ui/CreatePostModal";
 import AgentSocialPresencePanel from "../../components/social/AgentSocialPresencePanel";
@@ -553,7 +553,7 @@ export default function FeedPage() {
           setComposerUploadIds(current => ({ ...current, [post.id]: uploadKey }));
           setComposerUploadFiles(current => ({ ...current, [post.id]: mediaFile }));
         }
-        await uploadContentMediaWithTus(request, contentId, mediaFile, uploadKey, () => undefined);
+        await uploadContentMedia(request, contentId, mediaFile, uploadKey, () => undefined);
         if (epoch !== sessionEpoch.current) throw new Error("Sesi berubah saat media diunggah; draft tidak diteruskan ke publikasi.");
       }
       if (epoch !== sessionEpoch.current) throw new Error("Sesi berubah; proses publikasi dihentikan.");
