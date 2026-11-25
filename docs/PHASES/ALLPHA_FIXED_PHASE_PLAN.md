@@ -1602,3 +1602,10 @@ This is an evidence refresh inside the existing fixed plan. It does not create a
 - **Correction:** `f8fcb9453d8afec315b5951b7e5b4afadd439fa7` updates the fake HTTP client to capture request kwargs and assert the apikey/Bearer headers at the actual HTTP request boundary. No production behavior was changed.
 - **Status:** regression test correction is **implemented**; rerun result is pending. The earlier run's other 1,496 tests passed; this does not establish overall API suite success until the corrected run completes.
 - **Next:** confirm the focused/full API run, then continue ENG-P07 source/grant and retrieval integration. ENG-P13 remains `in_progress`; no production completion claim.
+
+## 40.73 — ENG-P07 authenticated Supabase request egress hardening (2026-11-25)
+
+- **Implementation:** `95c3cc82a3253f633e3aff92597f02efe94c0bd2` hardens the shared `user_db_request()` PostgREST client with `trust_env=False` and `follow_redirects=False`. This is important for authenticated Knowledge retrieval: the user's bearer token must not be sent through an ambient proxy or forwarded to a redirect destination. `d6e8a9109758a112f555b176512daf0b9a1d6044` applies the same egress boundary to the privileged `service_db_request()` RPC path and resolves its server credential from `SUPABASE_SERVICE_ROLE_KEY` or `SUPABASE_SECRET_KEY`.
+- **Regression coverage:** `d9eab93cdd3a0ebe03b0576639378a007ff608c6` asserts user-token PostgREST headers and egress options; `57c7831b680016f43e841d0d12d89ef2c0447226` asserts secret-key-only service RPC headers and egress options. CI execution is pending.
+- **Status:** source implementation and focused regression coverage are **implemented**; full API CI and live authenticated Knowledge retrieval are not yet verified. ENG-P07 remains `in_progress`.
+- **Next:** confirm the corrected CI run, continue P07 policy/retrieval and indexing lifecycle; do not enable hybrid/vector consumers without the ADR-approved profile and physical index generation.
