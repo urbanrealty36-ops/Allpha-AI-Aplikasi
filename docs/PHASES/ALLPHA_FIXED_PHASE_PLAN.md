@@ -1630,3 +1630,9 @@ This is an evidence refresh inside the existing fixed plan. It does not create a
 - **Workflow:** `6a0207cc62d86d0ed3b5bb5a85894275236ae49f` updates `WorkflowStore.from_environment()` to accept the canonical secret key as well as the legacy variable. Its HTTP client already enforced `trust_env=False` and `follow_redirects=False`; `a54ad9ec21095f7e462727f8e167aafc79883445` adds secret-key-only factory coverage.
 - **Status:** both source changes and focused regression coverage are **implemented**; CI execution, runtime task execution and workflow lifecycle production evidence remain pending. ENG-P10 and ENG-P11 remain `in_progress`.
 - **Next:** complete CI on the consolidated source, then continue worker lifecycle correctness and Cinema creator/viewer production integration. No schema or production data was changed by these credential fixes.
+
+## 40.77 — ENG-P07 authenticated PostgREST client egress correction (2026-11-25)
+
+- **Correction:** a source re-read found that the first ENG-P07 egress edit had hardened the Supabase Auth identity client but had not changed the separate `user_db_request()` PostgREST client. `61215982b6ff5c4a439eb31f85bf7682003d19c6` applies `trust_env=False` and `follow_redirects=False` to that authenticated PostgREST request path as intended.
+- **Coverage:** the existing regression test `d9eab93cdd3a0ebe03b0576639378a007ff608c6` specifically asserts these options and the user's Bearer token at the request boundary; its rerun is pending.
+- **Status:** source correction is **implemented**. ENG-P07 remains `in_progress` pending full CI and policy/DB/runtime lifecycle integration.
