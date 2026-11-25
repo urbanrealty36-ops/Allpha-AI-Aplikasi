@@ -33,7 +33,11 @@ async def current_session_user(
         raise HTTPException(status_code=401, detail={"code": "AUTH_REQUIRED", "message": "Bearer token diperlukan."})
     url, key = _config()
     try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        async with httpx.AsyncClient(
+            timeout=_TIMEOUT,
+            follow_redirects=False,
+            trust_env=False,
+        ) as client:
             response = await client.get(
                 f"{url}/auth/v1/user",
                 headers={"apikey": key, "Authorization": f"Bearer {credentials.credentials}"},
