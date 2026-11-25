@@ -454,7 +454,7 @@ begin
   if v_media.provider_delete_state in ('queued','deleting') then
     return jsonb_build_object('outcome','already_queued','media',to_jsonb(v_media));
   end if;
-  if v_media.provider_public_id is null or v_media.provider_resource_type not in ('image','video','raw') then
+  if v_media.provider_public_id is null or v_media.provider_resource_type is null or v_media.provider_resource_type not in ('image','video','raw') then
     return jsonb_build_object('outcome','provider_identity_missing');
   end if;
 
@@ -480,9 +480,16 @@ begin
   on conflict(idempotency_key) do nothing;
 
   select * into v_job from public.content_lifecycle_jobs
-  where idempotency_key='provider-cleanup:media-delete:'||v_media.id::text;
+  where idempotency_key='provider-cleanup:media-delete:'||v_media.id::text
+  for update;
   if not found then
     raise exception 'CLOUDINARY_MEDIA_DELETE_JOB_NOT_PERSISTED' using errcode='40001';
+  end if;
+  if v_job.status in ('dead','failed','cancelled') then
+    update public.content_lifecycle_jobs
+    set status='pending',attempts=0,run_at=now(),lease_token=null,lease_expires_at=null,
+      completed_at=null,last_error_code=null,updated_at=now()
+    where id=v_job.id returning * into v_job;
   end if;
   return jsonb_build_object('outcome','queued','media',to_jsonb(v_media),'job_id',v_job.id);
 end;
