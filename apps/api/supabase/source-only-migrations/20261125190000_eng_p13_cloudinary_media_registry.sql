@@ -801,6 +801,7 @@ declare
   v_missing_rpcs text[];
   v_missing_constraints text[];
   v_missing_rls text[];
+  v_missing_storage_bucket boolean;
 begin
   select array_agg(req.table_name||'.'||req.column_name order by req.table_name,req.column_name)
   into v_missing_columns
@@ -886,6 +887,9 @@ begin
     and position(req.required_fragment in pg_get_constraintdef(con.oid))>0
   );
 
+  select not exists(select 1 from storage.buckets where id='content-media')
+  into v_missing_storage_bucket;
+
   select array_agg(req.table_name order by req.table_name)
   into v_missing_rls
   from (values
@@ -904,7 +908,9 @@ begin
       and coalesce(cardinality(v_missing_tables),0)=0
       and coalesce(cardinality(v_missing_rpcs),0)=0
       and coalesce(cardinality(v_missing_constraints),0)=0
-      and coalesce(cardinality(v_missing_rls),0)=0,
+      and coalesce(cardinality(v_missing_rls),0)=0
+      and not coalesce(v_missing_storage_bucket,true),
+    'missing_storage_bucket',coalesce(v_missing_storage_bucket,true),
     'missing_columns',coalesce(to_jsonb(v_missing_columns),'[]'::jsonb),
     'missing_tables',coalesce(to_jsonb(v_missing_tables),'[]'::jsonb),
     'missing_rpcs',coalesce(to_jsonb(v_missing_rpcs),'[]'::jsonb),
