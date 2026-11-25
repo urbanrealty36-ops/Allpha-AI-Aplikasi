@@ -7,7 +7,7 @@ from allpha_api.auth import user_db_request, service_db_request
 from allpha_api.cloudinary_provider import CloudinaryConfig, CloudinaryConfigurationError, build_signed_upload_intent
 from typing import Any
 import httpx
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from allpha_api.auth import current_user
 router = APIRouter(prefix="/v1/media", tags=["media"])
 class UploadIntent(BaseModel):
@@ -29,7 +29,7 @@ def _config():
     return base,key
 
 @router.post("/upload-intents", status_code=201)
-async def create_upload_intent(payload: UploadIntent, request: Any, user: dict[str, Any] = Depends(current_user), idempotency_key: str | None = Header(default=None, alias="Idempotency-Key")):
+async def create_upload_intent(payload: UploadIntent, request: Request, user: dict[str, Any] = Depends(current_user), idempotency_key: str | None = Header(default=None, alias="Idempotency-Key")):
     media_type = payload.media_type.lower().split(";", 1)[0].strip()
     if media_type not in MEDIA_LIMITS:
         raise HTTPException(415, detail={"code":"MEDIA_TYPE_UNSUPPORTED","message":"Format media tidak didukung."})
