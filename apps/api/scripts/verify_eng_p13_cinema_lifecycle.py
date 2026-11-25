@@ -27,6 +27,7 @@ FINISH_EVENT = "99999999-9999-4999-8999-999999999998"
 SUBTITLE_MEDIA = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 DELETE_CONTENT = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
 CLOUDINARY_DELETE_MEDIA = "ffffffff-ffff-4fff-8fff-ffffffffffff"
+LEGACY_DELETE_MEDIA = "abababab-abab-4bab-8bab-abababababab"
 CLOUDINARY_DELETE_SHA = "f" * 64
 UNAUTHORIZED_PROFILE_MEDIA = "12121212-1212-4121-8121-121212121212"
 INVALID_SUBTITLE_MEDIA = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
@@ -405,6 +406,37 @@ select public.reserve_cloudinary_media_upload(
         if unauthorized_profile.returncode == 0 or "MEDIA_RESOURCE_ACCESS_DENIED" not in unauthorized_profile.stderr:
             raise RuntimeError("cross-owner profile media reservation was not rejected")
 
+        psql(f"""
+insert into public.content_media(
+ id,content_id,owner_id,bucket_id,storage_path,filename,media_type,size_bytes,sha256,status,scan_status
+) values(
+ '{LEGACY_DELETE_MEDIA}','{DELETE_CONTENT}','{OWNER}','content-media','ci/legacy/delete.jpg',
+ 'legacy-delete.jpg','image/jpeg',512,repeat('d',64),'uploaded','clean'
+);
+set role service_role;
+do $do$
+declare v_result jsonb; v_job public.content_lifecycle_jobs%rowtype; v_done text;
+begin
+ v_result:=public.request_cloudinary_content_media_delete('{LEGACY_DELETE_MEDIA}','{OWNER}');
+ if v_result->>'outcome'<>'queued' then raise exception 'Legacy Supabase media deletion was not queued: %',v_result; end if;
+ select * into v_job from public.claim_content_lifecycle_jobs('ci-legacy-delete-worker',10,60,'provider_cleanup')
+ where media_id='{LEGACY_DELETE_MEDIA}'::uuid;
+ if not found then raise exception 'Legacy Supabase media deletion job was not claimed'; end if;
+ v_done:=public.complete_legacy_content_media_delete_job(v_job.id,v_job.lease_token,'{LEGACY_DELETE_MEDIA}');
+ if v_done<>'succeeded' then raise exception 'Legacy Supabase media deletion did not complete: %',v_done; end if;
+end
+$do$;
+reset role;
+do $do$
+begin
+ if not exists(select 1 from public.content_media where id='{LEGACY_DELETE_MEDIA}'
+  and storage_provider='supabase' and status='deleted'
+  and provider_delete_state='deleted' and provider_deleted_at is not null) then
+  raise exception 'Legacy Supabase media deletion did not persist its terminal tombstone';
+ end if;
+end
+$do$;
+""")
         psql(f"""
 insert into public.content_media(
  id,content_id,owner_id,bucket_id,storage_path,filename,media_type,size_bytes,sha256,status,scan_status
