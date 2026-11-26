@@ -33,6 +33,7 @@ type FeedComment = {
 };
 type FeedStory = { id: string; owner_id: string; created_at: string; discovery_group?: "following" | "suggested_public"; creator?: { username?: string | null; display_name?: string | null; avatar_url?: string | null }; media?: FeedMedia[] };
 type MeResponse = { user?: { id: string; email?: string }; profile?: { username?: string | null; display_name?: string | null; avatar_url?: string | null; bio?: string | null } | null };
+type StoryDraftState = { contentId: string; uploadId: string; fileIdentity: string; caption: string };
 type ApiAgent = { id: string; display_name: string; handle: string; avatar_url?: string | null; description?: string | null; persona?: Record<string, unknown> | null; status: string; ownership?: { owner_user_id?: string; status?: string } | null };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
@@ -64,6 +65,7 @@ export default function FeedPage() {
   const [composerDraftIds, setComposerDraftIds] = useState<Record<string, string>>({});
   const [composerUploadIds, setComposerUploadIds] = useState<Record<string, string>>({});
   const [composerUploadFiles, setComposerUploadFiles] = useState<Record<string, File>>({});
+  const [storyDraft, setStoryDraft] = useState<StoryDraftState | null>(null);
   const sessionEpoch = useRef(0);
   const sessionUserId = useRef<string | null>(null);
   const feedRequestSequence = useRef(0);
@@ -162,6 +164,7 @@ export default function FeedPage() {
         setComposerDraftIds({});
         setComposerUploadIds({});
         setComposerUploadFiles({});
+        setStoryDraft(null);
         setBusyKey("");
         setError("");
         setNotice("");
@@ -452,6 +455,90 @@ export default function FeedPage() {
     finally { if (epoch === sessionEpoch.current) setBusyKey(""); }
   }
 
+  async function createStoryFromReference(caption: string, mediaFile: File | null): Promise<{ accepted: boolean; message?: string }> {
+    if (!session) return { accepted: false, message: "Sesi login diperlukan untuk membuat Story." };
+    const epoch = sessionEpoch.current;
+    const trimmedCaption = caption.trim();
+    const fileIdentity = mediaFile
+      ? [mediaFile.name, mediaFile.size, mediaFile.lastModified, mediaFile.type].join(":")
+      : "text-only";
+    try {
+      if (mediaFile) {
+        const allowed: Record<string, number> = {
+          "image/jpeg": 10 * 1024 * 1024,
+          "image/png": 10 * 1024 * 1024,
+          "image/webp": 10 * 1024 * 1024,
+          "video/mp4": 50 * 1024 * 1024,
+          "video/webm": 50 * 1024 * 1024,
+        };
+        const maxBytes = allowed[mediaFile.type];
+        if (!maxBytes) throw new Error("Story hanya menerima JPEG, PNG, WebP, MP4, atau WebM.");
+        if (mediaFile.size <= 0 || mediaFile.size > maxBytes) throw new Error("Ukuran media Story melebihi batas yang diizinkan.");
+      }
+
+      let draft = storyDraft;
+      if (!draft || draft.fileIdentity !== fileIdentity) {
+        const created = await request("/v1/stories", {
+          method: "POST",
+          body: JSON.stringify({ body: trimmedCaption, visibility: "public", expires_after_hours: 24 }),
+        }) as { item?: { id?: string } };
+        if (!created.item?.id) throw new Error("API tidak mengembalikan ID draft Story kanonis.");
+        draft = { contentId: created.item.id, uploadId: crypto.randomUUID(), fileIdentity, caption: trimmedCaption };
+        setStoryDraft(draft);
+      } else if (draft.caption !== trimmedCaption) {
+        const mine = await request("/v1/stories/mine?limit=100") as { items?: { id: string; version: number; status: string }[] };
+        const current = mine.items?.find(item => item.id === draft!.contentId);
+        if (!current || !["draft", "failed"].includes(current.status)) {
+          throw new Error("Draft Story tidak lagi dapat diedit. Muat ulang daftar Story sebelum membuat yang baru.");
+        }
+        await request("/v1/content/" + encodeURIComponent(draft.contentId), {
+          method: "PATCH",
+          body: JSON.stringify({ body: trimmedCaption, visibility: "public", expected_version: current.version }),
+        });
+        draft = { ...draft, caption: trimmedCaption };
+        setStoryDraft(draft);
+      }
+
+      if (mediaFile) {
+        const uploaded = await uploadContentMedia(request, draft.contentId, mediaFile, draft.uploadId, () => undefined);
+        let ready = false;
+        for (let attempt = 0; attempt < 30; attempt += 1) {
+          if (epoch !== sessionEpoch.current) throw new Error("Sesi berubah saat media Story diproses.");
+          const status = await request("/v1/media/" + encodeURIComponent(uploaded.id)) as {
+            item?: { status?: string; scan_status?: string; processed_at?: string | null };
+          };
+          if (status.item?.status === "ready" && status.item.scan_status === "clean" && status.item.processed_at) {
+            ready = true;
+            break;
+          }
+          if (status.item?.status === "failed" || status.item?.status === "deleted" || status.item?.scan_status === "rejected") {
+            throw new Error("Media Story gagal melewati pemindaian atau pemrosesan. Draft tetap tersimpan.");
+          }
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+        if (!ready) return { accepted: false, message: "Media Story masih diproses. Draft tersimpan; tekan Kirim ke Story kembali setelah pemrosesan selesai." };
+      }
+
+      if (epoch !== sessionEpoch.current) throw new Error("Sesi berubah; publikasi Story dihentikan.");
+      const published = await request("/v1/content/" + encodeURIComponent(draft.contentId) + "/publish", { method: "POST" }) as {
+        item?: { status?: string; moderation_status?: string };
+        message?: string;
+      };
+      if (epoch !== sessionEpoch.current) return { accepted: false, message: "Sesi berubah setelah pengajuan. Periksa status Story dari akun pemilik." };
+      const status = published.item?.status ?? "unknown";
+      setStoryDraft(null);
+      const latestStories = await request("/v1/stories?limit=30") as { items?: FeedStory[] };
+      setStories(latestStories.items ?? []);
+      void loadFeed(true);
+      return {
+        accepted: true,
+        message: published.message || `Story diterima API dengan status ${status}; belum dianggap tayang sebelum moderasi menyatakan approved.`,
+      };
+    } catch (cause) {
+      return { accepted: false, message: cause instanceof Error ? cause.message : "Story belum dapat diproses oleh API." };
+    }
+  }
+
   const initialCommentsPostId = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("comments") === "1"
     ? new URLSearchParams(window.location.search).get("content")
     : null;
@@ -661,6 +748,7 @@ export default function FeedPage() {
             agentProfile={composerAgent}
             agentOnlyPublishEnabled={false}
             onCreatePost={createPostFromReference}
+            onCreateStory={createStoryFromReference}
           />
         )}
         {cursor && <div className="mx-auto max-w-xl px-4 pb-6"><button className="w-full rounded-2xl border-2 border-slate-900 bg-white px-4 py-3 text-sm font-black shadow-[3px_3px_0px_#0f172a]" onClick={() => void loadFeed(false, cursor)} disabled={loading}>Muat konten berikutnya</button></div>}

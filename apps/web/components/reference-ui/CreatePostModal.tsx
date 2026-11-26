@@ -59,6 +59,7 @@ interface CreatePostModalProps {
   agentProfile: AIAgentProfile | null;
   agentOnlyPublishEnabled?: boolean;
   onCreatePost: (newPost: PostItem, visibility: 'PUBLIC' | 'FOLLOWERS' | 'PRIVATE', mediaFile: File | null) => Promise<{ accepted: boolean; message?: string }>;
+  onCreateStory?: (caption: string, mediaFile: File | null) => Promise<{ accepted: boolean; message?: string }>;
   onLaunchLiveStage?: (
     title: string, 
     mode: string, 
@@ -74,6 +75,7 @@ export default function CreatePostModal({
   agentProfile: selectedAgentProfile,
   agentOnlyPublishEnabled = false,
   onCreatePost,
+  onCreateStory,
   onLaunchLiveStage,
 }: CreatePostModalProps) {
   const hasAgentProfile = Boolean(selectedAgentProfile);
@@ -104,7 +106,15 @@ export default function CreatePostModal({
 
   // Story state
   const [storyCaption, setStoryCaption] = useState('');
-  const [storyMedia, setStoryMedia] = useState<string>('');
+  const storyMediaInputRef = useRef<HTMLInputElement | null>(null);
+  const [storyMediaFile, setStoryMediaFile] = useState<File | null>(null);
+  const [storyMediaPreview, setStoryMediaPreview] = useState<string | null>(null);
+  useEffect(() => {
+    if (!storyMediaFile) { setStoryMediaPreview(null); return; }
+    const previewUrl = URL.createObjectURL(storyMediaFile);
+    setStoryMediaPreview(previewUrl);
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [storyMediaFile]);
 
   // Live Stage / Streaming state
   const [liveTitle, setLiveTitle] = useState('');
@@ -214,8 +224,28 @@ export default function CreatePostModal({
     onClose();
   };
 
-  const handleStoryPublish = () => {
-    setIntegrationNotice('Publikasi Story belum terhubung ke endpoint Story kanonis. Tidak ada Story yang dipublikasikan.');
+  const handleStoryPublish = async () => {
+    if (!storyCaption.trim() && !storyMediaFile) {
+      setIntegrationNotice("Tambahkan caption atau media sebelum mengirim Story.");
+      return;
+    }
+    if (!onCreateStory) {
+      setIntegrationNotice("Endpoint Story kanonis belum tersedia. Tidak ada Story yang dipublikasikan.");
+      return;
+    }
+    setIntegrationNotice(null);
+    try {
+      const result = await onCreateStory(storyCaption, storyMediaFile);
+      if (!result.accepted) {
+        setIntegrationNotice(result.message || "Story belum dikonfirmasi oleh API kanonis. Draft tetap tersimpan.");
+        return;
+      }
+      setStoryCaption("");
+      setStoryMediaFile(null);
+      onClose();
+    } catch (cause) {
+      setIntegrationNotice(cause instanceof Error ? cause.message : "Story belum tersimpan melalui API kanonis.");
+    }
   };
 
   return (
@@ -459,12 +489,25 @@ export default function CreatePostModal({
             </div>
 
             <div className="rounded-2xl overflow-hidden border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] bg-slate-950 relative h-48 flex items-center justify-center">
-              <img src={storyMedia} alt="Story Media" className="w-full h-full object-cover opacity-85" />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex flex-col justify-end p-3">
+              {storyMediaPreview && storyMediaFile?.type.startsWith("image/")
+                ? <img src={storyMediaPreview} alt="Pratinjau media Story" className="w-full h-full object-cover opacity-85" />
+                : storyMediaFile?.type.startsWith("video/") && storyMediaPreview
+                  ? <video src={storyMediaPreview} className="w-full h-full object-cover" muted playsInline />
+                  : <div className="px-4 text-center text-xs font-bold text-white">{storyMediaFile?.name || "Pilih foto atau video untuk Story"}</div>}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex flex-col justify-end p-3 pointer-events-none">
                 <p className="text-white text-xs font-black truncate">
                   {storyCaption || 'Pratinjau Story Anda...'}
                 </p>
               </div>
+            </div>
+            <input ref={storyMediaInputRef} type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm" className="sr-only"
+              onChange={event => setStoryMediaFile(event.target.files?.[0] ?? null)} />
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={() => storyMediaInputRef.current?.click()} className="rounded-xl border-2 border-slate-900 bg-white px-3 py-2 text-xs font-black text-slate-900 shadow-[2px_2px_0px_#0f172a]">
+                <Upload className="mr-1 inline h-3.5 w-3.5" /> {storyMediaFile ? "Ganti media" : "Pilih foto/video"}
+              </button>
+              {storyMediaFile && <span className="min-w-0 flex-1 truncate text-[10px] font-semibold text-slate-700">{storyMediaFile.name} · {(storyMediaFile.size / (1024 * 1024)).toFixed(1)} MB</span>}
+              {storyMediaFile && <button type="button" onClick={() => { setStoryMediaFile(null); if (storyMediaInputRef.current) storyMediaInputRef.current.value = ""; }} className="rounded-lg border border-slate-900 px-2 py-1 text-[10px] font-black">Hapus</button>}
             </div>
 
             <input

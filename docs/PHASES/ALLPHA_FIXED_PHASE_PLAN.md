@@ -1959,3 +1959,11 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 - **Implementation:** FastAPI moderation now reads the server-owned Story expiry policy and writes `expires_at` when a Story is approved. Default is 24 hours; explicit policy must be an integer from 1 to 168 hours. For a scheduled moderation result, the expiry base is the canonical schedule `publish_at` and missing/invalid schedule time fails closed. No client-supplied expiry timestamp is trusted.
 - **Tests added:** approved Story receives a 24-hour server-computed expiry; invalid server policy fails before the moderation write.
 - **Boundary:** this repairs Story visibility lifecycle but does not claim media upload/scanner/Cloudinary worker activation. No production data or schema was changed.
+
+
+## 40.110 — Web Story composer wired to canonical Story + media lifecycle (2026-11-26)
+
+- **Client implementation:** existing Web CreatePostModal Story mode now accepts JPEG/PNG/WebP/MP4/WebM, previews selected media, preserves the draft on errors, and calls canonical FastAPI Story lifecycle instead of the former hard-coded “not connected” notice.
+- **Lifecycle:** creates `POST /v1/stories` draft with 24-hour expiry policy; attaches media through shared `uploadContentMedia` helper (Cloudinary when production flag is enabled, existing TUS rollback path otherwise); reuses the same idempotency key on retries; polls owner-scoped `GET /v1/media/{id}` until `ready + clean + processed_at`; then submits through `POST /v1/content/{id}/publish` and refreshes Story/Feed. It never reports public publication; moderation approval is still required.
+- **Draft safety:** caption edits update the same owned draft using the latest server version. A changed file identity creates a new persisted draft rather than reusing an idempotency key for different bytes.
+- **Verification:** Web build/tests pending Allpha Smoke. This is Web integration only; Native Story creation remains deferred because the Native app has no existing Story composer. Cloudinary flag remains disabled pending P13 schema/scanner/worker gates.
