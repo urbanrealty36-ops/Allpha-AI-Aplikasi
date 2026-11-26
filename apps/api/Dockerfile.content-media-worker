@@ -1,0 +1,36 @@
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    ALLPHA_AGENT_RUNTIME_WORKER_ENABLED=false \
+    ALLPHA_WORKFLOW_WORKER_ENABLED=false \
+    ALLPHA_KNOWLEDGE_DOCUMENT_WORKER_ENABLED=false \
+    ALLPHA_KNOWLEDGE_EMBEDDING_WORKER_ENABLED=false \
+    ALLPHA_CONTENT_MEDIA_WORKER_ENABLED=false \
+    ALLPHA_CONTENT_TRANSCODE_WORKER_ENABLED=false \
+    ALLPHA_CONTENT_PROVIDER_CALLBACK_WORKER_ENABLED=false \
+    ALLPHA_CONTENT_PROVIDER_CLEANUP_WORKER_ENABLED=false \
+    ALLPHA_DOCUMENT_SCANNER_MODE=clamd \
+    ALLPHA_CLAMAV_ENABLED=false \
+    CLAMAV_HOST=127.0.0.1
+
+WORKDIR /app
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends clamav clamav-daemon gosu ca-certificates tini \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --system --uid 10001 --create-home --groups clamav worker \
+    && mkdir -p /run/clamav \
+    && chown clamav:clamav /run/clamav /var/lib/clamav \
+    && chmod 0770 /run/clamav
+COPY pyproject.toml ./
+COPY src ./src
+COPY docker/shared-worker-entrypoint.sh /usr/local/bin/shared-worker-entrypoint
+COPY docker/content-media-worker-entrypoint.sh /usr/local/bin/content-media-worker-entrypoint
+RUN pip install --no-cache-dir . \
+    && chmod 0755 /usr/local/bin/shared-worker-entrypoint /usr/local/bin/content-media-worker-entrypoint \
+    && sh -n /usr/local/bin/shared-worker-entrypoint \
+    && sh -n /usr/local/bin/content-media-worker-entrypoint
+
+ENTRYPOINT ["tini", "--", "/usr/local/bin/content-media-worker-entrypoint"]
+CMD ["allpha-agent-runtime-worker"]
