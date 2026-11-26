@@ -2102,3 +2102,10 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 - AI Cinema title cover/trailer projections and creator asset listings now use the canonical `content_api._media_preview_projection` instead of signing `storage_path` directly through Supabase Storage.
 - Cloudinary trailer cards use the verified poster/thumbnail derivative (not the video rendition); cover cards use the image display derivative. Creator asset responses redact provider IDs, Storage paths, provider metadata and derivative manifests while returning short-lived preview URLs.
 - The shared projection recognizes legacy `poster` derivatives for Supabase media while maintaining strict Cloudinary derivative identity checks.
+
+
+## 40.132 — Social graph outbox and account lifecycle consolidated into canonical shared worker host
+
+- Added explicit independently gated `social_graph_outbox_worker.serve_enabled` support for both the durable Social Graph outbox and account lifecycle worker. Both stop cleanly with the shared host stop event and retain their existing Postgres RPC/lease contracts.
+- `agent_runtime_worker.serve` now hosts the Social Graph outbox/account lifecycle consumers alongside Agent Runtime, Workflow, Knowledge and Content Media, behind the new `ALLPHA_SOCIAL_GRAPH_OUTBOX_WORKER_ENABLED` and existing account lifecycle flag.
+- The standalone Railway entrypoint remains backward-compatible until the current social-outbox service is moved. This allows the existing Railway service slot to be repurposed for the dedicated ClamAV-backed P13 media worker without losing the Social Graph/account lifecycle consumers or creating duplicate queues.

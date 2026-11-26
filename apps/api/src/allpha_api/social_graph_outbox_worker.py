@@ -10,6 +10,8 @@ from typing import Any
 
 import httpx
 
+from allpha_api.account_lifecycle_worker import AccountLifecycleWorker
+
 log = logging.getLogger("allpha.social_graph_outbox")
 
 
@@ -62,45 +64,83 @@ class OutboxWorker:
                     log.exception("outbox failure could not be recorded event_id=%s", event_id)
         return len(events)
 
-    async def run(self) -> None:
+    async def run(self, stop_event: asyncio.Event | None = None) -> None:
         try:
-            while not self.stopping:
+            while not self.stopping and not (stop_event and stop_event.is_set()):
                 try:
                     count = await self.process_batch()
+                except asyncio.CancelledError:
+                    raise
                 except Exception:
                     log.exception("social graph outbox poll failed")
                     count = 0
                 if count == 0:
-                    await asyncio.sleep(self.poll_seconds)
+                    if stop_event is None:
+                        await asyncio.sleep(self.poll_seconds)
+                    else:
+                        try:
+                            await asyncio.wait_for(stop_event.wait(), timeout=self.poll_seconds)
+                        except asyncio.TimeoutError:
+                            pass
         finally:
             await self.client.aclose()
 
 
-def main() -> None:
-    """Run canonical social outbox and account lifecycle workers in one Railway worker slot."""
-    from allpha_api.account_lifecycle_worker import AccountLifecycleWorker
+def _flag(name: str) -> bool:
+    return os.getenv(name, "false").strip().lower() in {"1", "true", "yes", "on"}
 
+
+def enabled() -> bool:
+    """The shared worker hosts these consumers only after explicit server-side enablement."""
+    return _flag("ALLPHA_SOCIAL_GRAPH_OUTBOX_WORKER_ENABLED") or _flag("ALLPHA_ACCOUNT_LIFECYCLE_WORKER_ENABLED")
+
+
+async def _run_account_lifecycle(worker: AccountLifecycleWorker, stop_event: asyncio.Event) -> None:
+    task = asyncio.create_task(worker.run(), name="account-lifecycle-worker")
+    await stop_event.wait()
+    worker.stopping = True
+    await task
+
+
+async def serve_enabled(*, stop_event: asyncio.Event) -> None:
+    """Run the canonical social outbox and account lifecycle consumers in the shared host."""
+    tasks = []
+    if _flag("ALLPHA_SOCIAL_GRAPH_OUTBOX_WORKER_ENABLED"):
+        tasks.append(OutboxWorker().run(stop_event=stop_event))
+    if _flag("ALLPHA_ACCOUNT_LIFECYCLE_WORKER_ENABLED"):
+        tasks.append(_run_account_lifecycle(AccountLifecycleWorker(), stop_event))
+    if tasks:
+        await asyncio.gather(*tasks)
+
+
+def main() -> None:
+    """Standalone entrypoint retained for deployments not yet consolidated into the shared host."""
     logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
-    outbox = OutboxWorker()
-    account_enabled = os.getenv("ALLPHA_ACCOUNT_LIFECYCLE_WORKER_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+    outbox_enabled = _flag("ALLPHA_SOCIAL_GRAPH_OUTBOX_WORKER_ENABLED")
+    account_enabled = _flag("ALLPHA_ACCOUNT_LIFECYCLE_WORKER_ENABLED")
+    if not outbox_enabled and not account_enabled:
+        # Preserve the legacy standalone outbox behavior until its Railway service
+        # is moved to the dedicated media worker image.
+        outbox_enabled = True
+    outbox = OutboxWorker() if outbox_enabled else None
     account = AccountLifecycleWorker() if account_enabled else None
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
     def request_shutdown() -> None:
-        outbox.stopping = True
+        if outbox is not None:
+            outbox.stopping = True
         if account is not None:
             account.stopping = True
 
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, request_shutdown)
     try:
-        tasks = [outbox.run()]
+        tasks = []
+        if outbox is not None:
+            tasks.append(outbox.run())
         if account is not None:
             tasks.append(account.run())
-            logging.warning("account_lifecycle_worker_attached mode=shared_railway_worker")
-        else:
-            logging.info("account_lifecycle_worker_disabled")
         loop.run_until_complete(asyncio.gather(*tasks))
     finally:
         loop.close()
