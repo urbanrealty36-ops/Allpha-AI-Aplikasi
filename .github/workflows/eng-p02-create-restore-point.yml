@@ -39,6 +39,14 @@ jobs:
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
       SUPABASE_PROJECT_ID: dvdziauyvuhcnqhrrvww
     steps:
+      - name: Require versioned Storage backup implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s tools/recovery/backup_supabase_storage.py
+          test -s tools/recovery/restore_supabase_storage.py
+          echo "Storage backup and isolated restore implementations are present."
+
       - name: Require canonical production credentials
         shell: bash
         run: |
