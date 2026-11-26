@@ -118,6 +118,9 @@ def upload_and_verify_object(
         fail("Storage archive object checksum changed before restore.")
 
     object_path = f"/storage/v1/object/{bucket}/{name}"
+    upload_headers = {"x-upsert": "true"}
+    if item.get("cache_control"):
+        upload_headers["cache-control"] = str(item["cache_control"])
     try:
         with api_request(
             api_url,
@@ -127,7 +130,7 @@ def upload_and_verify_object(
             method="POST",
             payload=payload,
             content_type=item.get("content_type") or "application/octet-stream",
-            extra_headers={"x-upsert": "true"},
+            extra_headers=upload_headers,
         ) as response:
             if response.status not in (200, 201):
                 fail(f"Local Storage object upload returned HTTP {response.status}.")
@@ -168,7 +171,9 @@ def upload_and_verify_object(
 
 def compare_database_inventory(expected_manifest: dict, restored_inventory: list) -> None:
     expected = {
-        (item["bucket_id"], item["name"]): (item["size_bytes"], item["content_type"])
+        (item["bucket_id"], item["name"]): (
+            item["size_bytes"], item["content_type"], item.get("owner_id")
+        )
         for item in expected_manifest["objects"]
     }
     actual = {}
@@ -177,11 +182,12 @@ def compare_database_inventory(expected_manifest: dict, restored_inventory: list
         name = str(row.get("name") or "")
         size = row.get("size_bytes")
         content_type = row.get("content_type") or "application/octet-stream"
+        owner_id = row.get("owner_id")
         try:
             size = int(size) if size is not None else None
         except (TypeError, ValueError):
             fail("Restored Storage metadata contains a non-numeric object size.")
-        actual[(bucket_id, name)] = (size, content_type)
+        actual[(bucket_id, name)] = (size, content_type, owner_id)
     if actual != expected:
         missing = len(set(expected) - set(actual))
         extra = len(set(actual) - set(expected))
