@@ -1,4 +1,7 @@
 name: ENG-P02 Verify Pre-Migration Backup Restore
+concurrency:
+  group: eng-p02-backup-restore-${{ github.ref }}
+  cancel-in-progress: false
 
 on:
   workflow_run:
@@ -59,7 +62,14 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p restore-workspace/supabase
-          restore_db_port=$((54322 + BACKUP_RUN_ID % 1000))
+          restore_db_port=$((63000 + BACKUP_RUN_ID % 1000))
+          python - "$restore_db_port" <<'PY'
+          import socket, sys
+          port = int(sys.argv[1])
+          with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+              sock.bind(("127.0.0.1", port))
+          print(f"Disposable PostgreSQL host port {port} is available.")
+          PY
           cat > restore-workspace/supabase/config.toml <<'TOML'
           project_id = "allpha-p02-restore-verification"
 
@@ -73,7 +83,7 @@ jobs:
           [db.migrations]
           schema_paths = []
           TOML
-          # Use a run-specific host port so overlapping recovery jobs cannot collide.
+          # Use a serialized, high-range run-specific host port and verify it is free before startup.
           sed -i "s/^port = 54322$/port = $restore_db_port/" restore-workspace/supabase/config.toml
 
       - uses: supabase/setup-cli@v1

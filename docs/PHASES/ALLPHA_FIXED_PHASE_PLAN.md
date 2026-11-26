@@ -2000,3 +2000,11 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 ## 40.115 — Story provider cleanup regression coverage added (2026-11-26)
 
 - Added focused tests proving Cloudinary Story deletion queues the provider cleanup RPC without calling Supabase Storage or deleting registry metadata; legal-hold outcomes preserve the asset; legacy Supabase Storage deletion remains unchanged.
+
+
+## 40.116 — Recovery restore port collision eliminated (2026-11-26)
+
+- **Observed failure:** restore run `45742087424` failed before restore at container startup because host port `55292` was already bound. No restore or database verification ran in that attempt.
+- **Root cause:** the prior run-specific mapping used `54322 + BACKUP_RUN_ID % 1000`, overlapping common PostgreSQL/service ports. Concurrent recovery runs could also share the modulo-derived port.
+- **Correction:** the restore workflow is serialized per Git ref with non-cancelling concurrency, selects a run-specific port in `63000–63999`, and verifies the port is bindable before starting the disposable Supabase stack. This changes only CI infrastructure, not production configuration.
+- **Next:** rerun backup/restore, then apply and verify the Cloudinary registry migration on the disposable restored snapshot.
