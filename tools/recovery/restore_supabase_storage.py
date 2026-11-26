@@ -6,9 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import sys
 import tarfile
-import time
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlparse
@@ -78,9 +76,14 @@ def ensure_bucket(api_url: str, api_key: str, bucket: dict) -> None:
             fail(f"Local Storage bucket create failed with HTTP {exc.code}.")
 
     # A local Supabase stack may already contain a bucket from config.toml.
+    update_payload = json.dumps({
+        "public": body["public"],
+        "file_size_limit": body["file_size_limit"],
+        "allowed_mime_types": body["allowed_mime_types"],
+    }).encode()
     try:
         with api_request(
-            api_url, api_key, f"/storage/v1/bucket/{bucket_id}", method="PUT", payload=payload
+            api_url, api_key, f"/storage/v1/bucket/{bucket_id}", method="PUT", payload=update_payload
         ) as response:
             if response.status not in (200, 201):
                 fail(f"Local Storage bucket update returned HTTP {response.status}.")
@@ -185,6 +188,8 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--archive", required=True, type=Path)
     parser.add_argument("--manifest", required=True, type=Path)
+    parser.add_argument("--backup-evidence", required=True, type=Path)
+    parser.add_argument("--project-ref", required=True)
     parser.add_argument("--buckets", required=True, type=Path)
     parser.add_argument("--restored-inventory", required=True, type=Path)
     parser.add_argument("--evidence", required=True, type=Path)
@@ -199,10 +204,22 @@ def main() -> None:
         fail("Local Supabase service role key is unavailable.")
 
     manifest = load_json(args.manifest)
+    backup_evidence = load_json(args.backup_evidence)
     buckets = load_json(args.buckets)
     restored_inventory = load_json(args.restored_inventory)
     if not isinstance(buckets, list) or not isinstance(restored_inventory, list):
         fail("Bucket metadata and restored Storage inventory must be JSON arrays.")
+    if manifest.get("project_ref") != args.project_ref:
+        fail("Storage manifest project reference does not match the canonical restore target.")
+    if buckets != manifest.get("buckets"):
+        fail("Storage bucket metadata does not match the embedded backup manifest.")
+
+    archive_digest = hashlib.sha256()
+    with args.archive.open("rb") as source:
+        for chunk in iter(lambda: source.read(CHUNK_SIZE), b""):
+            archive_digest.update(chunk)
+    if archive_digest.hexdigest() != backup_evidence.get("storage_archive_sha256"):
+        fail("Storage archive SHA-256 does not match the pre-migration backup evidence.")
 
     verify_archive(args.archive, manifest)
     compare_database_inventory(manifest, restored_inventory)
