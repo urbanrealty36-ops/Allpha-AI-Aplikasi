@@ -1,6 +1,6 @@
 import asyncio
 
-from allpha_api.content_provider_cleanup_worker import ContentProviderCleanupWorker
+from allpha_api.content_provider_cleanup_worker import CleanupWorker
 from allpha_api.content_retention_worker import RetentionWorker
 
 
@@ -21,7 +21,7 @@ class _StorageClient:
 
 
 def test_provider_cleanup_deletes_owner_scoped_legacy_derivative_objects():
-    worker = object.__new__(ContentProviderCleanupWorker)
+    worker = object.__new__(CleanupWorker)
     worker.base = "https://supabase.test"
     worker.client = _StorageClient()
     derivatives = [
@@ -36,7 +36,7 @@ def test_provider_cleanup_deletes_owner_scoped_legacy_derivative_objects():
 
 
 def test_provider_cleanup_rejects_derivative_path_outside_owner_prefix():
-    worker = object.__new__(ContentProviderCleanupWorker)
+    worker = object.__new__(CleanupWorker)
     worker.base = "https://supabase.test"
     worker.client = _StorageClient()
     try:
@@ -51,7 +51,7 @@ def test_provider_cleanup_rejects_derivative_path_outside_owner_prefix():
 
 
 def test_cloudinary_cleanup_worker_deletes_legacy_derivatives_after_provider_asset():
-    worker = object.__new__(ContentProviderCleanupWorker)
+    worker = object.__new__(CleanupWorker)
     worker.worker_id = "provider-cleanup-test"
     calls = []
 
