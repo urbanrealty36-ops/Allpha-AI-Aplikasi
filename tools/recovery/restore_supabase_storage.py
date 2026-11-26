@@ -222,11 +222,23 @@ def main() -> None:
         fail("Storage manifest project reference does not match the canonical restore target.")
     if buckets != manifest.get("buckets"):
         fail("Storage bucket metadata does not match the embedded backup manifest.")
+    if backup_evidence.get("storage_objects_included") is not True:
+        fail("Pre-migration evidence does not attest Storage-object coverage.")
+    if backup_evidence.get("storage_archive_integrity_verified") is not True:
+        fail("Pre-migration evidence does not attest Storage archive integrity.")
+    if manifest.get("object_count") != len(manifest.get("objects", [])):
+        fail("Storage manifest object count is inconsistent.")
+    if manifest.get("bucket_count") != len(buckets):
+        fail("Storage manifest bucket count is inconsistent.")
+    if manifest.get("total_bytes") != sum(item.get("size_bytes", 0) for item in manifest.get("objects", [])):
+        fail("Storage manifest byte total is inconsistent.")
 
     archive_digest = hashlib.sha256()
     with args.archive.open("rb") as source:
         for chunk in iter(lambda: source.read(CHUNK_SIZE), b""):
             archive_digest.update(chunk)
+    if args.archive.stat().st_size != backup_evidence.get("storage_archive_size_bytes"):
+        fail("Storage archive size does not match the pre-migration backup evidence.")
     if archive_digest.hexdigest() != backup_evidence.get("storage_archive_sha256"):
         fail("Storage archive SHA-256 does not match the pre-migration backup evidence.")
 
