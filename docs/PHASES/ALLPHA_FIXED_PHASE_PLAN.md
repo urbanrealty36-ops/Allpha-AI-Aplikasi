@@ -2109,3 +2109,8 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 - Added explicit independently gated `social_graph_outbox_worker.serve_enabled` support for both the durable Social Graph outbox and account lifecycle worker. Both stop cleanly with the shared host stop event and retain their existing Postgres RPC/lease contracts.
 - `agent_runtime_worker.serve` now hosts the Social Graph outbox/account lifecycle consumers alongside Agent Runtime, Workflow, Knowledge and Content Media, behind the new `ALLPHA_SOCIAL_GRAPH_OUTBOX_WORKER_ENABLED` and existing account lifecycle flag.
 - The standalone Railway entrypoint remains backward-compatible until the current social-outbox service is moved. This allows the existing Railway service slot to be repurposed for the dedicated ClamAV-backed P13 media worker without losing the Social Graph/account lifecycle consumers or creating duplicate queues.
+
+
+## 40.133 — Shared worker consolidation regression coverage
+
+- Added focused tests for explicit Social Graph outbox/account lifecycle consumer gates, both consumers running in the shared host, clean stop-event propagation, and outbox-only operation.
