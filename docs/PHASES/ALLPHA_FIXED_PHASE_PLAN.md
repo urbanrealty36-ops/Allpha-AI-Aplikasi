@@ -1995,3 +1995,8 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 - **Implementation:** Cloudinary rows are now routed through the service-only `request_cloudinary_content_media_delete` RPC. Provider cleanup worker owns the durable delete, retry and metadata completion. The story path never deletes a Cloudinary registry row before provider confirmation. Legacy Supabase Storage rows retain their existing mark-deleting → delete-object → delete-metadata flow.
 - **Safety:** legal-hold, in-use, invalid-state and missing-identity outcomes remain fail-closed; archive/expiry does not report provider deletion as complete. This path covers manual Story archive and automatic Story expiry cleanup.
 - **Verification:** focused tests pending CI. No production schema or media data changed.
+
+
+## 40.115 — Story provider cleanup regression coverage added (2026-11-26)
+
+- Added focused tests proving Cloudinary Story deletion queues the provider cleanup RPC without calling Supabase Storage or deleting registry metadata; legal-hold outcomes preserve the asset; legacy Supabase Storage deletion remains unchanged.
