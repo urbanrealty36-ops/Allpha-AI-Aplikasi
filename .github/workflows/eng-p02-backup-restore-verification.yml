@@ -466,6 +466,26 @@ jobs:
               -f /tmp/eng-p03-deletion-governance.sql
             echo "deletion_governance_migration_replay=APPLIED_TO_RESTORE"
           fi
+
+          # The hold-release trigger must persist its own audit event when it
+          # requeues blocked requests before the governance worker runs.
+          requeue_migration="apps/api/supabase/migrations/20261124012454_eng_p03_requeue_audit_trail.sql"
+          test -s "$requeue_migration"
+          requeue_version="20261124012454"
+          requeue_applied="$(docker exec -u postgres "$SUPABASE_DB_CONTAINER" \
+            psql -U supabase_admin -d allpha_p02_restore_verification -Atqc \
+            "select exists(select 1 from supabase_migrations.schema_migrations where version='\u0024{requeue_version}')")"
+          if [[ "$requeue_applied" == "t" ]]; then
+            echo "deletion_hold_release_audit_migration=SKIPPED_ALREADY_APPLIED"
+          else
+            docker cp "$requeue_migration" "$SUPABASE_DB_CONTAINER:/tmp/eng-p03-requeue-audit-trail.sql"
+            docker exec -u postgres "$SUPABASE_DB_CONTAINER" \
+              psql -U supabase_admin -d allpha_p02_restore_verification -v ON_ERROR_STOP=1 \
+              -f /tmp/eng-p03-requeue-audit-trail.sql
+            echo "deletion_hold_release_audit_migration=APPLIED_TO_RESTORE"
+          fi
+          echo "P03_REQUEUE_AUDIT_MIGRATION_BLOB=$(git rev-parse HEAD:"$requeue_migration")" >> "$GITHUB_ENV"
+
           docker exec -i -u postgres "$SUPABASE_DB_CONTAINER" \
             psql -U supabase_admin -d allpha_p02_restore_verification -v ON_ERROR_STOP=1 <<'SQL' | tee recovery-evidence/p03-deletion-governance-verification.txt
           begin;
@@ -514,7 +534,7 @@ jobs:
             end if;
             if not exists(select 1 from public.account_lifecycle_events
               where request_id=v_request and event_type='deletion_unblocked'
-                and metadata->>'reason_code'='LEGAL_HOLD_RELEASED') then
+                and metadata->>'reason_code'='LEGAL_HOLD_RELEASED_REEVALUATION_REQUIRED') then
               raise exception 'legal-hold release audit event missing';
             end if;
             if coalesce((select request_metadata->>'legal_hold_active'
@@ -612,6 +632,8 @@ jobs:
               "p03_export_expiry_migration_blob": os.environ["P03_EXPORT_EXPIRY_MIGRATION_BLOB"],
               "p03_deletion_governance_migration_applied": True,
               "p03_deletion_governance_migration_blob": os.environ["P03_DELETION_GOVERNANCE_MIGRATION_BLOB"],
+              "p03_requeue_audit_migration_applied": True,
+              "p03_requeue_audit_migration_blob": os.environ["P03_REQUEUE_AUDIT_MIGRATION_BLOB"],
               "p13_cloudinary_media_migration_applied": True,
               "p13_cloudinary_media_migration_blob": os.environ["P13_CLOUDINARY_MEDIA_MIGRATION_BLOB"],
               "p13_cloudinary_media_verification": p13_verification.read_text().splitlines(),
