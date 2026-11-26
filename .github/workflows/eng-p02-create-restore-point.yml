@@ -254,9 +254,9 @@ jobs:
             postgres:17-alpine \
             psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -Atc \
             "select coalesce(json_agg(json_build_object(
-              'bucket_id',bucket_id,'name',name,'metadata',metadata,
-              'created_at',created_at,'updated_at',updated_at
-            ) order by bucket_id,name),'[]'::json)::text from storage.objects" \
+              'bucket_id',o.bucket_id,'name',o.name,'owner_id',to_jsonb(o)->>'owner_id',
+              'metadata',o.metadata,'created_at',o.created_at,'updated_at',o.updated_at
+            ) order by o.bucket_id,o.name),'[]'::json)::text from storage.objects o" \
             > recovery-evidence/storage-inventory.json
 
       - name: Back up and checksum every Supabase Storage object
