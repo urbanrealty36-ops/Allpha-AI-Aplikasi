@@ -447,10 +447,19 @@ jobs:
           set -euo pipefail
           migration="apps/api/supabase/migrations/20261123192200_eng_p03_deletion_legal_hold_governance_worker.sql"
           test -s "$migration"
-          docker cp "$migration" "$SUPABASE_DB_CONTAINER:/tmp/eng-p03-deletion-governance.sql"
-          docker exec -u postgres "$SUPABASE_DB_CONTAINER" \
-            psql -U supabase_admin -d allpha_p02_restore_verification -v ON_ERROR_STOP=1 \
-            -f /tmp/eng-p03-deletion-governance.sql
+          migration_version="20261123192200"
+          applied="$(docker exec -u postgres "$SUPABASE_DB_CONTAINER" \
+            psql -U supabase_admin -d allpha_p02_restore_verification -Atqc \
+            "select exists(select 1 from supabase_migrations.schema_migrations where version='${migration_version}')")"
+          if [[ "$applied" == "t" ]]; then
+            echo "deletion_governance_migration_replay=SKIPPED_ALREADY_APPLIED"
+          else
+            docker cp "$migration" "$SUPABASE_DB_CONTAINER:/tmp/eng-p03-deletion-governance.sql"
+            docker exec -u postgres "$SUPABASE_DB_CONTAINER" \
+              psql -U supabase_admin -d allpha_p02_restore_verification -v ON_ERROR_STOP=1 \
+              -f /tmp/eng-p03-deletion-governance.sql
+            echo "deletion_governance_migration_replay=APPLIED_TO_RESTORE"
+          fi
           docker exec -i -u postgres "$SUPABASE_DB_CONTAINER" \
             psql -U supabase_admin -d allpha_p02_restore_verification -v ON_ERROR_STOP=1 <<'SQL' | tee recovery-evidence/p03-deletion-governance-verification.txt
           begin;
@@ -511,7 +520,11 @@ jobs:
                 then 'deletion_governance_rpc_grants=PASS' else 'deletion_governance_rpc_grants=FAIL' end;
               select case when exists(select 1 from pg_constraint
                 where conname='account_lifecycle_events_event_type_check'
-                  and position('deletion_unblocked' in pg_get_constraintdef(oid))>0)
+                  and position('deletion_blocked' in pg_get_constraintdef(oid))>0
+                  and position('deletion_unblocked' in pg_get_constraintdef(oid))>0
+                  and position('deletion_policy_pending' in pg_get_constraintdef(oid))>0
+                  and position('deletion_policy_activated' in pg_get_constraintdef(oid))>0
+                  and position('retention_policy_activated' in pg_get_constraintdef(oid))>0)
                 then 'deletion_event_contract=PASS' else 'deletion_event_contract=FAIL' end;
             " | tee -a recovery-evidence/p03-deletion-governance-verification.txt
           grep -q '^deletion_governance_rpc_grants=PASS$' recovery-evidence/p03-deletion-governance-verification.txt
