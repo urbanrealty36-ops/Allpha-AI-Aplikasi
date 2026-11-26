@@ -173,10 +173,11 @@ jobs:
           docker exec -u postgres "$SUPABASE_DB_CONTAINER" \
             psql -U supabase_admin -d allpha_p02_restore_verification -Atc \
             "select coalesce(json_agg(json_build_object(
-              'bucket_id',bucket_id,'name',name,
-              'size_bytes',nullif(metadata->>'size','')::bigint,
-              'content_type',coalesce(metadata->>'mimetype','application/octet-stream')
-            ) order by bucket_id,name),'[]'::json)::text from storage.objects" \
+              'bucket_id',o.bucket_id,'name',o.name,
+              'owner_id',to_jsonb(o)->>'owner_id',
+              'size_bytes',nullif(o.metadata->>'size','')::bigint,
+              'content_type',coalesce(o.metadata->>'mimetype','application/octet-stream')
+            ) order by o.bucket_id,o.name),'[]'::json)::text from storage.objects o" \
             > recovery-evidence/restored-storage-inventory.json
 
           (
