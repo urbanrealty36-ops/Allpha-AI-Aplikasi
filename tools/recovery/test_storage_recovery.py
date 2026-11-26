@@ -58,6 +58,7 @@ class StorageRecoveryTests(unittest.TestCase):
             "objects": [{
                 "bucket_id": "spatial-assets",
                 "name": "theme/model.glb",
+                "owner_id": "00000000-0000-0000-0000-000000000001",
                 "size_bytes": 12,
                 "content_type": "model/gltf-binary",
             }]
@@ -65,6 +66,7 @@ class StorageRecoveryTests(unittest.TestCase):
         inventory = [{
             "bucket_id": "spatial-assets",
             "name": "theme/model.glb",
+            "owner_id": "00000000-0000-0000-0000-000000000001",
             "size_bytes": "12",
             "content_type": "model/gltf-binary",
         }]
