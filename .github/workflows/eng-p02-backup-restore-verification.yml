@@ -474,7 +474,7 @@ jobs:
           requeue_version="20261124012454"
           requeue_applied="$(docker exec -u postgres "$SUPABASE_DB_CONTAINER" \
             psql -U supabase_admin -d allpha_p02_restore_verification -Atqc \
-            "select exists(select 1 from supabase_migrations.schema_migrations where version='\u0024{requeue_version}')")"
+            "select exists(select 1 from supabase_migrations.schema_migrations where version='${requeue_version}')")"
           if [[ "$requeue_applied" == "t" ]]; then
             echo "deletion_hold_release_audit_migration=SKIPPED_ALREADY_APPLIED"
           else
