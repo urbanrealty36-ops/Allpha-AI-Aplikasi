@@ -2016,3 +2016,11 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 - **Implementation:** preview projection now requires Cloudinary schema readiness for provider assets, loads provider identity fields, validates each transformation against the exact media-type eager allowlist and persisted resource/delivery/version identity, and creates a signed authenticated Cloudinary URL. Pending Cloudinary assets return no delivery URL; legacy Supabase originals/derivatives retain signed Storage delivery.
 - **Tests added:** signed display/thumbnail transformations, no Supabase signing for pending Cloudinary media, and rejection of unapproved transformation metadata.
 - **Boundary:** this fixes canonical delivery projection; feed, Story and Cinema callers are being switched to this shared projection next. No production schema changes.
+
+
+## 40.118 — Feed, Stories and AI Cinema switched to canonical provider-aware delivery (2026-11-26)
+
+- **Feed:** all public feed, profile-feed, discovery, content-detail and report-review media projections now use `content_api._media_preview_projection`; Cloudinary provider IDs are included in the base media select, and storage paths are removed from client responses.
+- **Stories:** Story media attachment now uses the same projection, so Cloudinary authenticated derivatives are signed by provider identity while legacy Supabase assets retain private signed URLs.
+- **AI Cinema:** playback-session creation now uses the shared provider-aware projection and fails closed when no playable URL is available; it no longer signs a Cloudinary public ID as a Supabase Storage path.
+- **Boundary:** Web/Native feed and Story consumers receive short-lived signed URLs through FastAPI; this does not activate Cloudinary until the schema/scanner/worker gates are satisfied.

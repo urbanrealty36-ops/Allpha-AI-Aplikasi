@@ -17,7 +17,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from allpha_api.auth import current_user
 from allpha_api.operator_security import require_operator_scope, write_operator_audit
-from allpha_api.cinema_api import _db, _signed_media_preview_url
+from allpha_api.cinema_api import _db
+from allpha_api.content_api import _media_preview_projection
 
 router = APIRouter(prefix="/v1/cinema", tags=["cinema-lifecycle"])
 
@@ -187,7 +188,7 @@ async def _title_and_episode(title_id: uuid.UUID, episode_id: uuid.UUID) -> tupl
         raise HTTPException(404, detail={"code": "CINEMA_EPISODE_NOT_AVAILABLE", "message": "Episode belum siap."})
     episode = episodes[0]
     media_rows = await _db("GET", "content_media", params={
-        "select": "id,owner_id,storage_path,status,scan_status,processed_at,derivatives",
+        "select": "id,owner_id,storage_path,status,scan_status,processed_at,derivatives,provider_asset_id,provider_public_id",
         "id": "eq." + str(episode["media_id"]), "owner_id": "eq." + str(title["owner_id"]),
         "status": "eq.ready", "scan_status": "eq.clean", "limit": "1",
     })
@@ -279,7 +280,10 @@ async def start_playback_session(
     }, prefer="return=representation")
     if not rows:
         raise HTTPException(503, detail={"code": "CINEMA_PLAYBACK_SESSION_UNCONFIRMED", "message": "Sesi belum dapat dikonfirmasi."})
-    url = await _signed_media_preview_url(str(media["storage_path"]), expires_in=300)
+    delivery = await _media_preview_projection(media)
+    url = delivery.get("preview_url")
+    if not isinstance(url, str) or not url:
+        raise HTTPException(503, detail={"code": "CINEMA_MEDIA_DELIVERY_UNAVAILABLE", "message": "URL pemutaran media belum tersedia."})
     return {
         "session": {"id": rows[0]["id"], "expires_at": expires_at, "heartbeat_interval_seconds": 15,
                     "resume_position_seconds": resume_position_seconds},

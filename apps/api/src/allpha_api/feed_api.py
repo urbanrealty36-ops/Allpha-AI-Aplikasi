@@ -7,13 +7,13 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 from allpha_api.auth import current_user, optional_current_user, service_db_request
-from allpha_api.content_api import _server_db, _signed_media_preview_url
+from allpha_api.content_api import _server_db, _media_preview_projection
 from allpha_api.operator_security import require_operator_scope, write_operator_audit
 from allpha_api.recommendation_engine import (FEED_RANKING_VERSION, expand_interest_weights, matched_signal_affinity, policy_from_rows, score_content_candidate, optional_scoring_rows)
 
 router = APIRouter(tags=["social-feed"])
 FIELDS = "id,owner_id,ai_agent_id,content_type,body,visibility,status,moderation_status,version,provenance,created_at,updated_at,published_at"
-MEDIA_FIELDS = "id,content_id,owner_id,bucket_id,storage_path,filename,media_type,size_bytes,sha256,status,scan_status,processed_at,derivatives,created_at"
+MEDIA_FIELDS = "id,content_id,owner_id,bucket_id,storage_path,filename,media_type,size_bytes,sha256,status,scan_status,processed_at,derivatives,created_at,provider_asset_id,provider_public_id"
 
 def _public_media_ready(row: dict[str, Any]) -> bool:
     derivatives = row.get("derivatives")
@@ -641,8 +641,8 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent", "followi
         for row in media or []:
             if not _public_media_ready(row):
                 continue
-            item = {k: v for k, v in row.items() if k != "storage_path"}
-            item["preview_url"] = await _signed_media_preview_url(str(row["storage_path"]))
+            projected = await _media_preview_projection(row)
+            item = {k: v for k, v in projected.items() if k != "storage_path"}
             media_by_id.setdefault(str(row["content_id"]), []).append(item)
     items = []
     for row in page:
@@ -723,8 +723,8 @@ async def get_my_profile_feed(
     for row in media or []:
         if not _public_media_ready(row):
             continue
-        item = {key: value for key, value in row.items() if key != "storage_path"}
-        item["preview_url"] = await _signed_media_preview_url(str(row["storage_path"]))
+        projected = await _media_preview_projection(row)
+        item = {key: value for key, value in projected.items() if key != "storage_path"}
         media_by_id.setdefault(str(row["content_id"]), []).append(item)
     profile_rows = await _profiles_for({owner})
     creator = profile_rows.get(owner, {})
@@ -1029,8 +1029,8 @@ async def search_content(
         for row in media or []:
             if not _public_media_ready(row):
                 continue
-            safe = {key: value for key, value in row.items() if key != "storage_path"}
-            safe["preview_url"] = await _signed_media_preview_url(str(row["storage_path"]))
+            projected = await _media_preview_projection(row)
+            safe = {key: value for key, value in projected.items() if key != "storage_path"}
             media_by_id.setdefault(str(row["content_id"]), []).append(safe)
     reactions = await _server_db("GET", "content_reactions", params={"select": "content_id", "content_id": f"in.({','.join(ids)})", "limit": "5000"}) if ids else []
     comments = await _server_db("GET", "content_comments", params={"select": "content_id", "content_id": f"in.({','.join(ids)})", "status": "eq.visible", "limit": "5000"}) if ids else []
@@ -1359,8 +1359,8 @@ async def get_shared_feed_item(content_id: uuid.UUID, user: dict[str, Any] | Non
     for row in media or []:
         if not _public_media_ready(row):
             continue
-        media_item = {key: value for key, value in row.items() if key != "storage_path"}
-        media_item["preview_url"] = await _signed_media_preview_url(str(row["storage_path"]))
+        projected = await _media_preview_projection(row)
+        media_item = {key: value for key, value in projected.items() if key != "storage_path"}
         media_items.append(media_item)
     viewer_reaction = next((str(row.get("reaction") or "like") for row in reactions or [] if owner and str(row.get("actor_user_id")) == owner), None)
     item["engagement"] = {"likes": len(reactions or []), "comments": len(comments or []), "saves": len(saves or []), "shares": len(shares or [])}
@@ -1474,8 +1474,8 @@ async def list_content_reports(user: dict[str, Any] = Depends(require_operator_s
         for media_row in media_rows or []:
             if not _public_media_ready(media_row):
                 continue
-            media_item = {key: value for key, value in media_row.items() if key != "storage_path"}
-            media_item["preview_url"] = await _signed_media_preview_url(str(media_row["storage_path"]))
+            projected = await _media_preview_projection(media_row)
+            media_item = {key: value for key, value in projected.items() if key != "storage_path"}
             media_by_id.setdefault(str(media_row["content_id"]), []).append(media_item)
         for content_id, item in by_id.items():
             item["media"] = media_by_id.get(content_id, [])

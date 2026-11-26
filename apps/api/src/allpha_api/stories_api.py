@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from allpha_api.auth import current_user, optional_current_user, service_db_request
-from allpha_api.content_api import MEDIA_FIELDS, _server_db, _signed_media_preview_url, _storage
+from allpha_api.content_api import MEDIA_FIELDS, _server_db, _media_preview_projection, _signed_media_preview_url, _storage
 from allpha_api.feed_api import _edges
 
 router = APIRouter(prefix="/v1/stories", tags=["stories"])
@@ -53,8 +53,8 @@ async def _attach_media(items: list[dict[str, Any]], *, owner_id: str | None = N
             continue
         # Storage paths are private implementation details; expose only the
         # short-lived signed preview issued by the canonical media service.
-        media_item = {key: value for key, value in row.items() if key != "storage_path"}
-        media_item["preview_url"] = await _signed_media_preview_url(row["storage_path"], expires_in=300)
+        projected = await _media_preview_projection(row)
+        media_item = {key: value for key, value in projected.items() if key != "storage_path"}
         by_content.setdefault(content_id, []).append(media_item)
     return [{**item, "media": by_content.get(str(item["id"]), [])} for item in items]
 
