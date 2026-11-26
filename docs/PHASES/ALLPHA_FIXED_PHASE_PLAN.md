@@ -2052,3 +2052,8 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 
 - Story archive/expiry cleanup and its scheduled recovery sweep now include media rows in `status=deleted`, allowing the owner-scoped cleanup path to remove metadata only after the provider RPC reports `provider_delete_state=deleted`.
 - Provider cleanup failure routing now calls the Cloudinary-specific failure RPC only for Cloudinary assets; legacy Supabase Storage cleanup failures use the generic lifecycle failure path and remain retryable.
+
+
+## 40.123 — Provider cleanup and retention regression tests added
+
+- Added tests for owner-scoped derivative deletion, cross-owner path rejection, Cloudinary asset + legacy derivative cleanup ordering, retention deferral while provider deletion is queued, and metadata deletion only after provider confirmation.
