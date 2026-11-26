@@ -5,7 +5,7 @@ import hashlib
 import os
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import Any
 from urllib.parse import quote, urlsplit
@@ -883,7 +883,7 @@ async def review_content(
     operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate")),
 ) -> dict[str, Any]:
     current = await _server_db("GET", "content_items", params={
-        "select": CONTENT_FIELDS, "id": f"eq.{content_id}", "status": "eq.review",
+        "select": CONTENT_FIELDS + ",provenance", "id": f"eq.{content_id}", "status": "eq.review",
         "moderation_status": "eq.pending", "limit": "1",
     })
     if not current:
@@ -915,7 +915,7 @@ async def review_content(
             "message": "Publikasi ditahan: seluruh media harus berstatus ready, scan clean, dan memiliki waktu pemrosesan selesai.",
         })
     schedule_rows = await _server_db("GET", "content_schedules", params={
-        "select": "id,status,scan_status", "content_id": f"eq.{content_id}",
+        "select": "id,status,scan_status,publish_at", "content_id": f"eq.{content_id}",
         "owner_id": f"eq.{item['owner_id']}", "status": "in.(scheduled,processing)", "limit": "1",
     })
     scheduled = bool(schedule_rows) and allowed
@@ -930,6 +930,31 @@ async def review_content(
         "error_code": None if allowed else "MODERATION_REJECTED",
         "version": payload.expected_version + 1,
     }
+    if allowed and item.get("content_type") == "story":
+        provenance = item.get("provenance") if isinstance(item.get("provenance"), dict) else {}
+        story_policy = provenance.get("stories") if isinstance(provenance.get("stories"), dict) else {}
+        expires_after_hours = story_policy.get("expires_after_hours", 24)
+        if type(expires_after_hours) is not int or not 1 <= expires_after_hours <= 168:
+            raise HTTPException(422, detail={
+                "code": "STORY_EXPIRY_POLICY_INVALID",
+                "message": "Kebijakan masa tayang Story harus berada pada rentang 1–168 jam.",
+            })
+        expiry_base = datetime.now(timezone.utc)
+        if scheduled:
+            scheduled_at = schedule_rows[0].get("publish_at")
+            if not isinstance(scheduled_at, str) or not scheduled_at:
+                raise HTTPException(503, detail={
+                    "code": "STORY_SCHEDULE_TIME_UNAVAILABLE",
+                    "message": "Waktu publikasi Story terjadwal belum dapat diverifikasi.",
+                })
+            try:
+                expiry_base = datetime.fromisoformat(scheduled_at.replace("Z", "+00:00")).astimezone(timezone.utc)
+            except ValueError as exc:
+                raise HTTPException(503, detail={
+                    "code": "STORY_SCHEDULE_TIME_INVALID",
+                    "message": "Waktu publikasi Story terjadwal tidak valid.",
+                }) from exc
+        changes["expires_at"] = (expiry_base + timedelta(hours=expires_after_hours)).isoformat()
     rows = await _server_db("PATCH", "content_items", params={
         "id": f"eq.{content_id}", "status": "eq.review", "moderation_status": "eq.pending",
         "version": f"eq.{payload.expected_version}", "select": CONTENT_FIELDS,

@@ -1951,3 +1951,11 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 - **Contract parity:** validates `content_id` only for content; every other domain requires `resource_id` and rejects mixed/empty bindings. Unknown domain/purpose remains 422. Resource denial is a non-enumerating 404. Tenant/session binding remains explicitly unsupported and fail-closed. The canonical `reserve_cloudinary_media_upload` RPC independently repeats owner/resource checks transactionally.
 - **Tests added:** domain/resource shape, owner adapter coverage across all supported domains, verified JWT propagation and denial for an unowned resource. Test execution pending CI.
 - **Boundary:** this is backend authorization implementation. It does not claim that every Web/Native screen yet supplies the correct resource reference, nor that the Cloudinary registry migration, scanner, workers or production media journey is active. No production schema/data changes.
+
+
+## 40.109 — Story publication expiry lifecycle fixed at moderation approval (2026-11-26)
+
+- **Blocker found:** `stories_api.create_story` persisted `provenance.stories.expires_after_hours`, while `list_active_stories` requires a non-null future `content_items.expires_at`. The canonical content moderation approval path set `published_at` but never set `expires_at`; therefore an approved Story could remain invisible to active Story queries.
+- **Implementation:** FastAPI moderation now reads the server-owned Story expiry policy and writes `expires_at` when a Story is approved. Default is 24 hours; explicit policy must be an integer from 1 to 168 hours. For a scheduled moderation result, the expiry base is the canonical schedule `publish_at` and missing/invalid schedule time fails closed. No client-supplied expiry timestamp is trusted.
+- **Tests added:** approved Story receives a 24-hour server-computed expiry; invalid server policy fails before the moderation write.
+- **Boundary:** this repairs Story visibility lifecycle but does not claim media upload/scanner/Cloudinary worker activation. No production data or schema was changed.

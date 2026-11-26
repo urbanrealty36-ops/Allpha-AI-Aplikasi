@@ -726,3 +726,79 @@ def test_ready_cloudinary_media_uses_short_lived_authenticated_provider_delivery
     assert params["public_id"] == [item["provider_public_id"]]
     assert params["type"] == ["authenticated"]
     assert "signature" in params and "api_secret" not in params
+
+
+def test_story_approval_sets_expiry_from_server_owned_story_policy(monkeypatch):
+    from datetime import datetime, timezone
+    import asyncio
+    from starlette.requests import Request
+
+    calls = []
+    story = {
+        "id": CONTENT_ID, "owner_id": "owner-a", "content_type": "story",
+        "body": "Momen", "status": "review", "moderation_status": "pending",
+        "version": 3, "provenance": {"stories": {"expires_after_hours": 24}},
+    }
+
+    async def fake_db(method, table, **kwargs):
+        calls.append((method, table, kwargs))
+        if method == "GET" and table == "content_items":
+            return [story]
+        if method == "GET" and table in {"content_media", "content_schedules"}:
+            return []
+        if method == "PATCH" and table == "content_items":
+            return [{"id": CONTENT_ID, **kwargs["body"]}]
+        raise AssertionError((method, table, kwargs))
+
+    async def fake_audit(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(content_api, "_server_db", fake_db)
+    monkeypatch.setattr(content_api, "write_operator_audit", fake_audit)
+    request = Request({"type": "http", "method": "POST", "path": "/v1/content/admin/review", "headers": [], "query_string": b""})
+    result = asyncio.run(content_api.review_content(
+        uuid.UUID(CONTENT_ID),
+        content_api.ContentReview(decision="approve", expected_version=3, reason="Hak dan konten sudah diverifikasi"),
+        request,
+        {"id": "operator-1"},
+    ))
+    patch = next(kwargs["body"] for method, table, kwargs in calls if method == "PATCH" and table == "content_items")
+    expiry = datetime.fromisoformat(patch["expires_at"])
+    assert patch["status"] == "published"
+    assert expiry > datetime.now(timezone.utc)
+    assert 23.9 <= (expiry - datetime.now(timezone.utc)).total_seconds() / 3600 <= 24.1
+    assert result["item"]["status"] == "published"
+
+
+def test_story_approval_rejects_invalid_server_expiry_policy(monkeypatch):
+    import asyncio
+    from starlette.requests import Request
+
+    story = {
+        "id": CONTENT_ID, "owner_id": "owner-a", "content_type": "story",
+        "body": "Momen", "status": "review", "moderation_status": "pending",
+        "version": 1, "provenance": {"stories": {"expires_after_hours": 999}},
+    }
+
+    async def fake_db(method, table, **kwargs):
+        if method == "GET" and table == "content_items":
+            return [story]
+        if method == "GET" and table in {"content_media", "content_schedules"}:
+            return []
+        raise AssertionError((method, table, kwargs))
+
+    async def fake_audit(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(content_api, "_server_db", fake_db)
+    monkeypatch.setattr(content_api, "write_operator_audit", fake_audit)
+    request = Request({"type": "http", "method": "POST", "path": "/v1/content/admin/review", "headers": [], "query_string": b""})
+    with pytest.raises(content_api.HTTPException) as error:
+        asyncio.run(content_api.review_content(
+            uuid.UUID(CONTENT_ID),
+            content_api.ContentReview(decision="approve", expected_version=1, reason="Hak dan konten sudah diverifikasi"),
+            request,
+            {"id": "operator-1"},
+        ))
+    assert error.value.status_code == 422
+    assert error.value.detail["code"] == "STORY_EXPIRY_POLICY_INVALID"
