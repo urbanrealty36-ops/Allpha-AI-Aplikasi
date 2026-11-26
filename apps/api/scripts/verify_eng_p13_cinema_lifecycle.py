@@ -119,6 +119,8 @@ create table public.cinema_titles(
 create table public.cinema_episodes(
  id uuid primary key, title_id uuid not null references public.cinema_titles(id) on delete cascade,
  owner_id uuid not null references auth.users(id), episode_number integer not null, title text not null,
+ status text not null default 'draft'
+  check (status in ('draft','processing','pending_review','ready','rejected','blocked')),
  unique(title_id,episode_number)
 );
 create table public.playback_entitlements(
