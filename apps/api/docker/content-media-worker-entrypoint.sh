@@ -99,7 +99,7 @@ import socket
 from allpha_api.media_scanner import _parse_version
 
 with socket.create_connection(("127.0.0.1", 3310), timeout=10) as connection:
-    connection.sendall(b"zVERSION\\0")
+    connection.sendall(b"zVERSION\0")
     payload = connection.recv(4096)
 engine, signature = _parse_version(payload)
 print(f"{engine}|{signature}")
