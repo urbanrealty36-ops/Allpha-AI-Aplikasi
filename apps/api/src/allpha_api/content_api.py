@@ -751,11 +751,12 @@ async def _media_preview_projection(item: dict[str, Any]) -> dict[str, Any]:
             allowed_transformations = set((eager_transformations(str(cloud_item["media_type"])) or "").split("|")) - {""}
             derivative_previews = []
             for derivative in cloud_item.get("derivatives") or []:
-                if derivative.get("provider") != "cloudinary":
-                    path = derivative.get("storage_path")
-                    if isinstance(path, str) and path:
-                        derivative_previews.append({**derivative, "preview_url": await _signed_media_preview_url(path)})
-                    continue
+                # Cloudinary-owned originals and derivatives must share one provider
+                # delivery contract. Never fall back to a Supabase Storage path for
+                # a Cloudinary asset; legacy mixed-provider rows remain unavailable
+                # until their derivative set is rebuilt and verified by Cloudinary.
+                if not isinstance(derivative, dict) or derivative.get("provider") != "cloudinary":
+                    raise ValueError("CLOUDINARY_DERIVATIVE_PROVIDER_MISMATCH")
                 transformation = derivative.get("transformation")
                 derivative_resource = derivative.get("resource_type")
                 delivery_type = derivative.get("delivery_type")
