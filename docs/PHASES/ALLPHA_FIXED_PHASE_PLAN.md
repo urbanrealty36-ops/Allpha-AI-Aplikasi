@@ -1899,3 +1899,11 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 - **Correction:** only the fully authorized `content` resource adapter is currently accepted. Every other listed domain returns `409 MEDIA_DOMAIN_AUTHORIZATION_UNAVAILABLE` before provider signature creation or database reservation. Unknown domain/purpose remains `422`; content owner and draft/failed status checks remain unchanged. Added regression coverage for every unsupported domain and the supported content shape.
 - **Coverage:** Web and Native existing Cloudinary upload callsites use the content resource contract; Super Admin remains read-only for media. Other domain integrations remain deferred until their canonical resource authorization adapters are implemented, not silently accepted through arbitrary `resource_id` values.
 - **Verification:** source change committed; focused API regression and Allpha Smoke run pending. No production schema, media row, Cloudinary upload or worker state was changed.
+
+
+## 40.103 — Recovery restore retention-class ordering corrected (2026-11-26)
+
+- **Second restore result:** run `45739048809` passed backup identity/checksum, disposable PostgreSQL restore, migration application, all schema/RLS/grant checks and all other P03 assertions. It failed only because the expected `data_class` array in `retention_policy_baseline` was not in PostgreSQL's lexical `ORDER BY data_class` order.
+- **Production read-only verification:** queried the six active rows in `public.account_data_retention_policies`; each is active, uses `owner-directive-2026-11-23-v1`, has `decision_source=product_owner_directive`, a non-null decision reference and `retention_days=0`. The corrected exact predicate returned `retention_policy_baseline=PASS` against production without changing any row.
+- **Correction:** expected lexical order is now `agent_operational, owner_private, public_catalog, published_knowledge, session_scoped, tenant_shared`. This is a workflow assertion-only change; no production DDL or DML was executed.
+- **Next action:** this push triggers a fresh backup and disposable restore chain. Recovery gate remains closed until that run succeeds and the outstanding PITR/managed-backup/Storage-object coverage/RPO/RTO evidence is resolved.

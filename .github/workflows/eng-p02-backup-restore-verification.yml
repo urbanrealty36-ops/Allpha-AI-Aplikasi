@@ -195,7 +195,7 @@ jobs:
                 (select count(*) from public.account_data_retention_policies where active) = 6
                 and (select array_agg(data_class order by data_class)
                        from public.account_data_retention_policies where active)
-                    = ARRAY['agent_operational','owner_private','published_knowledge','public_catalog','session_scoped','tenant_shared']::text[]
+                    = ARRAY['agent_operational','owner_private','public_catalog','published_knowledge','session_scoped','tenant_shared']::text[]
                 and not exists (
                   select 1 from public.account_data_retention_policies
                    where active and (
