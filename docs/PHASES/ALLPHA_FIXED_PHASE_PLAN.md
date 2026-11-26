@@ -2095,3 +2095,10 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 - Cinema poster/episode upload intents are limited to editable draft/rejected titles and draft/failed episodes.
 - Agent media authorization now uses the canonical active owner grant in `agent_ownerships` (or an owner-bound Agent Runtime task) rather than relying on `ai_agents.created_by` alone.
 - Regression tests cover API and SQL enforcement. Production DDL remains gated by ADR-0024.
+
+
+## 40.130 — AI Cinema catalogue and asset browser use Cloudinary delivery
+
+- AI Cinema title cover/trailer projections and creator asset listings now use the canonical `content_api._media_preview_projection` instead of signing `storage_path` directly through Supabase Storage.
+- Cloudinary trailer cards use the verified poster/thumbnail derivative (not the video rendition); cover cards use the image display derivative. Creator asset responses redact provider IDs, Storage paths, provider metadata and derivative manifests while returning short-lived preview URLs.
+- The shared projection recognizes legacy `poster` derivatives for Supabase media while maintaining strict Cloudinary derivative identity checks.

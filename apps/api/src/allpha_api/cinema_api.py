@@ -21,7 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field
 import allpha_api.generation_jobs_api as generation_jobs_api
 
 from allpha_api.auth import current_user, optional_current_user
-from allpha_api.content_api import _signed_media_preview_url
+from allpha_api.content_api import _media_preview_projection
 from allpha_api.operator_security import require_operator_scope, write_operator_audit
 
 router = APIRouter(prefix="/v1/cinema", tags=["cinema"])
@@ -241,14 +241,14 @@ async def public_catalog(limit: int = Query(default=24,ge=1,le=50), genre: str |
     media_by_id: dict[str,dict[str,Any]] = {}
     if media_ids:
         media_rows = await _db("GET","content_media",params={
-            "select":"id,owner_id,storage_path,media_type,status,scan_status,processed_at,derivatives",
+            "select":"id,owner_id,storage_path,media_type,status,scan_status,processed_at,derivatives,provider_public_id,provider_asset_id",
             "id":"in.("+",".join(media_ids)+")", "status":"eq.ready", "scan_status":"eq.clean",
             "limit":str(min(100,len(media_ids))),
         })
         media_by_id = {
             str(media["id"]):media for media in (media_rows or [])
             if media.get("processed_at") and isinstance(media.get("derivatives"),list)
-            and media.get("storage_path")
+            and (media.get("provider_public_id") or media.get("storage_path"))
         }
 
     for item in titles:
@@ -260,31 +260,21 @@ async def public_catalog(limit: int = Query(default=24,ge=1,le=50), genre: str |
                 item[output_key] = None
                 continue
             media_type = str(media.get("media_type") or "").lower()
-            derivatives = media.get("derivatives") or []
-            if output_key == "cover_preview_url":
-                if not media_type.startswith("image/"):
-                    item[output_key] = None
-                    continue
-                preferred = next((d.get("storage_path") for d in derivatives
-                    if isinstance(d,dict) and d.get("kind") in ("display","rendition_1","thumbnail")
-                    and isinstance(d.get("storage_path"),str) and d.get("storage_path")),None)
-            elif media_type.startswith("video/"):
-                # The catalogue renders this field as a poster image, never as a video URL.
-                preferred = next((d.get("storage_path") for d in derivatives
-                    if isinstance(d,dict) and d.get("kind") in ("moderation_poster","thumbnail","poster")
-                    and isinstance(d.get("storage_path"),str) and d.get("storage_path")),None)
-                if not preferred:
-                    item[output_key] = None
-                    continue
-            elif media_type.startswith("image/"):
-                preferred = next((d.get("storage_path") for d in derivatives
-                    if isinstance(d,dict) and d.get("kind") in ("display","rendition_1","thumbnail")
-                    and isinstance(d.get("storage_path"),str) and d.get("storage_path")),None)
-            else:
+            if output_key == "cover_preview_url" and not media_type.startswith("image/"):
+                item[output_key] = None
+                continue
+            if output_key == "trailer_preview_url" and not (media_type.startswith("video/") or media_type.startswith("image/")):
                 item[output_key] = None
                 continue
             try:
-                item[output_key] = await _signed_media_preview_url(preferred or str(media["storage_path"]),expires_in=300)
+                delivery = await _media_preview_projection(media)
+                # Trailer cards display the verified poster derivative, never the video rendition.
+                preview = (
+                    delivery.get("moderation_preview_url")
+                    if output_key == "trailer_preview_url" and media_type.startswith("video/")
+                    else delivery.get("preview_url")
+                )
+                item[output_key] = preview if isinstance(preview, str) and preview else None
             except HTTPException:
                 item[output_key] = None
     return {"items":titles,"next_cursor":None}
@@ -814,7 +804,7 @@ async def list_cinema_assets(title_id: uuid.UUID, user: dict[str, Any] = Depends
         return {"items": []}
     owners = await _title_media_owner_ids(title)
     media_rows = await _db("GET", "content_media", params={
-        "select": "id,owner_id,filename,media_type,size_bytes,status,scan_status,processed_at,derivatives,storage_path",
+        "select": "id,owner_id,filename,media_type,size_bytes,status,scan_status,processed_at,derivatives,storage_path,provider_public_id,provider_asset_id",
         "id": "in.(" + ",".join(media_ids) + ")",
         "owner_id": "in.(" + ",".join(sorted(owners)) + ")", "limit": "1000",
     })
@@ -824,9 +814,21 @@ async def list_cinema_assets(title_id: uuid.UUID, user: dict[str, Any] = Depends
         media = media_by_id.get(str(item.get("media_id")))
         if not media:
             continue
-        projected = {key: value for key, value in media.items() if key not in {"storage_path", "derivatives"}}
+        projected = {
+            key: value for key, value in media.items()
+            if key not in {
+                "storage_path", "derivatives", "provider_public_id", "provider_asset_id",
+                "provider_batch_id", "provider_metadata", "provider_tags", "bucket_id",
+            }
+        }
         if media.get("status") == "ready" and media.get("scan_status") == "clean" and media.get("processed_at"):
-            projected["preview_url"] = await _signed_media_preview_url(str(media["storage_path"]), expires_in=300)
+            try:
+                delivery = await _media_preview_projection(media)
+                projected["preview_url"] = delivery.get("preview_url")
+                projected["moderation_preview_url"] = delivery.get("moderation_preview_url")
+            except HTTPException:
+                projected["preview_url"] = None
+                projected["moderation_preview_url"] = None
         result.append({**item, "media": projected})
     return {"items": result}
 

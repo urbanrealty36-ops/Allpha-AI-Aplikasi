@@ -795,7 +795,7 @@ async def _media_preview_projection(item: dict[str, Any]) -> dict[str, Any]:
     preferred = next((entry["preview_url"] for entry in preview_source
         if entry.get("kind") in ("display", "rendition_1")), preview_fallback)
     moderation_preview = next((entry["preview_url"] for entry in preview_source
-        if entry.get("kind") in ("moderation_poster", "thumbnail")), None)
+        if entry.get("kind") in ("moderation_poster", "thumbnail", "poster")), None)
     return {**(cloud_item if provider_public_id else item), "preview_url": preferred,
         "original_preview_url": original_url, "moderation_preview_url": moderation_preview,
         "derivative_previews": derivative_previews}
