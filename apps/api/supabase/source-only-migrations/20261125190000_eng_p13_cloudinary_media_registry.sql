@@ -609,7 +609,8 @@ begin
   if v_media.provider_delete_state in ('queued','deleting') then
     return jsonb_build_object('outcome','already_queued','media',to_jsonb(v_media));
   end if;
-  if v_media.status not in ('uploaded','processing','ready','failed') then
+  if v_media.status not in ('uploaded','processing','ready','failed')
+     and not (v_media.status='uploading' and v_media.upload_expires_at is not null and v_media.upload_expires_at<=now()) then
     return jsonb_build_object('outcome','media_state_invalid');
   end if;
   if exists(
@@ -620,12 +621,12 @@ begin
   end if;
   if exists(
     select 1 from public.content_items c
-    where c.id=v_media.content_id and c.status not in ('draft','failed','deleted')
+    where c.id=v_media.content_id and c.status not in ('draft','failed','deleted','archived')
   ) then
     return jsonb_build_object('outcome','media_in_use');
   end if;
   if v_media.storage_provider='cloudinary' and (
-    v_media.provider_public_id is null or v_media.provider_asset_id is null
+    v_media.provider_public_id is null
     or v_media.provider_resource_type is null or v_media.provider_resource_type not in ('image','video','raw')
   ) then
     return jsonb_build_object('outcome','provider_identity_missing');
@@ -655,7 +656,8 @@ begin
       'resource_type',v_media.provider_resource_type,
       'bucket_id',case when v_media.storage_provider='supabase' then v_media.bucket_id else null end,
       'storage_path',case when v_media.storage_provider='supabase' then v_media.storage_path else null end,
-      'legacy_storage',v_media.provider_metadata->'legacy_storage'
+      'legacy_storage',v_media.provider_metadata->'legacy_storage',
+      'derivatives',coalesce(v_media.derivatives,'[]'::jsonb)
     ),
     v_media.domain,v_media.resource_id,v_media.purpose,v_media.tenant_id,v_media.session_id
   )

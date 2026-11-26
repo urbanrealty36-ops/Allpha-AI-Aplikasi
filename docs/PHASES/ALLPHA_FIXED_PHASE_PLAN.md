@@ -2024,3 +2024,11 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 - **Stories:** Story media attachment now uses the same projection, so Cloudinary authenticated derivatives are signed by provider identity while legacy Supabase assets retain private signed URLs.
 - **AI Cinema:** playback-session creation now uses the shared provider-aware projection and fails closed when no playable URL is available; it no longer signs a Cloudinary public ID as a Supabase Storage path.
 - **Boundary:** Web/Native feed and Story consumers receive short-lived signed URLs through FastAPI; this does not activate Cloudinary until the schema/scanner/worker gates are satisfied.
+
+
+## 40.119 — Provider cleanup owns legacy derivative deletion and expired upload cleanup (2026-11-26)
+
+- **Migration contract:** Cloudinary media deletion now allows archived Story content, permits deletion of an `uploading` intent only after its upload expiry, and can delete by canonical Cloudinary `public_id` + resource type even when the upload callback never supplied an asset ID. This covers abandoned direct-upload assets safely.
+- **Cleanup payload:** provider cleanup jobs carry the persisted derivative manifest. The single provider cleanup worker deletes legacy Supabase originals and derivative objects after provider deletion, then marks media metadata deleted. Cloudinary derivative transformations remain provider-managed and are not misrouted to Supabase Storage.
+- **Path security:** every legacy object/derivative delete requires the private `content-media` bucket, rejects traversal/absolute paths, and enforces the owning user's storage-path prefix.
+- **Safety:** no direct metadata deletion before provider confirmation. Production migration remains gated by ADR-0024; source and worker changes only.

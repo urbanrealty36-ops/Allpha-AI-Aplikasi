@@ -37,17 +37,29 @@ class CleanupWorker:
    response=await provider.post(endpoint,data=form)
   response.raise_for_status();result=response.json().get("result")
   if result not in ("ok","not found"):raise ValueError("CLOUDINARY_DESTROY_UNCONFIRMED")
- async def delete_legacy_storage_object(self,legacy_storage):
+ async def delete_legacy_storage_object(self,legacy_storage,owner_id=None):
   if not isinstance(legacy_storage,dict):raise ValueError("LEGACY_STORAGE_IDENTITY_INVALID")
   bucket=str(legacy_storage.get("bucket_id") or "")
   path=str(legacy_storage.get("storage_path") or "")
-  if bucket!="content-media" or not path or path.startswith("/") or ".." in path.split("/"):
+  parts=path.split("/") if path else []
+  if bucket!="content-media" or not path or path.startswith("/") or ".." in parts or (owner_id and (not parts or parts[0]!=owner_id)):
    raise ValueError("LEGACY_STORAGE_IDENTITY_INVALID")
   url=f"{self.base}/storage/v1/object/{quote(bucket,safe='')}/{quote(path,safe='/')}"
   response=await self.client.delete(url)
   if response.status_code not in (200,204,404):
    response.raise_for_status()
    raise ValueError("LEGACY_STORAGE_DELETE_UNCONFIRMED")
+
+ async def delete_legacy_derivative_objects(self,derivatives,owner_id):
+  seen=set()
+  for derivative in derivatives or []:
+   if not isinstance(derivative,dict):continue
+   path=derivative.get("storage_path")
+   if not isinstance(path,str) or not path or path in seen:continue
+   seen.add(path)
+   await self.delete_legacy_storage_object({
+    "bucket_id":derivative.get("bucket_id") or "content-media","storage_path":path,
+   },owner_id=owner_id)
 
  async def batch(self):
   jobs=await self.rpc("claim_content_lifecycle_jobs",{"p_worker_id":self.worker_id,"p_limit":1,"p_lease_seconds":300,"p_job_type":"provider_cleanup"}) or []
@@ -61,7 +73,9 @@ class CleanupWorker:
      if resource_type not in {"image","video","raw"}:raise ValueError("PROVIDER_CLEANUP_PAYLOAD_INVALID")
      await self.delete_asset(str(payload["provider_public_id"]),resource_type)
      if action=="delete_media" and payload.get("legacy_storage") is not None:
-      await self.delete_legacy_storage_object(payload["legacy_storage"])
+      await self.delete_legacy_storage_object(payload["legacy_storage"],owner_id=str(job.get("owner_id") or ""))
+     if action=="delete_media":
+      await self.delete_legacy_derivative_objects(payload.get("derivatives"),str(job.get("owner_id") or ""))
      if action=="delete_media":
       completion=await self.rpc("complete_cloudinary_media_delete_job",{
        "p_job_id":job["id"],"p_lease_token":job["lease_token"],"p_media_id":job["media_id"],
@@ -73,7 +87,8 @@ class CleanupWorker:
     elif provider=="supabase_storage" and action=="delete_media":
      await self.delete_legacy_storage_object({
       "bucket_id":payload.get("bucket_id"),"storage_path":payload.get("storage_path"),
-     })
+     },owner_id=str(job.get("owner_id") or ""))
+     await self.delete_legacy_derivative_objects(payload.get("derivatives"),str(job.get("owner_id") or ""))
      completion=await self.rpc("complete_legacy_content_media_delete_job",{
       "p_job_id":job["id"],"p_lease_token":job["lease_token"],"p_media_id":job["media_id"],
      })
