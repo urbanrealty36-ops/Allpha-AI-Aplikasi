@@ -345,21 +345,34 @@ begin
       select 1 from public.content_items c
       where c.id=p_content_id and c.owner_id=p_owner_id and c.status in ('draft','failed')
     )
-    when p_domain in ('feed','reels','stories') then exists(
+    when p_domain='feed' then exists(
       select 1 from public.content_items c
-      where c.id=p_resource_id and c.owner_id=p_owner_id and c.status in ('draft','failed')
+      where c.id=p_resource_id and c.owner_id=p_owner_id
+        and c.status in ('draft','failed') and c.content_type in ('text','image','video','audio')
+    )
+    when p_domain='reels' then exists(
+      select 1 from public.content_items c
+      where c.id=p_resource_id and c.owner_id=p_owner_id
+        and c.status in ('draft','failed') and c.content_type='video'
+    )
+    when p_domain='stories' then exists(
+      select 1 from public.content_items c
+      where c.id=p_resource_id and c.owner_id=p_owner_id
+        and c.status in ('draft','failed') and c.content_type='story'
     )
     when p_domain='profile' then p_resource_id=p_owner_id and exists(
       select 1 from public.profiles p where p.id=p_owner_id
     )
     when p_domain='cinema' and p_purpose='cinema_poster' then exists(
-      select 1 from public.cinema_titles t where t.id=p_resource_id and t.owner_id=p_owner_id
+      select 1 from public.cinema_titles t where t.id=p_resource_id and t.owner_id=p_owner_id and t.status in ('draft','rejected')
     )
     when p_domain='cinema' and p_purpose='cinema_asset' then exists(
-      select 1 from public.cinema_episodes e where e.id=p_resource_id and e.owner_id=p_owner_id
+      select 1 from public.cinema_episodes e where e.id=p_resource_id and e.owner_id=p_owner_id and e.status in ('draft','failed')
     )
     when p_domain='agent' then (
-      exists(select 1 from public.ai_agents a where a.id=p_resource_id and a.created_by=p_owner_id)
+      exists(select 1 from public.agent_ownerships o
+        where o.agent_id=p_resource_id and o.owner_user_id=p_owner_id
+          and o.ownership_role='owner' and o.status='active')
       or exists(select 1 from public.agent_runtime_tasks t where t.id=p_resource_id and t.owner_user_id=p_owner_id)
     )
     when p_domain='messaging' then exists(

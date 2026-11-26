@@ -64,9 +64,15 @@ async def _authorize_upload_resource(payload: UploadIntent, owner_id: str, acces
             "owner_id": f"eq.{owner}", "status": "in.(draft,failed)",
         })
     elif payload.domain in {"feed", "reels", "stories"}:
+        content_type_filter = {
+            "feed": "in.(text,image,video,audio)",
+            "reels": "eq.video",
+            "stories": "eq.story",
+        }[payload.domain]
         allowed = await owned("content_items", {
-            "select": "id,status", "id": f"eq.{resource_id}",
+            "select": "id,status,content_type", "id": f"eq.{resource_id}",
             "owner_id": f"eq.{owner}", "status": "in.(draft,failed)",
+            "content_type": content_type_filter,
         })
     elif payload.domain == "profile":
         allowed = resource_id == owner and await owned("profiles", {
@@ -74,15 +80,18 @@ async def _authorize_upload_resource(payload: UploadIntent, owner_id: str, acces
         })
     elif payload.domain == "cinema" and payload.purpose == "cinema_poster":
         allowed = await owned("cinema_titles", {
-            "select": "id", "id": f"eq.{resource_id}", "owner_id": f"eq.{owner}",
+            "select": "id,status", "id": f"eq.{resource_id}", "owner_id": f"eq.{owner}",
+            "status": "in.(draft,rejected)",
         })
     elif payload.domain == "cinema" and payload.purpose == "cinema_asset":
         allowed = await owned("cinema_episodes", {
-            "select": "id", "id": f"eq.{resource_id}", "owner_id": f"eq.{owner}",
+            "select": "id,status", "id": f"eq.{resource_id}", "owner_id": f"eq.{owner}",
+            "status": "in.(draft,failed)",
         })
     elif payload.domain == "agent":
-        allowed = await owned("ai_agents", {
-            "select": "id", "id": f"eq.{resource_id}", "created_by": f"eq.{owner}",
+        allowed = await owned("agent_ownerships", {
+            "select": "agent_id", "agent_id": f"eq.{resource_id}",
+            "owner_user_id": f"eq.{owner}", "ownership_role": "eq.owner", "status": "eq.active",
         })
         if not allowed:
             allowed = await owned("agent_runtime_tasks", {

@@ -2087,3 +2087,11 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 ## 40.128 — Supabase legacy provider cleanup discriminator corrected
 
 - The registry migration stores legacy objects as `storage_provider='supabase'`; the cleanup worker branch now matches that canonical value (rather than the non-existent `supabase_storage` enum). Added regression coverage for the legacy original + derivative deletion and `complete_legacy_content_media_delete_job` receipt.
+
+
+## 40.129 — Media resource authorization now binds domain to canonical resource type
+
+- FastAPI and the service-only reservation RPC now require Feed resources to be draft/failed text, image, video or audio posts; Reels must be video; Stories must be story content. This prevents cross-domain resource binding even for an otherwise owned row.
+- Cinema poster/episode upload intents are limited to editable draft/rejected titles and draft/failed episodes.
+- Agent media authorization now uses the canonical active owner grant in `agent_ownerships` (or an owner-bound Agent Runtime task) rather than relying on `ai_agents.created_by` alone.
+- Regression tests cover API and SQL enforcement. Production DDL remains gated by ADR-0024.

@@ -26,3 +26,20 @@ def test_cloudinary_media_registry_allows_terminal_deleted_state():
         flags=re.IGNORECASE,
     )
     assert readiness is not None
+
+
+
+def test_cloudinary_upload_reservation_rechecks_domain_resource_types_and_ownership():
+    migration = (
+        Path(__file__).parents[1]
+        / "supabase"
+        / "source-only-migrations"
+        / "20261125190000_eng_p13_cloudinary_media_registry.sql"
+    ).read_text(encoding="utf-8")
+    reserve = migration.split("create or replace function public.reserve_cloudinary_media_upload", 1)[1]
+    assert "c.content_type in ('text','image','video','audio')" in reserve
+    assert "c.content_type='video'" in reserve
+    assert "c.content_type='story'" in reserve
+    assert "o.ownership_role='owner' and o.status='active'" in reserve
+    assert "t.status in ('draft','rejected')" in reserve
+    assert "e.status in ('draft','failed')" in reserve

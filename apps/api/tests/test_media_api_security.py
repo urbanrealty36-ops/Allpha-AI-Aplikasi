@@ -1,3 +1,4 @@
+import pytest
 import uuid
 
 from fastapi import HTTPException
@@ -57,6 +58,13 @@ def test_media_domain_resource_authorization_matches_canonical_owner_adapters(mo
         calls.append((method, path, access_token, params))
         if path == "community_posts":
             return [{"id": resource, "community_id": "community-1"}]
+        if path == "content_items":
+            assert params.get("content_type") in {
+                "in.(text,image,video,audio)", "eq.video", "eq.story",
+            }
+        if path == "agent_ownerships":
+            assert params.get("ownership_role") == "eq.owner"
+            assert params.get("status") == "eq.active"
         return [{"id": resource}]
 
     monkeypatch.setattr("allpha_api.media_api.user_db_request", fake_user_db_request)
@@ -163,3 +171,23 @@ def test_super_admin_media_projection_redacts_content_hash_and_provider_storage_
     assert projected["status"] == "ready"
     for field in ("sha256", "provider_public_id", "provider_asset_id", "provider_metadata", "storage_path", "bucket_id"):
         assert field not in projected
+
+
+
+def test_media_domain_authorization_rejects_content_type_mismatch(monkeypatch):
+    import asyncio
+    from allpha_api.media_api import _authorize_upload_resource
+
+    async def fake_user_db_request(method, path, access_token, *, params=None, body=None, prefer=None):
+        if path == "content_items" and params and params.get("content_type") == "in.(text,image,video,audio)":
+            return []  # a Story cannot be uploaded as a Feed post attachment
+        return [{"id": "owned"}]
+
+    monkeypatch.setattr("allpha_api.media_api.user_db_request", fake_user_db_request)
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(_authorize_upload_resource(
+            _upload_intent("feed", "post_attachment", resource_id=uuid.uuid4()),
+            str(uuid.uuid4()), "verified-user-jwt",
+        ))
+    assert error.value.status_code == 404
+    assert error.value.detail["code"] == "MEDIA_RESOURCE_NOT_FOUND"
