@@ -73,3 +73,11 @@ grant execute on function private.requeue_account_deletion_after_hold_release() 
 
 comment on function private.requeue_account_deletion_after_hold_release() is
   'Requeues blocked deletion requests only after the final active legal hold is removed; clears active-hold metadata and records an auditable release event.';
+
+-- The applied historical migration ledger may predate its current source grant
+-- contract. Reassert the service-only execution boundary in this forward repair.
+revoke all on function public.evaluate_account_deletion_governance(integer) from public,anon,authenticated;
+grant execute on function public.evaluate_account_deletion_governance(integer) to service_role;
+
+comment on function public.evaluate_account_deletion_governance(integer) is
+  'Service-role-only governance reconciliation; blocks deletion on active legal holds and advances released requests only to the independent policy/dependency gate.';
