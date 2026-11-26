@@ -188,12 +188,22 @@ jobs:
           source /tmp/allpha-local-supabase.env
           set +a
           test -n "${API_URL:-}"
-          test -n "${SERVICE_ROLE_KEY:-}"
-          echo "::add-mask::$SERVICE_ROLE_KEY"
+          if [ -n "${SECRET_KEY:-}" ]; then
+            STORAGE_API_KEY="$SECRET_KEY"
+            STORAGE_API_KEY_TYPE=secret
+          elif [ -n "${SERVICE_ROLE_KEY:-}" ]; then
+            STORAGE_API_KEY="$SERVICE_ROLE_KEY"
+            STORAGE_API_KEY_TYPE=legacy
+          else
+            echo "Local Supabase did not expose a Storage secret/service-role key." >&2
+            exit 1
+          fi
+          echo "::add-mask::$STORAGE_API_KEY"
           python tools/recovery/restore_supabase_storage.py \
             --project-ref dvdziauyvuhcnqhrrrww \
             --api-url "$API_URL" \
-            --service-role-key "$SERVICE_ROLE_KEY" \
+            --storage-api-key "$STORAGE_API_KEY" \
+            --api-key-type "$STORAGE_API_KEY_TYPE" \
             --archive recovery-evidence/allpha-supabase-storage-pre-migration.tar \
             --manifest recovery-evidence/storage-backup-manifest.json \
             --backup-evidence recovery-evidence/storage-backup-evidence.json \
