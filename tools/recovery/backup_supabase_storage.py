@@ -107,7 +107,7 @@ def parse_timestamp(value: str | None) -> int:
 
 def verify_archive(archive_path: Path, expected_manifest: dict) -> None:
     expected = {
-        f"objects/{item['bucket_id']}/{item['name']}": item
+        safe_object_path(str(item["bucket_id"]), str(item["name"])): item
         for item in expected_manifest["objects"]
     }
     with tarfile.open(archive_path, mode="r:") as archive:
