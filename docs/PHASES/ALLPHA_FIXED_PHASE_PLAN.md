@@ -2069,3 +2069,9 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 
 - Rebuilt the Story cleanup worker as one bounded module after the prior incremental refactor left a duplicate partial function block. The worker now imports only the canonical Story cleanup helper, reports queued provider work separately from confirmed deletions, and remains fail-closed on configuration/runtime faults.
 - Updated the Web source smoke assertion to require the shared provider-aware media projection and Cloudinary provider identity rather than the superseded direct Supabase signed-preview helper. This is a stronger assertion of the new canonical delivery contract.
+
+
+## 40.126 — Recovery workflow YAML concurrency and P13 evidence contract corrected
+
+- Removed a duplicate top-level `concurrency` key that made GitHub Actions parse the workflow without creating a job. The existing serialized restore concurrency group remains in place.
+- Added the P13 Cloudinary registry dry-run result and exact migration blob SHA to the sanitized recovery evidence JSON and uploaded artifact. The restore gate will now prove both P03 recovery contracts and P13 schema/catalog readiness from the same disposable backup snapshot.

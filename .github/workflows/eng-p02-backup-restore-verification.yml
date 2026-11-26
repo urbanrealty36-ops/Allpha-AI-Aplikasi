@@ -1,8 +1,4 @@
 name: ENG-P02 Verify Pre-Migration Backup Restore
-concurrency:
-  group: eng-p02-backup-restore-${{ github.ref }}
-  cancel-in-progress: false
-
 on:
   workflow_run:
     workflows: ["ENG-P02 Create Pre-Migration Database Backup"]
@@ -596,6 +592,7 @@ jobs:
           archive = Path("recovery-evidence/allpha-p02-pre-migration.dump")
           verification = Path("recovery-evidence/restore-verification.txt")
           p03_verification = Path("recovery-evidence/p03-disposable-migration-verification.txt")
+          p13_verification = Path("recovery-evidence/p13-cloudinary-media-registry-verification.txt")
           result = {
               "project_ref": "dvdziauyvuhcnqhrrvww",
               "source_backup_run_id": int(os.environ["BACKUP_RUN_ID"]),
@@ -615,6 +612,9 @@ jobs:
               "p03_export_expiry_migration_blob": os.environ["P03_EXPORT_EXPIRY_MIGRATION_BLOB"],
               "p03_deletion_governance_migration_applied": True,
               "p03_deletion_governance_migration_blob": os.environ["P03_DELETION_GOVERNANCE_MIGRATION_BLOB"],
+              "p13_cloudinary_media_migration_applied": True,
+              "p13_cloudinary_media_migration_blob": os.environ["P13_CLOUDINARY_MEDIA_MIGRATION_BLOB"],
+              "p13_cloudinary_media_verification": p13_verification.read_text().splitlines(),
               "storage_objects_included": False,
               "verified_at_utc": datetime.now(timezone.utc).isoformat(),
               "verification": verification.read_text().splitlines(),
@@ -639,5 +639,6 @@ jobs:
             recovery-evidence/p03-export-lease-verification.txt
             recovery-evidence/p03-export-expiry-verification.txt
             recovery-evidence/p03-deletion-governance-verification.txt
+            recovery-evidence/p13-cloudinary-media-registry-verification.txt
           if-no-files-found: error
           retention-days: 90
