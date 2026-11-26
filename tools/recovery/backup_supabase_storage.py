@@ -35,7 +35,7 @@ def load_json(path: Path):
 
 
 def safe_object_path(bucket_id: str, name: str) -> str:
-    if not bucket_id or not name or "\\" in bucket_id or "\\" in name:
+    if not bucket_id or not name or name in (".", "..") or "\\" in bucket_id or "\\" in name:
         fail("Storage inventory contains an empty or unsafe bucket/object path.")
     if any(ord(ch) < 32 for ch in bucket_id + name):
         fail("Storage inventory contains control characters in an object path.")
