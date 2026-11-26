@@ -1934,3 +1934,12 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 - **Correction:** disposable restore verifier now asserts the legal-hold block event, release event, `legal_hold_active=false`, transition out of `blocked_legal_hold`, and continued fail-closed blocking at `ACCOUNT_EXPORT_REQUIRED`; it also asserts no deletion-started/completed event. All fixture writes occur inside a transaction that is rolled back.
 - **Safety:** no production DDL/DML, historical migration, audit row or user data was changed. This updates only the disposable recovery verifier to match the actual current lifecycle and retain the independent export safety gate.
 - **Recovery:** backup/restore workflow must rerun and pass. Even after disposable restore succeeds, ADR-0024 remains blocked until managed PITR/backup scope, Storage-object recovery coverage and approved RPO/RTO evidence are independently verified. No production migration is authorized by this verifier correction.
+
+
+## 40.107 — Recovery legal-hold verifier corrected against export prerequisite (2026-11-26)
+
+- **Observed failure:** restore run `45740207689` restored PostgreSQL 17 and passed schema/RLS, P03 account/consent/export lease/expiry checks. The final legal-hold behavior step failed because it expected `unblocked_count=1` and immediate `awaiting_policy` after releasing a legal hold.
+- **Root cause:** the actual production `evaluate_account_deletion_governance(integer)` emits a `deletion_unblocked` audit event on release, then continues to `private.account_deletion_export_gate(uuid,uuid)`. A request without a linked, completed, download-confirmed export must transition to `blocked_dependency / ACCOUNT_EXPORT_REQUIRED`, not stop at `awaiting_policy`. The previous verifier encoded an obsolete pre-export-gate state machine.
+- **Correction:** the disposable restore verifier now asserts the legal-hold block and release audit events, `legal_hold_active=false`, transition out of `blocked_legal_hold`, and continued fail-closed block at `ACCOUNT_EXPORT_REQUIRED`; it asserts no deletion-started/completed events. All fixture writes are rolled back.
+- **Safety:** only the recovery workflow and phase evidence were changed. No production DDL/DML, historical migration, audit row or user data was changed.
+- **Gate:** a new backup/restore workflow is required. Even a successful disposable restore does not alone satisfy ADR-0024: PITR/managed-backup state, Storage-object coverage, documented restore access and approved RPO/RTO remain to be independently verified.
