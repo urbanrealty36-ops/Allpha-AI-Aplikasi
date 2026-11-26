@@ -15,9 +15,11 @@ from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
 
 from allpha_api.auth import current_user, user_db_request
+from allpha_api.media_api import _require_cloudinary_media_schema
 from allpha_api.operator_security import require_operator_scope, write_operator_audit
 from allpha_api.cloudinary_provider import (
     CloudinaryConfig, CloudinaryConfigurationError, build_signed_private_download_url,
+    build_signed_authenticated_delivery_url, eager_transformations,
     resource_type_for_media_type, verify_cloudinary_webhook,
 )
 
@@ -710,25 +712,92 @@ async def _signed_cloudinary_original_url(item: dict[str, Any], *, expires_in: i
         raise HTTPException(503, detail={"code": "CONTENT_PROVIDER_DELIVERY_UNAVAILABLE", "message": "Media privat belum dapat disajikan."}) from exc
 
 
+CLOUDINARY_MEDIA_FIELDS = MEDIA_FIELDS + ",provider_resource_type,provider_delivery_type,provider_format,provider_version"
+
+
 async def _media_preview_projection(item: dict[str, Any]) -> dict[str, Any]:
-    # Cloudinary is the canonical original binary provider after scan/transcode.
-    # Supabase Storage remains the private resumable-ingress/derivative store.
-    if item.get("provider_public_id") and item.get("status") == "ready":
-        original_url = await _signed_cloudinary_original_url(item)
+    """Return private Supabase or signed Cloudinary delivery URLs from verified provider metadata."""
+    provider_public_id = item.get("provider_public_id")
+    if provider_public_id:
+        # A Cloudinary public_id is never a Supabase Storage path. Pending assets
+        # have no deliverable URL until provider callback, scan and derivatives finish.
+        if item.get("status") != "ready":
+            return {
+                **item, "preview_url": None, "original_preview_url": None,
+                "moderation_preview_url": None, "derivative_previews": [],
+            }
+        await _require_cloudinary_media_schema()
+        cloud_item = item
+        required = ("provider_resource_type", "provider_delivery_type", "provider_format", "provider_version")
+        if any(key not in cloud_item for key in required):
+            rows = await _server_db("GET", "content_media", params={
+                "select": CLOUDINARY_MEDIA_FIELDS, "id": f"eq.{item['id']}",
+                "owner_id": f"eq.{item['owner_id']}", "limit": "1",
+            })
+            if not rows:
+                raise HTTPException(404, detail={"code": "CONTENT_MEDIA_NOT_FOUND", "message": "Media tidak ditemukan."})
+            cloud_item = {**item, **rows[0]}
+        resource_type = resource_type_for_media_type(str(cloud_item.get("media_type") or ""))
+        if (
+            cloud_item.get("provider_resource_type") != resource_type
+            or cloud_item.get("provider_delivery_type") != "authenticated"
+            or not isinstance(cloud_item.get("provider_version"), int)
+            or cloud_item.get("provider_version") <= 0
+        ):
+            raise HTTPException(503, detail={"code": "CONTENT_PROVIDER_IDENTITY_INVALID", "message": "Identitas delivery provider tidak valid."})
+        original_url = await _signed_cloudinary_original_url(cloud_item)
+        try:
+            config = CloudinaryConfig.from_environment()
+            allowed_transformations = set((eager_transformations(str(cloud_item["media_type"])) or "").split("|")) - {""}
+            derivative_previews = []
+            for derivative in cloud_item.get("derivatives") or []:
+                if derivative.get("provider") != "cloudinary":
+                    path = derivative.get("storage_path")
+                    if isinstance(path, str) and path:
+                        derivative_previews.append({**derivative, "preview_url": await _signed_media_preview_url(path)})
+                    continue
+                transformation = derivative.get("transformation")
+                derivative_resource = derivative.get("resource_type")
+                delivery_type = derivative.get("delivery_type")
+                output_format = derivative.get("format")
+                version = derivative.get("version")
+                if (
+                    transformation not in allowed_transformations
+                    or derivative_resource != resource_type
+                    or delivery_type != "authenticated"
+                    or delivery_type != cloud_item.get("provider_delivery_type")
+                    or output_format not in {"jpg", "png", "webp", "mp4", "webm", "mp3", "m4a", "aac"}
+                    or version != cloud_item.get("provider_version")
+                ):
+                    raise ValueError("CLOUDINARY_DERIVATIVE_IDENTITY_INVALID")
+                signed_url = build_signed_authenticated_delivery_url(
+                    config=config, public_id=str(provider_public_id),
+                    resource_type=resource_type, format=str(output_format),
+                    transformation=str(transformation), version=int(version),
+                )
+                derivative_previews.append({**derivative, "preview_url": signed_url})
+        except (CloudinaryConfigurationError, KeyError, TypeError, ValueError) as exc:
+            raise HTTPException(503, detail={"code": "CONTENT_PROVIDER_DERIVATIVE_UNAVAILABLE", "message": "Derivative media belum dapat disajikan secara aman."}) from exc
+        preview_source = derivative_previews
+        preview_fallback: str | None = original_url
     else:
         original_url = await _signed_media_preview_url(item["storage_path"])
-    derivative_previews = []
-    for derivative in item.get("derivatives") or []:
-        path = derivative.get("storage_path")
-        if not isinstance(path, str) or not path:
-            continue
-        derivative_previews.append({**derivative, "preview_url": await _signed_media_preview_url(path)})
-    preferred = next((entry["preview_url"] for entry in derivative_previews
-        if entry.get("kind") in ("display", "rendition_1")), original_url)
-    moderation_preview = next((entry["preview_url"] for entry in derivative_previews
+        derivative_previews = []
+        for derivative in item.get("derivatives") or []:
+            path = derivative.get("storage_path")
+            if not isinstance(path, str) or not path:
+                continue
+            derivative_previews.append({**derivative, "preview_url": await _signed_media_preview_url(path)})
+        preview_source = derivative_previews
+        preview_fallback = original_url
+
+    preferred = next((entry["preview_url"] for entry in preview_source
+        if entry.get("kind") in ("display", "rendition_1")), preview_fallback)
+    moderation_preview = next((entry["preview_url"] for entry in preview_source
         if entry.get("kind") in ("moderation_poster", "thumbnail")), None)
-    return {**item, "preview_url": preferred, "original_preview_url": original_url,
-        "moderation_preview_url": moderation_preview, "derivative_previews": derivative_previews}
+    return {**(cloud_item if provider_public_id else item), "preview_url": preferred,
+        "original_preview_url": original_url, "moderation_preview_url": moderation_preview,
+        "derivative_previews": derivative_previews}
 
 
 @router.get("/{content_id}/preview")

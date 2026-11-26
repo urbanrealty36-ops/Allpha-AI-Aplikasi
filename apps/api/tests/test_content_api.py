@@ -802,3 +802,79 @@ def test_story_approval_rejects_invalid_server_expiry_policy(monkeypatch):
         ))
     assert error.value.status_code == 422
     assert error.value.detail["code"] == "STORY_EXPIRY_POLICY_INVALID"
+
+
+
+def test_cloudinary_media_preview_uses_signed_allowlisted_derivative_urls(monkeypatch):
+    import asyncio
+    from allpha_api import content_api
+
+    calls = []
+    async def ready():
+        calls.append("schema-ready")
+    async def original(item, *, expires_in=300):
+        return "https://private.cloudinary.test/original"
+    def signed(**kwargs):
+        calls.append(kwargs)
+        return "https://res.cloudinary.test/" + kwargs["transformation"]
+
+    monkeypatch.setattr(content_api, "_require_cloudinary_media_schema", ready)
+    monkeypatch.setattr(content_api, "_signed_cloudinary_original_url", original)
+    monkeypatch.setattr(content_api, "build_signed_authenticated_delivery_url", signed)
+    monkeypatch.setattr(content_api.CloudinaryConfig, "from_environment", lambda: object())
+    transformations = content_api.eager_transformations("image/jpeg").split("|")
+    item = {
+        "id": "00000000-0000-0000-0000-000000000501", "owner_id": "00000000-0000-0000-0000-000000000502",
+        "provider_public_id": "allpha/00000000-0000-0000-0000-000000000501",
+        "provider_resource_type": "image", "provider_delivery_type": "authenticated",
+        "provider_format": "jpg", "provider_version": 12, "media_type": "image/jpeg",
+        "status": "ready", "scan_status": "clean",
+        "derivatives": [
+            {"kind": "display", "provider": "cloudinary", "resource_type": "image", "delivery_type": "authenticated", "format": "jpg", "transformation": transformations[0], "version": 12},
+            {"kind": "thumbnail", "provider": "cloudinary", "resource_type": "image", "delivery_type": "authenticated", "format": "jpg", "transformation": transformations[1], "version": 12},
+        ],
+    }
+    result = asyncio.run(content_api._media_preview_projection(item))
+    assert result["preview_url"].endswith(transformations[0])
+    assert result["moderation_preview_url"].endswith(transformations[1])
+    assert result["original_preview_url"] == "https://private.cloudinary.test/original"
+    assert calls[0] == "schema-ready" and len(calls) == 3
+
+
+def test_cloudinary_pending_media_never_signs_a_supabase_storage_path(monkeypatch):
+    import asyncio
+    from allpha_api import content_api
+
+    async def forbidden(*args, **kwargs):
+        raise AssertionError("pending Cloudinary media must not be signed from Supabase Storage")
+    monkeypatch.setattr(content_api, "_signed_media_preview_url", forbidden)
+    item = {
+        "id": "00000000-0000-0000-0000-000000000511", "owner_id": "00000000-0000-0000-0000-000000000512",
+        "provider_public_id": "allpha/00000000-0000-0000-0000-000000000511",
+        "storage_path": "allpha/00000000-0000-0000-0000-000000000511", "status": "processing",
+        "media_type": "image/jpeg", "derivatives": [],
+    }
+    result = asyncio.run(content_api._media_preview_projection(item))
+    assert result["preview_url"] is None
+    assert result["original_preview_url"] is None
+
+
+def test_cloudinary_media_preview_rejects_unapproved_transformations(monkeypatch):
+    import asyncio
+    from allpha_api import content_api
+    async def ready(): return None
+    async def original(item, *, expires_in=300): return "https://private.cloudinary.test/original"
+    monkeypatch.setattr(content_api, "_require_cloudinary_media_schema", ready)
+    monkeypatch.setattr(content_api, "_signed_cloudinary_original_url", original)
+    monkeypatch.setattr(content_api.CloudinaryConfig, "from_environment", lambda: object())
+    item = {
+        "id": "00000000-0000-0000-0000-000000000521", "owner_id": "00000000-0000-0000-0000-000000000522",
+        "provider_public_id": "allpha/00000000-0000-0000-0000-000000000521",
+        "provider_resource_type": "image", "provider_delivery_type": "authenticated",
+        "provider_format": "jpg", "provider_version": 12, "media_type": "image/jpeg", "status": "ready",
+        "derivatives": [{"kind": "display", "provider": "cloudinary", "resource_type": "image", "delivery_type": "authenticated", "format": "jpg", "transformation": "c_scale,w_99999", "version": 12}],
+    }
+    with pytest.raises(content_api.HTTPException) as error:
+        asyncio.run(content_api._media_preview_projection(item))
+    assert error.value.status_code == 503
+    assert error.value.detail["code"] == "CONTENT_PROVIDER_DERIVATIVE_UNAVAILABLE"

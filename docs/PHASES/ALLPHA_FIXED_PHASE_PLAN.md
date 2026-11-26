@@ -2008,3 +2008,11 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 - **Root cause:** the prior run-specific mapping used `54322 + BACKUP_RUN_ID % 1000`, overlapping common PostgreSQL/service ports. Concurrent recovery runs could also share the modulo-derived port.
 - **Correction:** the restore workflow is serialized per Git ref with non-cancelling concurrency, selects a run-specific port in `63000–63999`, and verifies the port is bindable before starting the disposable Supabase stack. This changes only CI infrastructure, not production configuration.
 - **Next:** rerun backup/restore, then apply and verify the Cloudinary registry migration on the disposable restored snapshot.
+
+
+## 40.117 — Cloudinary derivative delivery signed and provider-aware (2026-11-26)
+
+- **Blocker found:** canonical content preview projection signed only `derivative.storage_path` through Supabase Storage and treated a Cloudinary `public_id` as a Storage path while media was still processing. The provider callback already persisted authenticated Cloudinary transformation identities, but preview/feed consumers did not deliver those derivatives.
+- **Implementation:** preview projection now requires Cloudinary schema readiness for provider assets, loads provider identity fields, validates each transformation against the exact media-type eager allowlist and persisted resource/delivery/version identity, and creates a signed authenticated Cloudinary URL. Pending Cloudinary assets return no delivery URL; legacy Supabase originals/derivatives retain signed Storage delivery.
+- **Tests added:** signed display/thumbnail transformations, no Supabase signing for pending Cloudinary media, and rejection of unapproved transformation metadata.
+- **Boundary:** this fixes canonical delivery projection; feed, Story and Cinema callers are being switched to this shared projection next. No production schema changes.
