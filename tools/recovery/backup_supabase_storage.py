@@ -204,9 +204,11 @@ def main() -> None:
                     item = {
                         "bucket_id": bucket_id,
                         "name": name,
+                        "owner_id": row.get("owner_id"),
                         "size_bytes": size,
                         "sha256": sha256,
                         "content_type": content_type,
+                        "cache_control": metadata.get("cacheControl") or metadata.get("cache_control"),
                         "created_at": row.get("created_at"),
                         "updated_at": row.get("updated_at"),
                     }
