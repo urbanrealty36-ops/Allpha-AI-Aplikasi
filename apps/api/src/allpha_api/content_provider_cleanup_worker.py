@@ -84,7 +84,7 @@ class CleanupWorker:
       completion=await self.rpc("complete_content_provider_cleanup_job",{
        "p_job_id":job["id"],"p_lease_token":job["lease_token"],
       })
-    elif provider=="supabase_storage" and action=="delete_media":
+    elif provider=="supabase" and action=="delete_media":
      await self.delete_legacy_storage_object({
       "bucket_id":payload.get("bucket_id"),"storage_path":payload.get("storage_path"),
      },owner_id=str(job.get("owner_id") or ""))

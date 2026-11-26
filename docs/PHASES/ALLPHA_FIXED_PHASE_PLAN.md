@@ -2082,3 +2082,8 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 - Updated Feed and Story tests to mock the shared provider-aware projection rather than the retired direct Storage URL helper. No-media Feed tests no longer install an unused Storage mock.
 - Replaced the obsolete Story cleanup worker tests for its removed duplicate Storage deleter with tests for bounded sweep behavior, canonical provider cleanup delegation, and distinct queued-vs-confirmed deletion metrics.
 - Updated legacy Story media fixtures to use the enforced owner-prefixed private Storage path.
+
+
+## 40.128 — Supabase legacy provider cleanup discriminator corrected
+
+- The registry migration stores legacy objects as `storage_provider='supabase'`; the cleanup worker branch now matches that canonical value (rather than the non-existent `supabase_storage` enum). Added regression coverage for the legacy original + derivative deletion and `complete_legacy_content_media_delete_job` receipt.

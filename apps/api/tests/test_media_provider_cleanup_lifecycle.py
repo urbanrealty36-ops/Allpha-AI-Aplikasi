@@ -143,3 +143,37 @@ def test_content_retention_removes_metadata_only_after_provider_delete_confirmat
     assert objects == ["cloudinary:allpha/media-2"]
     assert rows == ["media-2"]
     assert any(call[0] == "DELETE" and call[1] == "content_media" for call in calls)
+
+
+
+def test_supabase_storage_cleanup_worker_uses_legacy_provider_completion_rpc():
+    worker = object.__new__(CleanupWorker)
+    worker.worker_id = "provider-cleanup-test"
+    calls = []
+
+    async def fake_rpc(name, payload):
+        calls.append(("rpc", name, payload))
+        if name == "claim_content_lifecycle_jobs":
+            return [{
+                "id": "job-2", "lease_token": "lease-2", "media_id": "media-2", "owner_id": "owner-2",
+                "payload": {
+                    "provider": "supabase", "action": "delete_media",
+                    "bucket_id": "content-media", "storage_path": "owner-2/content-2/source.jpg",
+                    "derivatives": [{"storage_path": "owner-2/content-2/thumb.webp"}],
+                },
+            }]
+        return "succeeded"
+
+    async def delete_legacy_storage_object(item, owner_id=None):
+        calls.append(("legacy", item["storage_path"], owner_id))
+
+    async def delete_legacy_derivative_objects(items, owner_id):
+        calls.append(("derivatives", items, owner_id))
+
+    worker.rpc = fake_rpc
+    worker.delete_legacy_storage_object = delete_legacy_storage_object
+    worker.delete_legacy_derivative_objects = delete_legacy_derivative_objects
+    assert asyncio.run(worker.batch()) == 1
+    assert ("legacy", "owner-2/content-2/source.jpg", "owner-2") in calls
+    assert any(call[0] == "derivatives" for call in calls)
+    assert any(call[0] == "rpc" and call[1] == "complete_legacy_content_media_delete_job" for call in calls)
