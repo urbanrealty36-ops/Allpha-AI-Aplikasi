@@ -59,9 +59,12 @@ def test_media_domain_resource_authorization_matches_canonical_owner_adapters(mo
         if path == "community_posts":
             return [{"id": resource, "community_id": "community-1"}]
         if path == "content_items":
-            assert params.get("content_type") in {
-                "in.(text,image,video,audio)", "eq.video", "eq.story",
-            }
+            assert params.get("owner_id") == f"eq.{owner}"
+            assert params.get("status") == "in.(draft,failed)"
+            if params.get("content_type") is not None:
+                assert params.get("content_type") in {
+                    "in.(text,image,video,audio)", "eq.video", "eq.story",
+                }
         if path == "agent_ownerships":
             assert params.get("ownership_role") == "eq.owner"
             assert params.get("status") == "eq.active"
