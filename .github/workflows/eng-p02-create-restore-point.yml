@@ -216,18 +216,21 @@ jobs:
           keys = json.loads(Path("/tmp/supabase-project-api-keys.json").read_text())
           if not isinstance(keys, list):
               raise SystemExit("Supabase Management API returned an unexpected API-key response.")
-          key = next((item.get("api_key") for item in keys
-                      if item.get("type") == "secret" and item.get("api_key")), None)
-          if not key:
-              key = next((item.get("api_key") for item in keys
-                          if item.get("type") == "legacy"
-                          and item.get("name") == "service_role"
-                          and item.get("api_key")), None)
-          if not key:
+          selected = next((item for item in keys
+                           if item.get("type") == "secret" and item.get("api_key")), None)
+          if selected is None:
+              selected = next((item for item in keys
+                               if item.get("type") == "legacy"
+                               and item.get("name") == "service_role"
+                               and item.get("api_key")), None)
+          if selected is None:
               raise SystemExit("No server-only Supabase Storage API key was returned.")
+          key = selected["api_key"]
+          key_type = selected["type"]
           print("::add-mask::" + key)
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as output:
               output.write("SUPABASE_STORAGE_BACKUP_KEY=" + key + "\n")
+              output.write("SUPABASE_STORAGE_BACKUP_KEY_TYPE=" + key_type + "\n")
           Path("/tmp/supabase-project-api-keys.json").unlink(missing_ok=True)
           print("Resolved a server-only Storage key without writing it to the artifact or logs.")
           PY
