@@ -8,7 +8,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
-from allpha_api.auth import current_user, optional_current_user
+from allpha_api.auth import current_user, optional_current_user, service_db_request
 from allpha_api.content_api import MEDIA_FIELDS, _server_db, _signed_media_preview_url, _storage
 from allpha_api.feed_api import _edges
 
@@ -62,7 +62,7 @@ async def _attach_media(items: list[dict[str, Any]], *, owner_id: str | None = N
 async def _cleanup_story_media(content_id: str, owner_id: str | None = None) -> int:
     """Delete expired/removed story binaries and then their metadata; retain failed items for retry."""
     params: dict[str, str] = {
-        "select": "id,owner_id,storage_path,status",
+        "select": "id,owner_id,storage_path,status,provider_public_id,provider_asset_id",
         "content_id": f"eq.{content_id}",
         "status": "in.(uploaded,ready,processing,failed,deleting)",
         "limit": "100",
@@ -72,11 +72,26 @@ async def _cleanup_story_media(content_id: str, owner_id: str | None = None) -> 
     media = await _server_db("GET", "content_media", params=params)
     deleted = 0
     for item in media or []:
+        # Cloudinary assets must go through the provider cleanup lifecycle. Never
+        # send a Cloudinary public_id to Supabase Storage or delete its registry row
+        # before the provider confirms deletion.
+        if item.get("provider_public_id") or item.get("provider_asset_id"):
+            result = await service_db_request(
+                "request_cloudinary_content_media_delete",
+                body={"p_media_id": str(item["id"]), "p_owner_id": str(item["owner_id"])},
+            )
+            outcome = result.get("outcome") if isinstance(result, dict) else None
+            if outcome in {"queued", "already_queued", "already_deleted"}:
+                deleted += 1
+            # Legal hold, active references, missing provider identity and invalid
+            # state are fail-closed: leave the provider asset and metadata intact.
+            continue
+
         marked = item
         if item.get("status") != "deleting":
             rows = await _server_db("PATCH", "content_media", params={
                 "id": f"eq.{item['id']}", "owner_id": f"eq.{item['owner_id']}",
-                "status": f"eq.{item['status']}", "select": "id,owner_id,storage_path,status",
+                "status": f"eq.{item['status']}", "select": "id,owner_id,storage_path,status,provider_public_id,provider_asset_id",
             }, body={"status": "deleting"}, prefer="return=representation")
             if not rows:
                 continue
@@ -303,4 +318,4 @@ async def archive_my_story(
     if not updated:
         raise HTTPException(409, detail={"code": "STORY_UPDATE_CONFLICT", "message": "Story berubah; muat ulang sebelum mencoba lagi."})
     await _cleanup_story_media(str(story_id), str(user["id"]))
-    return {"item": updated[0], "message": "Story diarsipkan; media yang dapat dihapus telah dibersihkan."}
+    return {"item": updated[0], "message": "Story diarsipkan; media legacy dibersihkan dan penghapusan Cloudinary dimasukkan ke lifecycle provider bila diperlukan."}

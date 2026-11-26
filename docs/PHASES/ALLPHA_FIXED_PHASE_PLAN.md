@@ -1987,3 +1987,11 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 
 - **Correction:** Story list projection intentionally exposes only uploaded/ready media, not processing rows. Native readiness polling now uses the idempotent upload IDs returned by the upload flow and stored in the active draft, then checks each owner-scoped `GET /v1/media/{id}` response. This avoids treating a valid processing asset as a missing media row.
 - **Retry behavior:** previously uploaded media IDs remain tracked through retries and all are required to reach `ready + clean + processed_at` before publish. The list is cleared only after the Story is successfully submitted for moderation.
+
+
+## 40.114 — Story deletion routed through canonical Cloudinary cleanup lifecycle (2026-11-26)
+
+- **Blocker found:** `stories_api._cleanup_story_media` previously sent every media `storage_path` to Supabase Storage DELETE, then deleted its metadata. For Cloudinary rows, `storage_path` is a provider identity/public ID, so this bypassed Cloudinary deletion and could orphan provider assets or corrupt lifecycle state.
+- **Implementation:** Cloudinary rows are now routed through the service-only `request_cloudinary_content_media_delete` RPC. Provider cleanup worker owns the durable delete, retry and metadata completion. The story path never deletes a Cloudinary registry row before provider confirmation. Legacy Supabase Storage rows retain their existing mark-deleting → delete-object → delete-metadata flow.
+- **Safety:** legal-hold, in-use, invalid-state and missing-identity outcomes remain fail-closed; archive/expiry does not report provider deletion as complete. This path covers manual Story archive and automatic Story expiry cleanup.
+- **Verification:** focused tests pending CI. No production schema or media data changed.
