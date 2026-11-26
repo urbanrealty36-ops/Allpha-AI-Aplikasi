@@ -17,7 +17,7 @@ jobs:
   restore-backup-to-disposable-supabase-postgres:
     if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
     env:
       BACKUP_RUN_ID: ${{ github.event.workflow_run.id }}
       EXPECTED_EXPORT_LEASE_MIGRATION_BLOB: aa5fe5763432f8a2c9ca31fffb432b2327aa98c2
@@ -39,6 +39,9 @@ jobs:
           set -euo pipefail
           test -s recovery-evidence/allpha-p02-pre-migration.dump
           test -s recovery-evidence/restore-point-evidence.json
+          test -s recovery-evidence/allpha-supabase-storage-pre-migration.tar
+          test -s recovery-evidence/storage-backup-manifest.json
+          test -s recovery-evidence/storage-backup-evidence.json
           actual_sha256="$(sha256sum recovery-evidence/allpha-p02-pre-migration.dump | awk '{print $1}')"
           export ACTUAL_BACKUP_SHA256="$actual_sha256"
           python - <<'PY'
@@ -50,7 +53,11 @@ jobs:
           assert manifest["database_migration_applied"] is False
           assert manifest["restore_executed"] is False
           assert manifest["sha256"] == os.environ["ACTUAL_BACKUP_SHA256"]
-          print("Fresh backup artifact identity and checksum verified.")
+          storage = json.loads(Path("recovery-evidence/storage-backup-evidence.json").read_text())
+          assert manifest["storage_objects_included"] is True
+          assert manifest["storage_archive_sha256"] == storage["storage_archive_sha256"]
+          assert manifest["storage_object_count"] == storage["storage_object_count"]
+          print("Fresh database and Storage backup artifact identities and checksums verified.")
           PY
 
       - name: Create an isolated Supabase restore workspace without project migrations
@@ -70,11 +77,19 @@ jobs:
           project_id = "allpha-p02-restore-verification"
 
           [api]
-          enabled = false
+          enabled = true
+          port = 54321
+          schemas = ["public", "storage", "graphql_public"]
+          extra_search_path = ["public", "extensions"]
+          max_rows = 1000
 
           [db]
           port = 54322
           major_version = 17
+
+          [storage]
+          enabled = true
+          file_size_limit = "50MiB"
 
           [db.migrations]
           schema_paths = []
@@ -150,6 +165,41 @@ jobs:
               --no-privileges \
               --exit-on-error \
               /tmp/allpha-p02-pre-migration.dump
+
+      - name: Restore and verify all Supabase Storage objects on isolated local Storage API
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker exec -u postgres "$SUPABASE_DB_CONTAINER" \
+            psql -U supabase_admin -d allpha_p02_restore_verification -Atc \
+            "select coalesce(json_agg(json_build_object(
+              'bucket_id',bucket_id,'name',name,
+              'size_bytes',nullif(metadata->>'size','')::bigint,
+              'content_type',coalesce(metadata->>'mimetype','application/octet-stream')
+            ) order by bucket_id,name),'[]'::json)::text from storage.objects" \
+            > recovery-evidence/restored-storage-inventory.json
+
+          (
+            cd restore-workspace
+            supabase status --output env > /tmp/allpha-local-supabase.env
+          )
+          set -a
+          # shellcheck disable=SC1091
+          source /tmp/allpha-local-supabase.env
+          set +a
+          test -n "${API_URL:-}"
+          test -n "${SERVICE_ROLE_KEY:-}"
+          echo "::add-mask::$SERVICE_ROLE_KEY"
+          python tools/recovery/restore_supabase_storage.py \
+            --project-ref dvdziauyvuhcnqhrrrww \
+            --api-url "$API_URL" \
+            --service-role-key "$SERVICE_ROLE_KEY" \
+            --archive recovery-evidence/allpha-supabase-storage-pre-migration.tar \
+            --manifest recovery-evidence/storage-backup-manifest.json \
+            --backup-evidence recovery-evidence/storage-backup-evidence.json \
+            --buckets recovery-evidence/storage-buckets.json \
+            --restored-inventory recovery-evidence/restored-storage-inventory.json \
+            --evidence recovery-evidence/storage-restore-verification.json
 
       - name: Verify restored schema, RLS and ENG-P02 migration
         shell: bash
@@ -670,7 +720,10 @@ jobs:
               "p13_cloudinary_media_migration_applied": True,
               "p13_cloudinary_media_migration_blob": os.environ["P13_CLOUDINARY_MEDIA_MIGRATION_BLOB"],
               "p13_cloudinary_media_verification": p13_verification.read_text().splitlines(),
-              "storage_objects_included": False,
+              "storage_objects_included": True,
+              "storage_restore_tested": True,
+              "storage_restore_verification": json.loads(Path("recovery-evidence/storage-restore-verification.json").read_text()),
+              "storage_backup_evidence": json.loads(Path("recovery-evidence/storage-backup-evidence.json").read_text()),
               "verified_at_utc": datetime.now(timezone.utc).isoformat(),
               "verification": verification.read_text().splitlines(),
               "p03_migration_verification": p03_verification.read_text().splitlines(),
@@ -695,5 +748,7 @@ jobs:
             recovery-evidence/p03-export-expiry-verification.txt
             recovery-evidence/p03-deletion-governance-verification.txt
             recovery-evidence/p13-cloudinary-media-registry-verification.txt
+            recovery-evidence/storage-restore-verification.json
+            recovery-evidence/storage-backup-evidence.json
           if-no-files-found: error
           retention-days: 90
