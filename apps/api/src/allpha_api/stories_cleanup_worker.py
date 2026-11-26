@@ -13,7 +13,7 @@ from allpha_api.content_api import _config
 from allpha_api.stories_api import _cleanup_story_media, _expire_due_stories, _server_db
 
 log = logging.getLogger("allpha.stories_cleanup_worker")
-ELIGIBLE_MEDIA_STATES = ("uploaded", "ready", "processing", "failed", "deleting")
+ELIGIBLE_MEDIA_STATES = ("uploaded", "ready", "processing", "failed", "deleting", "deleted")
 DEFAULT_BATCH_LIMIT = 100
 MAX_BATCH_LIMIT = 200
 
@@ -98,7 +98,7 @@ async def _sweep_archived_story_media(*, limit: int) -> dict[str, int]:
     rows = _require_rows(await _server_db("GET", "content_media", params={
         "select": "id,content_id,owner_id,storage_path,status",
         "content_id": f"in.({','.join(story_ids_for_query)})",
-        "status": "in.(uploaded,ready,processing,failed,deleting)",
+        "status": "in.(uploaded,ready,processing,failed,deleting,deleted)",
         "order": "created_at.asc",
         "limit": str(limit),
     async def _sweep_archived_story_media(*, limit: int) -> dict[str, int]:

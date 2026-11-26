@@ -78,7 +78,7 @@ async def _cleanup_story_media(
     params: dict[str, str] = {
         "select": "id,owner_id,storage_path,status,provider_public_id,provider_asset_id,derivatives",
         "content_id": f"eq.{content_id}",
-        "status": "in.(uploaded,ready,processing,failed,deleting)",
+        "status": "in.(uploaded,ready,processing,failed,deleting,deleted)",
         "limit": "100",
     }
     if owner_id is not None:

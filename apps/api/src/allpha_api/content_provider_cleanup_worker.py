@@ -98,7 +98,8 @@ class CleanupWorker:
    except Exception as exc:
     log.exception("provider cleanup failed job=%s",job["id"])
     try:
-     failure_rpc="fail_cloudinary_media_delete_job" if (job.get("payload") or {}).get("action")=="delete_media" else "fail_content_lifecycle_job"
+     payload=job.get("payload") or {}
+     failure_rpc="fail_cloudinary_media_delete_job" if payload.get("provider")=="cloudinary" and payload.get("action")=="delete_media" else "fail_content_lifecycle_job"
      await self.rpc(failure_rpc,{"p_job_id":job["id"],"p_lease_token":job["lease_token"],"p_error_code":type(exc).__name__[:80]})
     except Exception:log.exception("provider cleanup failure could not be recorded")
   return len(jobs)

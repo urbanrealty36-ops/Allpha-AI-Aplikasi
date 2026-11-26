@@ -2046,3 +2046,9 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 - **Implementation:** the scheduled Story cleanup worker no longer contains a second Supabase Storage deletion engine. It calls the canonical `stories_api._cleanup_story_media` helper for each archived/deleted Story media row.
 - **Observability:** worker results distinguish confirmed metadata/object deletion, provider cleanup queued, legal-hold/in-use/provider identity blocks, retryable failures and concurrent changes. Cloudinary media is never counted as deleted merely because a provider job was queued.
 - **Legacy safety:** the shared Story helper validates owner-prefixed paths and removes legacy derivative objects as well as originals; Cloudinary rows use the provider cleanup RPC and retain metadata until the provider worker confirms deletion.
+
+
+## 40.122 — Story cleanup reaps provider-confirmed deleted registry rows
+
+- Story archive/expiry cleanup and its scheduled recovery sweep now include media rows in `status=deleted`, allowing the owner-scoped cleanup path to remove metadata only after the provider RPC reports `provider_delete_state=deleted`.
+- Provider cleanup failure routing now calls the Cloudinary-specific failure RPC only for Cloudinary assets; legacy Supabase Storage cleanup failures use the generic lifecycle failure path and remain retryable.
