@@ -11,7 +11,6 @@ on:
       - .github/workflows/eng-p03-apply-account-lifecycle-migration.yml
       - apps/api/supabase/migrations/**
       - apps/api/supabase/source-only-migrations/**
-      - tools/recovery/**
       - apps/api/supabase/migrations/20261123191600_eng_p03_account_export_and_deletion_request_lifecycle.sql
       - apps/api/supabase/migrations/20261123191800_eng_p03_lease_scoped_export_artifacts.sql
       - apps/api/supabase/migrations/20261123192100_eng_p03_export_artifact_expiration.sql
