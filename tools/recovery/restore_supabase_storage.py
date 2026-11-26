@@ -32,6 +32,7 @@ def load_json(path: Path):
 def api_request(
     api_url: str,
     api_key: str,
+    api_key_type: str,
     path: str,
     *,
     method: str = "GET",
@@ -39,12 +40,15 @@ def api_request(
     content_type: str = "application/json",
     extra_headers: dict | None = None,
 ):
+    if api_key_type not in ("secret", "legacy"):
+        fail("Local Storage API key type must be secret or legacy.")
     headers = {
         "apikey": api_key,
-        "Authorization": f"Bearer {api_key}",
         "Accept": "application/json",
         "User-Agent": "allpha-storage-recovery-restore/1.0",
     }
+    if api_key_type == "legacy":
+        headers["Authorization"] = f"Bearer {api_key}"
     if payload is not None:
         headers["Content-Type"] = content_type
         headers["Content-Length"] = str(len(payload))
@@ -54,7 +58,7 @@ def api_request(
     return urlopen(request, timeout=180)
 
 
-def ensure_bucket(api_url: str, api_key: str, bucket: dict) -> None:
+def ensure_bucket(api_url: str, api_key: str, api_key_type: str, bucket: dict) -> None:
     bucket_id = quote(str(bucket["id"]), safe="")
     body = {
         "id": bucket["id"],
@@ -66,7 +70,7 @@ def ensure_bucket(api_url: str, api_key: str, bucket: dict) -> None:
     payload = json.dumps(body).encode()
     try:
         with api_request(
-            api_url, api_key, "/storage/v1/bucket", method="POST", payload=payload
+            api_url, api_key, api_key_type, "/storage/v1/bucket", method="POST", payload=payload
         ) as response:
             if response.status not in (200, 201):
                 fail(f"Local Storage bucket create returned HTTP {response.status}.")
@@ -83,7 +87,7 @@ def ensure_bucket(api_url: str, api_key: str, bucket: dict) -> None:
     }).encode()
     try:
         with api_request(
-            api_url, api_key, f"/storage/v1/bucket/{bucket_id}", method="PUT", payload=update_payload
+            api_url, api_key, api_key_type, f"/storage/v1/bucket/{bucket_id}", method="PUT", payload=update_payload
         ) as response:
             if response.status not in (200, 201):
                 fail(f"Local Storage bucket update returned HTTP {response.status}.")
@@ -94,6 +98,7 @@ def ensure_bucket(api_url: str, api_key: str, bucket: dict) -> None:
 def upload_and_verify_object(
     api_url: str,
     api_key: str,
+    api_key_type: str,
     archive: tarfile.TarFile,
     item: dict,
 ) -> None:
@@ -117,6 +122,7 @@ def upload_and_verify_object(
         with api_request(
             api_url,
             api_key,
+            api_key_type,
             object_path,
             method="POST",
             payload=payload,
@@ -129,14 +135,16 @@ def upload_and_verify_object(
         fail(f"Local Storage object upload failed with HTTP {exc.code}.")
 
     authenticated_path = f"/storage/v1/object/authenticated/{bucket}/{name}"
+    download_headers = {
+        "apikey": api_key,
+        "Accept": "application/octet-stream",
+        "User-Agent": "allpha-storage-recovery-restore/1.0",
+    }
+    if api_key_type == "legacy":
+        download_headers["Authorization"] = f"Bearer {api_key}"
     request = Request(
         f"{api_url.rstrip('/')}{authenticated_path}",
-        headers={
-            "apikey": api_key,
-            "Authorization": f"Bearer {api_key}",
-            "Accept": "application/octet-stream",
-            "User-Agent": "allpha-storage-recovery-restore/1.0",
-        },
+        headers=download_headers,
         method="GET",
     )
     digest = hashlib.sha256()
@@ -194,14 +202,15 @@ def main() -> None:
     parser.add_argument("--restored-inventory", required=True, type=Path)
     parser.add_argument("--evidence", required=True, type=Path)
     parser.add_argument("--api-url", required=True)
-    parser.add_argument("--service-role-key", required=True)
+    parser.add_argument("--storage-api-key", "--service-role-key", dest="storage_api_key", required=True)
+    parser.add_argument("--api-key-type", choices=("secret", "legacy"), required=True)
     args = parser.parse_args()
 
     parsed = urlparse(args.api_url)
     if parsed.scheme != "http" or parsed.hostname not in ("127.0.0.1", "localhost"):
         fail("Storage restore API must be a loopback-only local Supabase endpoint.")
-    if not args.service_role_key.strip():
-        fail("Local Supabase service role key is unavailable.")
+    if not args.storage_api_key.strip():
+        fail("Local Supabase Storage API key is unavailable.")
 
     manifest = load_json(args.manifest)
     backup_evidence = load_json(args.backup_evidence)
@@ -225,11 +234,11 @@ def main() -> None:
     compare_database_inventory(manifest, restored_inventory)
 
     for bucket in buckets:
-        ensure_bucket(args.api_url, args.service_role_key, bucket)
+        ensure_bucket(args.api_url, args.storage_api_key, args.api_key_type, bucket)
 
     with tarfile.open(args.archive, mode="r:") as archive:
         for index, item in enumerate(manifest["objects"], start=1):
-            upload_and_verify_object(args.api_url, args.service_role_key, archive, item)
+            upload_and_verify_object(args.api_url, args.storage_api_key, args.api_key_type, archive, item)
             if index % 50 == 0 or index == len(manifest["objects"]):
                 print(f"Storage restore progress: {index}/{len(manifest['objects'])} objects")
 
