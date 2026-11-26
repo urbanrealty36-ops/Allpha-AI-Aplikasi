@@ -9,13 +9,8 @@ import asyncio
 import logging
 import os
 from typing import Any
-from urllib.parse import quote
-
-import httpx
-from fastapi import HTTPException
-
 from allpha_api.content_api import _config
-from allpha_api.stories_api import _expire_due_stories, _server_db
+from allpha_api.stories_api import _cleanup_story_media, _expire_due_stories, _server_db
 
 log = logging.getLogger("allpha.stories_cleanup_worker")
 ELIGIBLE_MEDIA_STATES = ("uploaded", "ready", "processing", "failed", "deleting")
@@ -26,9 +21,6 @@ MAX_BATCH_LIMIT = 200
 class StoriesCleanupConfigurationError(RuntimeError):
     """The worker must not run without explicit enablement and server credentials."""
 
-
-class StoriesCleanupStorageError(RuntimeError):
-    """Storage deletion was not confirmed; metadata must remain retryable."""
 
 class StoriesCleanupResponseError(RuntimeError):
     """A database response violates the expected list-of-row-objects contract."""
@@ -78,40 +70,6 @@ def _batch_limit() -> int:
     return value
 
 
-def _validated_storage_path(storage_path: str, owner_id: str) -> str:
-    """Accept only a normalized object path rooted at the media owner's prefix."""
-    path = storage_path
-    owner = owner_id
-    parts = path.split("/")
-    if (
-        not owner
-        or not path
-        or path != path.strip()
-        or owner != owner.strip()
-        or "\\" in path
-        or any(part in ("", ".", "..") for part in parts)
-        or parts[0] != owner
-    ):
-        raise StoriesCleanupStorageError("Storage path is missing or outside the media owner's prefix")
-    return path
-
-
-async def _delete_storage_object(storage_path: str, owner_id: str) -> bool:
-    """Idempotently delete an owner-scoped object; 404 means it was already removed."""
-    safe_path = _validated_storage_path(storage_path, owner_id)
-    base, key = _config()
-    headers = {"apikey": key, "Authorization": f"Bearer {key}"}
-    url = f"{base}/storage/v1/object/{quote('content-media/' + safe_path, safe='/')}"
-    try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=5.0)) as client:
-            response = await client.delete(url, headers=headers)
-    except httpx.HTTPError as exc:
-        raise StoriesCleanupStorageError("Storage request failed") from exc
-    if response.status_code in (200, 202, 204, 404):
-        return True
-    raise StoriesCleanupStorageError(f"Storage deletion not confirmed (HTTP {response.status_code})")
-
-
 async def _sweep_archived_story_media(*, limit: int) -> dict[str, int]:
     """Retry archived/deleted Story media with a hard per-run media-row limit."""
     stats = {
@@ -143,60 +101,44 @@ async def _sweep_archived_story_media(*, limit: int) -> dict[str, int]:
         "status": "in.(uploaded,ready,processing,failed,deleting)",
         "order": "created_at.asc",
         "limit": str(limit),
+    async def _sweep_archived_story_media(*, limit: int) -> dict[str, int]:
+    """Retry archived/deleted Story media through the canonical provider lifecycle."""
+    stats = {
+        "stories_with_media": 0, "media_candidates": 0, "media_deleted": 0,
+        "provider_cleanup_queued": 0, "media_blocked": 0, "media_failures": 0,
+        "concurrent_changes": 0,
+    }
+    story_rows = _require_rows(await _server_db("GET", "content_items", params={
+        "select": "id", "content_type": "eq.story", "status": "in.(archived,deleted)",
+        "order": "created_at.asc", "limit": "1000",
+    }), operation="list archived/deleted Stories")
+    story_ids = [str(row.get("id") or "") for row in story_rows if row.get("id")]
+    if not story_ids:
+        return stats
+    rows = _require_rows(await _server_db("GET", "content_media", params={
+        "select": "id,content_id,owner_id,status", "content_id": f"in.({','.join(story_ids)})",
+        "status": "in.(uploaded,ready,processing,failed,deleting)",
+        "order": "created_at.asc", "limit": str(limit),
     }), operation="list media for archived/deleted Stories")
-
-    story_ids: set[str] = set()
     stats["media_candidates"] = len(rows)
+    story_ids_with_media = set()
     for item in rows:
-        story_ids.add(str(item.get("content_id") or ""))
-        current_status = str(item.get("status") or "")
-        if current_status not in ELIGIBLE_MEDIA_STATES:
-            continue
-
-        marked = item
-        if current_status != "deleting":
-            changed = _require_rows(await _server_db("PATCH", "content_media", params={
-                "id": f"eq.{item['id']}",
-                "owner_id": f"eq.{item['owner_id']}",
-                "status": f"eq.{current_status}",
-                "select": "id,owner_id,storage_path,status",
-            }, body={"status": "deleting"}, prefer="return=representation"), operation="mark media deleting")
-            if not changed:
-                stats["concurrent_changes"] += 1
-                continue
-            marked = changed[0]
-
+        story_ids_with_media.add(str(item.get("content_id") or ""))
         try:
-            await _delete_storage_object(str(marked["storage_path"]), str(marked["owner_id"]))
-        except StoriesCleanupStorageError:
-            stats["storage_failures"] += 1
-            log.warning("Story media cleanup deferred; object deletion was not confirmed")
+            outcome = await _cleanup_story_media(
+                str(item["content_id"]), str(item["owner_id"]),
+                media_id=str(item["id"]), detailed=True,
+            )
+        except Exception:
+            stats["media_failures"] += 1
+            log.exception("Story provider cleanup deferred media_id=%s", item.get("id"))
             continue
-
-        deleted_rows = _require_rows(await _server_db("DELETE", "content_media", params={
-            "id": f"eq.{marked['id']}",
-            "owner_id": f"eq.{marked['owner_id']}",
-            "status": "eq.deleting",
-            "select": "id",
-        }, prefer="return=representation"), operation="delete media metadata")
-        if deleted_rows:
-            stats["media_deleted"] += 1
-            continue
-
-        # A concurrent idempotent run may already have removed the metadata.
-        still_present = _require_rows(await _server_db("GET", "content_media", params={
-            "select": "id",
-            "id": f"eq.{marked['id']}",
-            "owner_id": f"eq.{marked['owner_id']}",
-            "limit": "1",
-        }), operation="verify media metadata removal")
-        if still_present:
-            stats["metadata_failures"] += 1
-            log.warning("Story media object is gone but metadata cleanup remains pending")
-        else:
-            stats["media_deleted"] += 1
-
-    stats["stories_with_media"] = len(story_ids - {""})
+        stats["media_deleted"] += outcome["deleted"]
+        stats["provider_cleanup_queued"] += outcome["queued"]
+        stats["media_blocked"] += outcome["blocked"]
+        stats["concurrent_changes"] += outcome["concurrent"]
+        stats["media_failures"] += outcome["failed"]
+    stats["stories_with_media"] = len(story_ids_with_media)
     return stats
 
 async def run_cleanup_once(*, limit: int | None = None) -> dict[str, Any]:
@@ -229,7 +171,7 @@ def main() -> None:
     )
     try:
         summary = asyncio.run(run_cleanup_once())
-    except (StoriesCleanupConfigurationError, HTTPException, httpx.HTTPError) as exc:
+    except StoriesCleanupConfigurationError as exc:
         log.error("Stories cleanup pass failed before completion: %s", type(exc).__name__)
         raise SystemExit(1) from exc
     except Exception as exc:
@@ -239,11 +181,10 @@ def main() -> None:
 
     # Individual Storage failures are deliberately retained for the next scheduled
     # invocation; the run itself completed its bounded pass and remains observable.
-    if summary["storage_failures"] or summary["metadata_failures"]:
+    if summary["media_blocked"] or summary["media_failures"]:
         log.warning(
-            "Stories cleanup has retryable work: storage_failures=%s metadata_failures=%s",
-            summary["storage_failures"],
-            summary["metadata_failures"],
+            "Stories cleanup has retryable work: blocked=%s failures=%s",
+            summary["media_blocked"], summary["media_failures"],
         )
 
 

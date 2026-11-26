@@ -59,54 +59,105 @@ async def _attach_media(items: list[dict[str, Any]], *, owner_id: str | None = N
     return [{**item, "media": by_content.get(str(item["id"]), [])} for item in items]
 
 
-async def _cleanup_story_media(content_id: str, owner_id: str | None = None) -> int:
-    """Delete expired/removed story binaries and then their metadata; retain failed items for retry."""
+def _validated_story_storage_path(storage_path: str, owner_id: str) -> str:
+    parts = storage_path.split("/") if isinstance(storage_path, str) else []
+    if (
+        not owner_id or not storage_path or storage_path != storage_path.strip()
+        or storage_path.startswith("/") or "\\" in storage_path
+        or any(part in ("", ".", "..") for part in parts) or parts[0] != owner_id
+    ):
+        raise HTTPException(409, detail={"code": "STORY_MEDIA_STORAGE_IDENTITY_INVALID", "message": "Identitas media Story tidak valid."})
+    return storage_path
+
+
+async def _cleanup_story_media(
+    content_id: str, owner_id: str | None = None, *,
+    media_id: str | None = None, detailed: bool = False,
+) -> int | dict[str, int]:
+    """Queue provider deletes or safely remove legacy objects; never delete Cloudinary metadata early."""
     params: dict[str, str] = {
-        "select": "id,owner_id,storage_path,status,provider_public_id,provider_asset_id",
+        "select": "id,owner_id,storage_path,status,provider_public_id,provider_asset_id,derivatives",
         "content_id": f"eq.{content_id}",
         "status": "in.(uploaded,ready,processing,failed,deleting)",
         "limit": "100",
     }
     if owner_id is not None:
         params["owner_id"] = f"eq.{owner_id}"
+    if media_id is not None:
+        params["id"] = f"eq.{media_id}"
     media = await _server_db("GET", "content_media", params=params)
-    deleted = 0
+    stats = {"deleted": 0, "queued": 0, "blocked": 0, "failed": 0, "concurrent": 0}
     for item in media or []:
-        # Cloudinary assets must go through the provider cleanup lifecycle. Never
-        # send a Cloudinary public_id to Supabase Storage or delete its registry row
-        # before the provider confirms deletion.
         if item.get("provider_public_id") or item.get("provider_asset_id"):
             result = await service_db_request(
                 "request_cloudinary_content_media_delete",
                 body={"p_media_id": str(item["id"]), "p_owner_id": str(item["owner_id"])},
             )
             outcome = result.get("outcome") if isinstance(result, dict) else None
-            if outcome in {"queued", "already_queued", "already_deleted"}:
-                deleted += 1
-            # Legal hold, active references, missing provider identity and invalid
-            # state are fail-closed: leave the provider asset and metadata intact.
+            if outcome in {"queued", "already_queued"}:
+                stats["queued"] += 1
+            elif outcome == "already_deleted":
+                provider_media = result.get("media") if isinstance(result, dict) else None
+                if (
+                    isinstance(provider_media, dict)
+                    and provider_media.get("status") == "deleted"
+                    and provider_media.get("provider_delete_state") == "deleted"
+                    and provider_media.get("provider_deleted_at")
+                ):
+                    rows = await _server_db("DELETE", "content_media", params={
+                        "id": f"eq.{item['id']}", "owner_id": f"eq.{item['owner_id']}",
+                        "status": "eq.deleted", "provider_delete_state": "eq.deleted", "select": "id",
+                    }, prefer="return=representation")
+                    if rows:
+                        stats["deleted"] += 1
+                    else:
+                        stats["concurrent"] += 1
+                else:
+                    stats["blocked"] += 1
+            elif outcome == "media_not_found":
+                stats["deleted"] += 1
+            else:
+                stats["blocked"] += 1
             continue
 
+        owner = str(item["owner_id"])
         marked = item
         if item.get("status") != "deleting":
             rows = await _server_db("PATCH", "content_media", params={
-                "id": f"eq.{item['id']}", "owner_id": f"eq.{item['owner_id']}",
-                "status": f"eq.{item['status']}", "select": "id,owner_id,storage_path,status,provider_public_id,provider_asset_id",
+                "id": f"eq.{item['id']}", "owner_id": f"eq.{owner}",
+                "status": f"eq.{item['status']}", "select": "id,owner_id,storage_path,status,derivatives",
             }, body={"status": "deleting"}, prefer="return=representation")
             if not rows:
+                stats["concurrent"] += 1
                 continue
             marked = rows[0]
         try:
-            await _storage("DELETE", f"content-media/{marked['storage_path']}")
-        except HTTPException:
-            # Preserve deleting metadata so a subsequent cleanup attempt can retry.
-            continue
-        await _server_db("DELETE", "content_media", params={
-            "id": f"eq.{marked['id']}", "owner_id": f"eq.{marked['owner_id']}",
-            "status": "eq.deleting",
-        })
-        deleted += 1
-    return deleted
+            original = _validated_story_storage_path(str(marked.get("storage_path") or ""), owner)
+            await _storage("DELETE", f"content-media/{original}")
+            for derivative in marked.get("derivatives") or []:
+                path = derivative.get("storage_path") if isinstance(derivative, dict) else None
+                if path:
+                    safe_path = _validated_story_storage_path(str(path), owner)
+                    await _storage("DELETE", f"content-media/{safe_path}")
+        except HTTPException as exc:
+            if exc.status_code != 404:
+                stats["failed"] += 1
+                continue
+        rows = await _server_db("DELETE", "content_media", params={
+            "id": f"eq.{marked['id']}", "owner_id": f"eq.{owner}",
+            "status": "eq.deleting", "select": "id",
+        }, prefer="return=representation")
+        if rows:
+            stats["deleted"] += 1
+        else:
+            still_present = await _server_db("GET", "content_media", params={
+                "select": "id", "id": f"eq.{marked['id']}", "owner_id": f"eq.{owner}", "limit": "1",
+            })
+            if still_present:
+                stats["failed"] += 1
+            else:
+                stats["deleted"] += 1
+    return stats if detailed else stats["deleted"] + stats["queued"]
 
 
 async def _cleanup_pending_story_media() -> int:

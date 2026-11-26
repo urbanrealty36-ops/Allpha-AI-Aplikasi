@@ -2039,3 +2039,10 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 - **Implementation:** the destructive retention executor no longer deletes Supabase objects or `content_media` rows directly. It requires Cloudinary media schema readiness, requests provider cleanup through the canonical service RPC for Supabase and Cloudinary assets, and defers the retention lease while provider jobs are queued/blocked.
 - **Deletion order:** only after provider cleanup confirms `status=deleted`, `provider_delete_state=deleted` and `provider_deleted_at` does retention remove media metadata. The parent content item is deleted only after the media registry is empty. Receipts list only provider/object identities whose deletion was confirmed.
 - **Safety:** legal holds, active references, unexpired upload intents, missing provider identity and provider failures defer the purge; they do not become fake success. Worker activation remains blocked by ADR-0024 approval flags and the unavailable scanner/cleanup service capacity.
+
+
+## 40.121 — Story cleanup worker unified with provider-aware API lifecycle
+
+- **Implementation:** the scheduled Story cleanup worker no longer contains a second Supabase Storage deletion engine. It calls the canonical `stories_api._cleanup_story_media` helper for each archived/deleted Story media row.
+- **Observability:** worker results distinguish confirmed metadata/object deletion, provider cleanup queued, legal-hold/in-use/provider identity blocks, retryable failures and concurrent changes. Cloudinary media is never counted as deleted merely because a provider job was queued.
+- **Legacy safety:** the shared Story helper validates owner-prefixed paths and removes legacy derivative objects as well as originals; Cloudinary rows use the provider cleanup RPC and retain metadata until the provider worker confirms deletion.

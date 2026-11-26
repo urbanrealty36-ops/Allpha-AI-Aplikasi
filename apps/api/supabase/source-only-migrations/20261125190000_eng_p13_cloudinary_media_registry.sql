@@ -609,7 +609,7 @@ begin
   if v_media.provider_delete_state in ('queued','deleting') then
     return jsonb_build_object('outcome','already_queued','media',to_jsonb(v_media));
   end if;
-  if v_media.status not in ('uploaded','processing','ready','failed')
+  if v_media.status not in ('uploaded','processing','ready','failed','deleting','deleted')
      and not (v_media.status='uploading' and v_media.upload_expires_at is not null and v_media.upload_expires_at<=now()) then
     return jsonb_build_object('outcome','media_state_invalid');
   end if;

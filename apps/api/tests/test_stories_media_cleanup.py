@@ -101,3 +101,21 @@ def test_story_legacy_storage_cleanup_retains_existing_delete_flow(monkeypatch):
     assert asyncio.run(stories_api._cleanup_story_media(media["id"], media["owner_id"])) == 1
     assert storage_calls == [("DELETE", "content-media/owner/story/file.jpg")]
     assert any(call[0] == "DELETE" and call[1] == "content_media" for call in db_calls)
+
+
+
+def test_story_cleanup_detailed_result_distinguishes_provider_queue_from_deletion(monkeypatch):
+    media = {
+        "id": "00000000-0000-0000-0000-000000000431",
+        "owner_id": "00000000-0000-0000-0000-000000000432",
+        "storage_path": "allpha/asset", "provider_public_id": "allpha/asset",
+        "provider_asset_id": "cloudinary-asset", "status": "ready", "derivatives": [],
+    }
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        if method == "GET" and table == "content_media": return [media]
+        raise AssertionError((method, table, params, body))
+    async def fake_rpc(name, *, body): return {"outcome": "queued"}
+    monkeypatch.setattr(stories_api, "_server_db", fake_db)
+    monkeypatch.setattr(stories_api, "service_db_request", fake_rpc)
+    result = asyncio.run(stories_api._cleanup_story_media(media["id"], media["owner_id"], detailed=True))
+    assert result == {"deleted": 0, "queued": 1, "blocked": 0, "failed": 0, "concurrent": 0}
