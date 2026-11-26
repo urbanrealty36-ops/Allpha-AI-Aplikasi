@@ -45,7 +45,7 @@ jobs:
           set -euo pipefail
           test -s tools/recovery/backup_supabase_storage.py
           test -s tools/recovery/restore_supabase_storage.py
-          echo "Storage backup and isolated restore implementations are present."
+          echo "Storage backup and isolated restore implementations are present on this migration snapshot."
 
       - name: Require canonical production credentials
         shell: bash
