@@ -543,6 +543,38 @@ jobs:
           grep -q '^deletion_event_contract=PASS$' recovery-evidence/p03-deletion-governance-verification.txt
           echo "P03_DELETION_GOVERNANCE_MIGRATION_BLOB=$(git rev-parse HEAD:"$migration")" >> "$GITHUB_ENV"
 
+      - name: Apply and verify ENG-P13 Cloudinary media registry on disposable restore
+        shell: bash
+        run: |
+          set -euo pipefail
+          migration="apps/api/supabase/source-only-migrations/20261125190000_eng_p13_cloudinary_media_registry.sql"
+          test -s "$migration"
+          docker cp "$migration" "$SUPABASE_DB_CONTAINER:/tmp/eng-p13-cloudinary-media-registry.sql"
+          docker exec -u postgres "$SUPABASE_DB_CONTAINER" \
+            psql -U supabase_admin -d allpha_p02_restore_verification -v ON_ERROR_STOP=1 \
+            -f /tmp/eng-p13-cloudinary-media-registry.sql
+          docker exec -u postgres "$SUPABASE_DB_CONTAINER" \
+            psql -U supabase_admin -d allpha_p02_restore_verification -v ON_ERROR_STOP=1 -Atc "
+              select case when public.cloudinary_media_schema_readiness()->>'ready'='true'
+                then 'p13_cloudinary_schema_readiness=PASS'
+                else 'p13_cloudinary_schema_readiness=FAIL:' || public.cloudinary_media_schema_readiness()::text end;
+              select case when
+                has_function_privilege('service_role','public.reserve_cloudinary_media_upload(uuid,uuid,uuid,text,text,uuid,uuid,uuid,text,text,bigint,text,text,text,text,timestamptz,text)','EXECUTE')
+                and not has_function_privilege('authenticated','public.reserve_cloudinary_media_upload(uuid,uuid,uuid,text,text,uuid,uuid,uuid,text,text,bigint,text,text,text,text,timestamptz,text)','EXECUTE')
+                and not has_function_privilege('anon','public.reserve_cloudinary_media_upload(uuid,uuid,uuid,text,text,uuid,uuid,uuid,text,text,bigint,text,text,text,text,timestamptz,text)','EXECUTE')
+                then 'p13_media_reservation_grants=PASS' else 'p13_media_reservation_grants=FAIL' end;
+              select case when
+                (select count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace
+                  where n.nspname='public' and c.relname in ('content_media','content_lifecycle_jobs','content_lifecycle_events','content_provider_callbacks')
+                    and c.relrowsecurity)=4
+                and exists(select 1 from storage.buckets where id='content-media' and public=false)
+                then 'p13_media_rls_and_private_bucket=PASS' else 'p13_media_rls_and_private_bucket=FAIL' end;
+            " | tee recovery-evidence/p13-cloudinary-media-registry-verification.txt
+          grep -q '^p13_cloudinary_schema_readiness=PASS$' recovery-evidence/p13-cloudinary-media-registry-verification.txt
+          grep -q '^p13_media_reservation_grants=PASS$' recovery-evidence/p13-cloudinary-media-registry-verification.txt
+          grep -q '^p13_media_rls_and_private_bucket=PASS$' recovery-evidence/p13-cloudinary-media-registry-verification.txt
+          echo "P13_CLOUDINARY_MEDIA_MIGRATION_BLOB=$(git rev-parse HEAD:"$migration")" >> "$GITHUB_ENV"
+
       - name: Publish sanitized restore-test evidence
         shell: bash
         run: |

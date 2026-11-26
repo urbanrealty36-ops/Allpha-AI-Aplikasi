@@ -1967,3 +1967,10 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 - **Lifecycle:** creates `POST /v1/stories` draft with 24-hour expiry policy; attaches media through shared `uploadContentMedia` helper (Cloudinary when production flag is enabled, existing TUS rollback path otherwise); reuses the same idempotency key on retries; polls owner-scoped `GET /v1/media/{id}` until `ready + clean + processed_at`; then submits through `POST /v1/content/{id}/publish` and refreshes Story/Feed. It never reports public publication; moderation approval is still required.
 - **Draft safety:** caption edits update the same owned draft using the latest server version. A changed file identity creates a new persisted draft rather than reusing an idempotency key for different bytes.
 - **Verification:** Web build/tests pending Allpha Smoke. This is Web integration only; Native Story creation remains deferred because the Native app has no existing Story composer. Cloudinary flag remains disabled pending P13 schema/scanner/worker gates.
+
+
+## 40.111 — P13 Cloudinary registry migration added to disposable restore verification (2026-11-26)
+
+- **Migration-specific recovery evidence:** the ADR-0024 backup/restore workflow now applies the source-only ENG-P13 Cloudinary registry migration only to the isolated PostgreSQL 17 disposable restore, after the restored production snapshot and P03 lifecycle checks.
+- **Assertions:** Cloudinary media schema readiness RPC, service-role-only upload reservation grants, RLS enabled on the canonical media/callback/lifecycle tables, and the private `content-media` bucket. The source migration SHA is recorded in the workflow evidence and `GITHUB_ENV` for the run.
+- **Safety:** no production migration or data changes. This is a migration-specific dry-run/catalog verifier, not approval to apply the source-only migration to production. Any failure will be fixed in source before promotion.
