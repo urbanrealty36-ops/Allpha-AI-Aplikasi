@@ -85,7 +85,7 @@ def test_story_legacy_storage_cleanup_retains_existing_delete_flow(monkeypatch):
         if method == "PATCH" and table == "content_media":
             return [{**media, "status": "deleting"}]
         if method == "DELETE" and table == "content_media":
-            return None
+            return [{"id": media["id"]}]
         raise AssertionError((method, table, params, body))
 
     async def fake_storage(method, path):
