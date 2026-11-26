@@ -485,6 +485,22 @@ jobs:
           fi
           echo "P03_REQUEUE_AUDIT_MIGRATION_BLOB=$(git rev-parse HEAD:"$requeue_migration")" >> "$GITHUB_ENV"
 
+          hold_repair_migration="apps/api/supabase/migrations/20261126030000_eng_p03_legal_hold_release_metadata_forward_repair.sql"
+          test -s "$hold_repair_migration"
+          hold_repair_applied="$(docker exec -u postgres "$SUPABASE_DB_CONTAINER" \
+            psql -U supabase_admin -d allpha_p02_restore_verification -Atqc \
+            "select exists(select 1 from supabase_migrations.schema_migrations where version='20261126030000')")"
+          if [[ "$hold_repair_applied" == "t" ]]; then
+            echo "deletion_hold_release_metadata_repair=SKIPPED_ALREADY_APPLIED"
+          else
+            docker cp "$hold_repair_migration" "$SUPABASE_DB_CONTAINER:/tmp/eng-p03-legal-hold-release-metadata-forward-repair.sql"
+            docker exec -u postgres "$SUPABASE_DB_CONTAINER" \
+              psql -U supabase_admin -d allpha_p02_restore_verification -v ON_ERROR_STOP=1 \
+              -f /tmp/eng-p03-legal-hold-release-metadata-forward-repair.sql
+            echo "deletion_hold_release_metadata_repair=APPLIED_TO_RESTORE"
+          fi
+          echo "P03_HOLD_RELEASE_METADATA_REPAIR_BLOB=$(git rev-parse HEAD:"$hold_repair_migration")" >> "$GITHUB_ENV"
+
           docker exec -i -u postgres "$SUPABASE_DB_CONTAINER" \
             psql -U supabase_admin -d allpha_p02_restore_verification -v ON_ERROR_STOP=1 <<'SQL' | tee recovery-evidence/p03-deletion-governance-verification.txt
           begin;
@@ -498,6 +514,7 @@ jobs:
             v_subject text := (md5(gen_random_uuid()::text) || md5(gen_random_uuid()::text));
             v_request uuid;
             v_hold uuid;
+            v_hold_2 uuid;
             v_result record;
             v_status text;
             v_error text;
@@ -505,6 +522,9 @@ jobs:
             insert into public.account_legal_holds(subject_ref,reference_code,reason_code,active,created_by)
             values(v_subject,'RESTORE-' || substr(gen_random_uuid()::text,1,12),'legal_preservation',true,v_actor)
             returning id into v_hold;
+            insert into public.account_legal_holds(subject_ref,reference_code,reason_code,active,created_by)
+            values(v_subject,'RESTORE-' || substr(gen_random_uuid()::text,1,12),'legal_preservation',true,v_actor)
+            returning id into v_hold_2;
             insert into public.account_deletion_requests(user_id,subject_ref,status,request_metadata)
             values(v_actor,v_subject,'awaiting_policy','{}'::jsonb) returning id into v_request;
 
@@ -525,8 +545,20 @@ jobs:
             select * into v_result from public.evaluate_account_deletion_governance(100);
             select status,error_code into v_status,v_error
               from public.account_deletion_requests where id=v_request;
+            if v_status<>'blocked_legal_hold' or v_error<>'LEGAL_HOLD_ACTIVE' then
+              raise exception 'releasing one of multiple active holds incorrectly unblocked deletion';
+            end if;
+            if exists(select 1 from public.account_lifecycle_events
+              where request_id=v_request and event_type='deletion_unblocked') then
+              raise exception 'partial legal-hold release emitted an unblocked audit event';
+            end if;
+            update public.account_legal_holds
+               set active=false,released_at=now(),released_by=v_actor where id=v_hold_2;
+            select * into v_result from public.evaluate_account_deletion_governance(100);
+            select status,error_code into v_status,v_error
+              from public.account_deletion_requests where id=v_request;
             if v_status='blocked_legal_hold' then
-              raise exception 'released legal hold remained an active deletion blocker';
+              raise exception 'final legal-hold release remained an active deletion blocker';
             end if;
             if v_status<>'blocked_dependency' or v_error<>'ACCOUNT_EXPORT_REQUIRED' then
               raise exception 'released request did not advance to the independent export prerequisite gate';
@@ -633,6 +665,8 @@ jobs:
               "p03_deletion_governance_migration_blob": os.environ["P03_DELETION_GOVERNANCE_MIGRATION_BLOB"],
               "p03_requeue_audit_migration_applied": True,
               "p03_requeue_audit_migration_blob": os.environ["P03_REQUEUE_AUDIT_MIGRATION_BLOB"],
+              "p03_hold_release_metadata_repair_applied": True,
+              "p03_hold_release_metadata_repair_blob": os.environ["P03_HOLD_RELEASE_METADATA_REPAIR_BLOB"],
               "p13_cloudinary_media_migration_applied": True,
               "p13_cloudinary_media_migration_blob": os.environ["P13_CLOUDINARY_MEDIA_MIGRATION_BLOB"],
               "p13_cloudinary_media_verification": p13_verification.read_text().splitlines(),
