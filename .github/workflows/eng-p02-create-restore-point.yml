@@ -11,6 +11,7 @@ on:
       - .github/workflows/eng-p03-apply-account-lifecycle-migration.yml
       - apps/api/supabase/migrations/**
       - apps/api/supabase/source-only-migrations/**
+      - tools/recovery/**
       - apps/api/supabase/migrations/20261123191600_eng_p03_account_export_and_deletion_request_lifecycle.sql
       - apps/api/supabase/migrations/20261123191800_eng_p03_lease_scoped_export_artifacts.sql
       - apps/api/supabase/migrations/20261123192100_eng_p03_export_artifact_expiration.sql
@@ -31,7 +32,7 @@ concurrency:
 jobs:
   create-and-verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
@@ -200,7 +201,102 @@ jobs:
               raise SystemExit("Backup archive contains no table-of-contents entries.")
           PY
 
-      - name: Upload pre-migration database backup and manifest
+      - name: Resolve a server-only Supabase Storage backup key
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_ID/api-keys?reveal=true" \
+            -o /tmp/supabase-project-api-keys.json
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+
+          keys = json.loads(Path("/tmp/supabase-project-api-keys.json").read_text())
+          if not isinstance(keys, list):
+              raise SystemExit("Supabase Management API returned an unexpected API-key response.")
+          key = next((item.get("api_key") for item in keys
+                      if item.get("type") == "secret" and item.get("api_key")), None)
+          if not key:
+              key = next((item.get("api_key") for item in keys
+                          if item.get("type") == "legacy"
+                          and item.get("name") == "service_role"
+                          and item.get("api_key")), None)
+          if not key:
+              raise SystemExit("No server-only Supabase Storage API key was returned.")
+          print("::add-mask::" + key)
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as output:
+              output.write("SUPABASE_STORAGE_BACKUP_KEY=" + key + "\n")
+          Path("/tmp/supabase-project-api-keys.json").unlink(missing_ok=True)
+          print("Resolved a server-only Storage key without writing it to the artifact or logs.")
+          PY
+
+      - name: Capture canonical Supabase Storage buckets and object inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -e PGPASSWORD="$SUPABASE_DB_PASSWORD" \
+            -e PGSSLMODE=require \
+            postgres:17-alpine \
+            psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -Atc \
+            "select coalesce(json_agg(json_build_object(
+              'id',id,'name',name,'public',public,
+              'file_size_limit',file_size_limit,'allowed_mime_types',allowed_mime_types
+            ) order by id),'[]'::json)::text from storage.buckets" \
+            > recovery-evidence/storage-buckets.json
+          docker run --rm \
+            -e PGPASSWORD="$SUPABASE_DB_PASSWORD" \
+            -e PGSSLMODE=require \
+            postgres:17-alpine \
+            psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -Atc \
+            "select coalesce(json_agg(json_build_object(
+              'bucket_id',bucket_id,'name',name,'metadata',metadata,
+              'created_at',created_at,'updated_at',updated_at
+            ) order by bucket_id,name),'[]'::json)::text from storage.objects" \
+            > recovery-evidence/storage-inventory.json
+
+      - name: Back up and checksum every Supabase Storage object
+        shell: bash
+        env:
+          SUPABASE_URL: https://dvdziauyvuhcnqhrrrww.supabase.co
+        run: |
+          set -euo pipefail
+          python tools/recovery/backup_supabase_storage.py \
+            --project-ref "$SUPABASE_PROJECT_ID" \
+            --inventory recovery-evidence/storage-inventory.json \
+            --buckets recovery-evidence/storage-buckets.json \
+            --archive recovery-evidence/allpha-supabase-storage-pre-migration.tar \
+            --manifest recovery-evidence/storage-backup-manifest.json \
+            --evidence recovery-evidence/storage-backup-evidence.json
+
+      - name: Merge Storage coverage into the pre-migration recovery manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          point_path = Path("recovery-evidence/restore-point-evidence.json")
+          point = json.loads(point_path.read_text())
+          storage = json.loads(Path("recovery-evidence/storage-backup-evidence.json").read_text())
+          point.update(storage)
+          point["storage_objects_included"] = True
+          point["storage_backup_method"] = "authenticated Supabase Storage REST download; archive SHA-256 and per-object hashes verified"
+          point["storage_restore_tested"] = False
+          point_path.write_text(json.dumps(point, indent=2, sort_keys=True) + "\n")
+          print(json.dumps({
+              "storage_objects_included": point["storage_objects_included"],
+              "storage_bucket_count": point["storage_bucket_count"],
+              "storage_object_count": point["storage_object_count"],
+              "storage_total_bytes": point["storage_total_bytes"],
+              "storage_archive_sha256": point["storage_archive_sha256"],
+          }, indent=2))
+          PY
+
+      - name: Upload pre-migration database and Storage backup with manifests
         uses: actions/upload-artifact@v4
         with:
           name: eng-p02-pre-migration-db-backup
@@ -208,6 +304,11 @@ jobs:
             recovery-evidence/allpha-p02-pre-migration.dump
             recovery-evidence/restore-point-evidence.json
             recovery-evidence/dump.toc
+            recovery-evidence/allpha-supabase-storage-pre-migration.tar
+            recovery-evidence/storage-buckets.json
+            recovery-evidence/storage-inventory.json
+            recovery-evidence/storage-backup-manifest.json
+            recovery-evidence/storage-backup-evidence.json
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
