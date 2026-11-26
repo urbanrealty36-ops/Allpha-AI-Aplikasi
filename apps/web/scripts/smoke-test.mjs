@@ -562,7 +562,7 @@ if (existsSync(profileFeedApiPath)) {
   const profileFeedApi = readFileSync(profileFeedApiPath, "utf8");
   assert.ok(profileFeedApi.includes('@router.get("/v1/me/profile-feed"') && profileFeedApi.includes('user: dict[str, Any] = Depends(current_user)'), "Profile Feed must be protected by the canonical authenticated API");
   assert.ok(profileFeedApi.includes('"owner_id": f"eq.{owner}"') && profileFeedApi.includes('"status": "eq.published"') && profileFeedApi.includes('"moderation_status": "eq.approved"'), "Profile Feed must be scoped to owner-published approved content");
-  assert.ok(profileFeedApi.includes('"engagement": {') && profileFeedApi.includes('"preview_url"'), "Profile Feed must return real engagement and signed media preview metadata");
+  assert.ok(profileFeedApi.includes('"engagement": {') && profileFeedApi.includes("_media_preview_projection") && profileFeedApi.includes("provider_public_id"), "Profile Feed must return real engagement and canonical provider-aware signed media preview metadata");
 }
 assert.ok(profileRoute.includes('item.owner_id === me.user!.id'), "Profile feed must be scoped to the authenticated identity");
 assert.ok(profileRoute.includes('/reaction') && profileRoute.includes('method: post.isLiked ? "DELETE" : "PUT"'), "Profile reactions must use canonical Feed mutation endpoints");

@@ -2063,3 +2063,9 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 
 - Provider cleanup now refuses legacy Storage deletion unless the lifecycle job supplies a non-empty owner ID and the object path begins with that exact owner prefix.
 - Story legacy cleanup now treats a missing original object as idempotently deleted but still attempts every derivative object; any non-404 derivative failure retains metadata for retry. This prevents an absent original from causing derivative objects to be orphaned.
+
+
+## 40.125 — Provider-aware Story cleanup worker syntax and smoke contract repaired
+
+- Rebuilt the Story cleanup worker as one bounded module after the prior incremental refactor left a duplicate partial function block. The worker now imports only the canonical Story cleanup helper, reports queued provider work separately from confirmed deletions, and remains fail-closed on configuration/runtime faults.
+- Updated the Web source smoke assertion to require the shared provider-aware media projection and Cloudinary provider identity rather than the superseded direct Supabase signed-preview helper. This is a stronger assertion of the new canonical delivery contract.
