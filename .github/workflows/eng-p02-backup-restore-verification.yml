@@ -471,10 +471,9 @@ jobs:
           # requeues blocked requests before the governance worker runs.
           requeue_migration="apps/api/supabase/migrations/20261124012454_eng_p03_requeue_audit_trail.sql"
           test -s "$requeue_migration"
-          requeue_version="20261124012454"
           requeue_applied="$(docker exec -u postgres "$SUPABASE_DB_CONTAINER" \
             psql -U supabase_admin -d allpha_p02_restore_verification -Atqc \
-            "select exists(select 1 from supabase_migrations.schema_migrations where version='${requeue_version}')")"
+            "select exists(select 1 from supabase_migrations.schema_migrations where version='20261124012454')")"
           if [[ "$requeue_applied" == "t" ]]; then
             echo "deletion_hold_release_audit_migration=SKIPPED_ALREADY_APPLIED"
           else
