@@ -2057,3 +2057,9 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 ## 40.123 — Provider cleanup and retention regression tests added
 
 - Added tests for owner-scoped derivative deletion, cross-owner path rejection, Cloudinary asset + legacy derivative cleanup ordering, retention deferral while provider deletion is queued, and metadata deletion only after provider confirmation.
+
+
+## 40.124 — Cleanup path ownership made mandatory; legacy derivative 404 handling corrected
+
+- Provider cleanup now refuses legacy Storage deletion unless the lifecycle job supplies a non-empty owner ID and the object path begins with that exact owner prefix.
+- Story legacy cleanup now treats a missing original object as idempotently deleted but still attempts every derivative object; any non-404 derivative failure retains metadata for retry. This prevents an absent original from causing derivative objects to be orphaned.

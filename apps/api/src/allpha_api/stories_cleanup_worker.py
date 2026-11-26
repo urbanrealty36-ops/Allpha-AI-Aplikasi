@@ -13,7 +13,6 @@ from allpha_api.content_api import _config
 from allpha_api.stories_api import _cleanup_story_media, _expire_due_stories, _server_db
 
 log = logging.getLogger("allpha.stories_cleanup_worker")
-ELIGIBLE_MEDIA_STATES = ("uploaded", "ready", "processing", "failed", "deleting", "deleted")
 DEFAULT_BATCH_LIMIT = 100
 MAX_BATCH_LIMIT = 200
 
@@ -76,8 +75,6 @@ async def _sweep_archived_story_media(*, limit: int) -> dict[str, int]:
         "stories_with_media": 0,
         "media_candidates": 0,
         "media_deleted": 0,
-        "storage_failures": 0,
-        "metadata_failures": 0,
         "concurrent_changes": 0,
     }
     # Resolve parent Story IDs separately instead of embedding content_items in

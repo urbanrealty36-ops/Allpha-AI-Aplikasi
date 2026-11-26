@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from allpha_api.auth import current_user, optional_current_user, service_db_request
-from allpha_api.content_api import MEDIA_FIELDS, _server_db, _media_preview_projection, _signed_media_preview_url, _storage
+from allpha_api.content_api import MEDIA_FIELDS, _server_db, _media_preview_projection, _storage
 from allpha_api.feed_api import _edges
 
 router = APIRouter(prefix="/v1/stories", tags=["stories"])
@@ -131,18 +131,28 @@ async def _cleanup_story_media(
                 stats["concurrent"] += 1
                 continue
             marked = rows[0]
+        original = _validated_story_storage_path(str(marked.get("storage_path") or ""), owner)
         try:
-            original = _validated_story_storage_path(str(marked.get("storage_path") or ""), owner)
             await _storage("DELETE", f"content-media/{original}")
-            for derivative in marked.get("derivatives") or []:
-                path = derivative.get("storage_path") if isinstance(derivative, dict) else None
-                if path:
-                    safe_path = _validated_story_storage_path(str(path), owner)
-                    await _storage("DELETE", f"content-media/{safe_path}")
         except HTTPException as exc:
             if exc.status_code != 404:
                 stats["failed"] += 1
                 continue
+        derivative_failed = False
+        for derivative in marked.get("derivatives") or []:
+            path = derivative.get("storage_path") if isinstance(derivative, dict) else None
+            if not path:
+                continue
+            safe_path = _validated_story_storage_path(str(path), owner)
+            try:
+                await _storage("DELETE", f"content-media/{safe_path}")
+            except HTTPException as exc:
+                if exc.status_code != 404:
+                    derivative_failed = True
+                    break
+        if derivative_failed:
+            stats["failed"] += 1
+            continue
         rows = await _server_db("DELETE", "content_media", params={
             "id": f"eq.{marked['id']}", "owner_id": f"eq.{owner}",
             "status": "eq.deleting", "select": "id",

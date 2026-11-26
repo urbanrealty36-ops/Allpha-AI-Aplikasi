@@ -42,7 +42,7 @@ class CleanupWorker:
   bucket=str(legacy_storage.get("bucket_id") or "")
   path=str(legacy_storage.get("storage_path") or "")
   parts=path.split("/") if path else []
-  if bucket!="content-media" or not path or path.startswith("/") or ".." in parts or (owner_id and (not parts or parts[0]!=owner_id)):
+  if bucket!="content-media" or not owner_id or not path or path.startswith("/") or ".." in parts or not parts or parts[0]!=owner_id:
    raise ValueError("LEGACY_STORAGE_IDENTITY_INVALID")
   url=f"{self.base}/storage/v1/object/{quote(bucket,safe='')}/{quote(path,safe='/')}"
   response=await self.client.delete(url)
