@@ -2032,3 +2032,10 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 - **Cleanup payload:** provider cleanup jobs carry the persisted derivative manifest. The single provider cleanup worker deletes legacy Supabase originals and derivative objects after provider deletion, then marks media metadata deleted. Cloudinary derivative transformations remain provider-managed and are not misrouted to Supabase Storage.
 - **Path security:** every legacy object/derivative delete requires the private `content-media` bucket, rejects traversal/absolute paths, and enforces the owning user's storage-path prefix.
 - **Safety:** no direct metadata deletion before provider confirmation. Production migration remains gated by ADR-0024; source and worker changes only.
+
+
+## 40.120 — Content retention now delegates all media deletion to provider cleanup
+
+- **Implementation:** the destructive retention executor no longer deletes Supabase objects or `content_media` rows directly. It requires Cloudinary media schema readiness, requests provider cleanup through the canonical service RPC for Supabase and Cloudinary assets, and defers the retention lease while provider jobs are queued/blocked.
+- **Deletion order:** only after provider cleanup confirms `status=deleted`, `provider_delete_state=deleted` and `provider_deleted_at` does retention remove media metadata. The parent content item is deleted only after the media registry is empty. Receipts list only provider/object identities whose deletion was confirmed.
+- **Safety:** legal holds, active references, unexpired upload intents, missing provider identity and provider failures defer the purge; they do not become fake success. Worker activation remains blocked by ADR-0024 approval flags and the unavailable scanner/cleanup service capacity.

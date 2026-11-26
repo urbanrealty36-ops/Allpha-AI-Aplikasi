@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio, logging, os, signal, uuid
 from datetime import datetime, timezone
 from typing import Any
-from urllib.parse import quote
 import httpx
 log=logging.getLogger("allpha.content_retention_worker")
 
@@ -30,10 +29,67 @@ class RetentionWorker:
   h={"apikey":self.key,"Authorization":f"Bearer {self.key}","Content-Type":"application/json"}
   if prefer:h["Prefer"]=prefer
   r=await self.client.request(method,f"{self.base}/rest/v1/{path}",params=params,json=body,headers=h);r.raise_for_status();return r.json() if r.content else None
- async def remove_object(self,bucket,path):
-  url=f"{self.base}/storage/v1/object/{quote(bucket,safe='')}/{quote(path,safe='/')}"
-  response=await self.client.delete(url)
-  if response.status_code not in (200,204,404):response.raise_for_status()
+ async def _delete_confirmed_media_metadata(self,item):
+  media_id=str(item["id"]);owner_id=str(item["owner_id"])
+  rows=await self.db("DELETE","content_media",{
+   "id":f"eq.{media_id}","owner_id":f"eq.{owner_id}",
+   "status":"eq.deleted","provider_delete_state":"eq.deleted",
+  },prefer="return=representation")
+  if rows:
+   return True
+  remaining=await self.db("GET","content_media",{
+   "select":"id","id":f"eq.{media_id}","owner_id":f"eq.{owner_id}","limit":"1",
+  })
+  return not bool(remaining)
+
+ async def _request_provider_cleanup(self,item):
+  media_id=str(item["id"]);owner_id=str(item["owner_id"])
+  if item.get("status")=="deleted" and item.get("provider_delete_state")=="deleted" and item.get("provider_deleted_at"):
+   return "deleted" if await self._delete_confirmed_media_metadata(item) else "pending"
+  result=await self.rpc("request_cloudinary_content_media_delete",{
+   "p_media_id":media_id,"p_owner_id":owner_id,
+  })
+  outcome=result.get("outcome") if isinstance(result,dict) else None
+  if outcome in ("queued","already_queued"):
+   return "pending"
+  if outcome=="already_deleted":
+   current=await self.db("GET","content_media",{
+    "select":"id,owner_id,status,provider_delete_state,provider_deleted_at",
+    "id":f"eq.{media_id}","owner_id":f"eq.{owner_id}","limit":"1",
+   })
+   if current and current[0].get("status")=="deleted" and current[0].get("provider_delete_state")=="deleted" and current[0].get("provider_deleted_at"):
+    return "deleted" if await self._delete_confirmed_media_metadata(current[0]) else "pending"
+   return "pending"
+  if outcome=="media_not_found":
+   return "deleted"
+  return "pending"
+
+ async def _cleanup_media_rows(self,job,media_rows):
+  deleted_objects=[];deleted_rows=[];pending=False
+  for item in media_rows or []:
+   outcome=await self._request_provider_cleanup(item)
+   if outcome=="pending":
+    pending=True
+    continue
+   if outcome=="deleted":
+    deleted_rows.append(str(item["id"]))
+    provider=str(item.get("storage_provider") or "supabase")
+    if provider=="cloudinary" and item.get("provider_public_id"):
+     deleted_objects.append("cloudinary:"+str(item["provider_public_id"]))
+    elif item.get("bucket_id") and item.get("storage_path"):
+     deleted_objects.append("supabase_storage:"+str(item["bucket_id"])+"/"+str(item["storage_path"]))
+    for derivative in item.get("derivatives") or []:
+     path=derivative.get("storage_path") if isinstance(derivative,dict) else None
+     if path:
+      deleted_objects.append("supabase_storage:"+str(item.get("bucket_id") or "content-media")+"/"+str(path))
+  if pending:
+   await self.rpc("defer_content_retention_job",{
+    "p_job_id":str(job["id"]),"p_lease_token":str(job["lease_token"]),
+    "p_reason":"provider_media_cleanup_pending",
+   })
+   return False,[],[]
+  return True,deleted_objects,deleted_rows
+
  async def process(self,job):
   jid=str(job["id"]);token=str(job["lease_token"]);payload=job.get("payload") or {}
   try:
@@ -41,32 +97,41 @@ class RetentionWorker:
    if not isinstance(authorization,dict) or authorization.get("outcome")!="authorized":
     await self.rpc("defer_content_retention_job",{"p_job_id":jid,"p_lease_token":token,"p_reason":(authorization or {}).get("outcome","retention_not_authorized")})
     return
-   deleted=[];deleted_rows=[]
    if payload.get("scope")=="content":
     cid=str(payload["content_id"])
-    media=await self.db("GET","content_media",{"select":"id,bucket_id,storage_path,derivatives","content_id":f"eq.{cid}","limit":"200"})
-    for item in media or []:
-     await self.remove_object(item["bucket_id"],item["storage_path"]);deleted.append(item["storage_path"])
-     for derivative in item.get("derivatives") or []:
-      path=derivative.get("storage_path")
-      if path:
-       await self.remove_object(item["bucket_id"],path);deleted.append(path)
-     deleted_rows.append(str(item["id"]))
-    await self.db("DELETE","content_media",{"content_id":f"eq.{cid}"})
+    media=await self.db("GET","content_media",{
+     "select":"id,owner_id,status,storage_provider,provider_public_id,provider_delete_state,provider_deleted_at,bucket_id,storage_path,derivatives",
+     "content_id":f"eq.{cid}","limit":"200",
+    })
+    complete,deleted,deleted_rows=await self._cleanup_media_rows(job,media)
+    if not complete:
+     return
+    remaining=await self.db("GET","content_media",{"select":"id","content_id":f"eq.{cid}","limit":"1"})
+    if remaining:
+     await self.rpc("defer_content_retention_job",{"p_job_id":jid,"p_lease_token":token,"p_reason":"provider_media_registry_not_empty"})
+     return
     await self.db("DELETE","content_items",{"id":f"eq.{cid}","status":"eq.deleted","purge_started_at":"not.is.null"})
     content_id=cid
     owner_id=job.get("owner_id")
    elif payload.get("scope")=="abandoned_upload":
     mid=str(payload["media_id"])
-    rows=await self.db("GET","content_media",{"select":"id,bucket_id,storage_path,derivatives,content_id,owner_id","id":f"eq.{mid}","status":"in.(uploading,failed)","limit":"1"})
+    rows=await self.db("GET","content_media",{
+     "select":"id,owner_id,content_id,status,storage_provider,provider_public_id,provider_delete_state,provider_deleted_at,bucket_id,storage_path,derivatives",
+     "id":f"eq.{mid}","status":"in.(uploading,failed,deleting,deleted)","limit":"1",
+    })
     if rows:
-     item=rows[0];await self.remove_object(item["bucket_id"],item["storage_path"]);deleted.append(item["storage_path"])
-     for derivative in item.get("derivatives") or []:
-      path=derivative.get("storage_path")
-      if path:await self.remove_object(item["bucket_id"],path);deleted.append(path)
-     await self.db("DELETE","content_media",{"id":f"eq.{mid}","status":"in.(uploading,failed)"})
-     deleted_rows.append(mid);content_id=item["content_id"];owner_id=item["owner_id"]
-    else:content_id=job.get("content_id");owner_id=job.get("owner_id")
+     item=rows[0]
+     complete,deleted,deleted_rows=await self._cleanup_media_rows(job,rows)
+     if not complete:
+      return
+     remaining=await self.db("GET","content_media",{"select":"id","id":f"eq.{mid}","limit":"1"})
+     if remaining:
+      await self.rpc("defer_content_retention_job",{"p_job_id":jid,"p_lease_token":token,"p_reason":"provider_media_registry_not_empty"})
+      return
+     content_id=item.get("content_id") or job.get("content_id")
+     owner_id=item.get("owner_id") or job.get("owner_id")
+    else:
+     deleted=[];deleted_rows=[];content_id=job.get("content_id");owner_id=job.get("owner_id")
    else:raise ValueError("RETENTION_SCOPE_INVALID")
    await self.db("POST","content_retention_receipts",body={
     "job_id":jid,"content_id":content_id,"owner_id":owner_id,"dry_run":False,
@@ -82,6 +147,9 @@ class RetentionWorker:
  async def batch(self):
   if not self.enabled:
    return 0
+  readiness=await self.rpc("cloudinary_media_schema_readiness",{})
+  if not isinstance(readiness,dict) or readiness.get("ready") is not True:
+   raise RuntimeError("CONTENT_RETENTION_MEDIA_SCHEMA_NOT_READY")
   await self.rpc("enqueue_expired_content_retention_jobs",{"p_limit":100})
   jobs=await self.rpc("claim_content_lifecycle_jobs",{"p_worker_id":self.worker_id,"p_limit":1,"p_lease_seconds":300,"p_job_type":"retention_purge"}) or []
   for job in jobs:await self.process(job)
