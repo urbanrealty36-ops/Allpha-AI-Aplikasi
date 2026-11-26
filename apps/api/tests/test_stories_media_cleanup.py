@@ -70,7 +70,7 @@ def test_story_legacy_storage_cleanup_retains_existing_delete_flow(monkeypatch):
     media = {
         "id": "00000000-0000-0000-0000-000000000421",
         "owner_id": "00000000-0000-0000-0000-000000000422",
-        "storage_path": "owner/story/file.jpg",
+        "storage_path": "00000000-0000-0000-0000-000000000422/story/file.jpg",
         "provider_public_id": None,
         "provider_asset_id": None,
         "status": "uploaded",
@@ -99,7 +99,7 @@ def test_story_legacy_storage_cleanup_retains_existing_delete_flow(monkeypatch):
     monkeypatch.setattr(stories_api, "_storage", fake_storage)
 
     assert asyncio.run(stories_api._cleanup_story_media(media["id"], media["owner_id"])) == 1
-    assert storage_calls == [("DELETE", "content-media/owner/story/file.jpg")]
+    assert storage_calls == [("DELETE", "content-media/00000000-0000-0000-0000-000000000422/story/file.jpg")]
     assert any(call[0] == "DELETE" and call[1] == "content_media" for call in db_calls)
 
 

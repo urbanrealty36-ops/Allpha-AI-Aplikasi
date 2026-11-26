@@ -2075,3 +2075,10 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 
 - Removed a duplicate top-level `concurrency` key that made GitHub Actions parse the workflow without creating a job. The existing serialized restore concurrency group remains in place.
 - Added the P13 Cloudinary registry dry-run result and exact migration blob SHA to the sanitized recovery evidence JSON and uploaded artifact. The restore gate will now prove both P03 recovery contracts and P13 schema/catalog readiness from the same disposable backup snapshot.
+
+
+## 40.127 — Existing API tests aligned to provider-aware media projection
+
+- Updated Feed and Story tests to mock the shared provider-aware projection rather than the retired direct Storage URL helper. No-media Feed tests no longer install an unused Storage mock.
+- Replaced the obsolete Story cleanup worker tests for its removed duplicate Storage deleter with tests for bounded sweep behavior, canonical provider cleanup delegation, and distinct queued-vs-confirmed deletion metrics.
+- Updated legacy Story media fixtures to use the enforced owner-prefixed private Storage path.

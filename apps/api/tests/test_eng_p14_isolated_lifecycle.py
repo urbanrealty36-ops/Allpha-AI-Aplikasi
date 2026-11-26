@@ -121,7 +121,6 @@ def test_client_api_data_adapter_feed_interaction_lifecycle(monkeypatch):
         raise AssertionError(f"unexpected method {method} for {table}")
 
     monkeypatch.setattr(feed_api, "_server_db", isolated_data_adapter)
-    monkeypatch.setattr(feed_api, "_signed_media_preview_url", lambda path, *, expires_in=300: None)
     app.dependency_overrides[current_user] = _test_identity
     try:
         client = TestClient(app)

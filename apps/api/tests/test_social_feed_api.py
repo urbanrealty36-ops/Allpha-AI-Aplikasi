@@ -112,7 +112,6 @@ def test_feed_ranks_followed_creator_and_applies_block_mute_filters(monkeypatch)
         raise AssertionError("feed fixture has no media")
 
     monkeypatch.setattr(feed_api, "_server_db", fake_db)
-    monkeypatch.setattr(feed_api, "_signed_media_preview_url", no_signed_url)
     app.dependency_overrides[current_user] = _fixture_user
     app.dependency_overrides[optional_current_user] = _fixture_user
     try:
@@ -292,7 +291,6 @@ def test_shared_item_deep_link_returns_viewer_state(monkeypatch):
         raise AssertionError(f"unexpected {method} {table}")
 
     monkeypatch.setattr(feed_api, "_server_db", fake_db)
-    monkeypatch.setattr(feed_api, "_signed_media_preview_url", lambda path: None)
     app.dependency_overrides[current_user] = _fixture_user
     app.dependency_overrides[optional_current_user] = _fixture_user
     try:
@@ -424,7 +422,6 @@ def test_guest_feed_returns_only_public_published_content(monkeypatch):
         raise AssertionError("fixture has no media")
 
     monkeypatch.setattr(feed_api, "_server_db", fake_db)
-    monkeypatch.setattr(feed_api, "_signed_media_preview_url", no_signed_url)
     response = TestClient(app).get("/v1/feed?mode=for_you&limit=10")
     assert response.status_code == 200, response.text
     payload = response.json()
@@ -980,7 +977,6 @@ def test_following_feed_returns_only_active_followed_creators(monkeypatch):
         raise AssertionError("feed fixture has no media")
 
     monkeypatch.setattr(feed_api, "_server_db", fake_db)
-    monkeypatch.setattr(feed_api, "_signed_media_preview_url", no_signed_url)
     app.dependency_overrides[current_user] = _fixture_user
     app.dependency_overrides[optional_current_user] = _fixture_user
     try:

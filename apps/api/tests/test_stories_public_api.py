@@ -54,13 +54,18 @@ def test_guest_story_discovery_returns_only_public_profile_stories_and_hides_sto
             }]
         raise AssertionError(f"unexpected anonymous story query: {table}")
 
-    async def signed_url(path: str, *, expires_in: int = 300):
-        assert path == "private/path/story.jpg"
-        assert expires_in == 300
-        return "https://signed.example.invalid/story.jpg?expires=300"
+    async def projected_media(item):
+        assert item["storage_path"] == "private/path/story.jpg"
+        return {
+            **item,
+            "preview_url": "https://signed.example.invalid/story.jpg?expires=300",
+            "original_preview_url": "https://signed.example.invalid/story.jpg?expires=300",
+            "moderation_preview_url": None,
+            "derivative_previews": [],
+        }
 
     monkeypatch.setattr(stories_api, "_server_db", fake_db)
-    monkeypatch.setattr(stories_api, "_signed_media_preview_url", signed_url)
+    monkeypatch.setattr(stories_api, "_media_preview_projection", projected_media)
     app.dependency_overrides.clear()
     try:
         response = TestClient(app).get("/v1/stories?limit=10")
