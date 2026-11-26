@@ -64,7 +64,7 @@ type Routes = {
 type NativeContentItem = { id: string; body: string; content_type: string; visibility: string; status: string; moderation_status: string; version: number; media?: { id: string; filename: string; media_type: string; status: string }[] };
 type NativeFeedItem = { authorship?: { type: "human_agent" | "agent_attributed" | "human"; disclosure?: string | null }; id: string; owner_id: string; ai_agent_id?: string | null; author_type?: "human" | "agent"; agent?: { id: string; handle: string; display_name: string; avatar_url?: string | null; description?: string | null; disclosure?: string | null } | null; body: string; content_type: string; published_at?: string | null; created_at: string; creator?: { username?: string | null; display_name?: string | null; avatar_url?: string | null }; media?: { id: string; filename: string; media_type: string; preview_url?: string | null }[]; engagement?: { likes: number; comments: number; saves: number; shares?: number }; viewer_reaction?: string | null; saved?: boolean };
 type NativeFeedComment = { id: string; actor_user_id: string; body: string; created_at: string; parent_comment_id?: string | null };
-type NativeStory = { id: string; owner_id: string; body: string; content_type: string; visibility: string; status: string; moderation_status: string; version: number; created_at: string; published_at?: string | null; expires_at?: string | null; creator?: { username?: string | null; display_name?: string | null; avatar_url?: string | null }; media?: { id: string; filename: string; media_type: string; preview_url?: string | null }[] };
+type NativeStory = { id: string; owner_id: string; body: string; content_type: string; visibility: string; status: string; moderation_status: string; version: number; created_at: string; published_at?: string | null; expires_at?: string | null; creator?: { username?: string | null; display_name?: string | null; avatar_url?: string | null }; media?: { id: string; filename: string; media_type: string; status?: string; scan_status?: string; processed_at?: string | null; preview_url?: string | null }[] };
 
 
 type NativeContentFile = { uri: string; name: string; mimeType?: string | null; size?: number | null };
@@ -982,6 +982,18 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
         const created = await apiRequest("/v1/stories", { method: "POST", body: JSON.stringify({ body: storyBody.trim(), visibility: storyVisibility, expires_after_hours: storyTtl }) }) as { item: NativeStory };
         contentId = created.item.id;
         setStoryDraftId(contentId);
+      } else {
+        const mine = await apiRequest("/v1/stories/mine?limit=50") as { items?: NativeStory[] };
+        const current = mine.items?.find(item => item.id === contentId);
+        if (!current || !["draft", "failed"].includes(current.status)) {
+          throw new Error("Draft Story tidak lagi dapat diedit. Muat ulang Stories sebelum membuat draft baru.");
+        }
+        if (current.body !== storyBody.trim() || current.visibility !== storyVisibility) {
+          await apiRequest("/v1/content/" + encodeURIComponent(contentId), {
+            method: "PATCH",
+            body: JSON.stringify({ body: storyBody.trim(), visibility: storyVisibility, expected_version: current.version }),
+          });
+        }
       }
       if (storyFile) {
         const mediaId = storyUploadId || createClientUuid();
@@ -994,6 +1006,27 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
           setStoryUploadProgress, "allpha:story:tus",
         );
         await SecureStore.deleteItemAsync("allpha:story:tus:" + mediaId);
+
+        const mine = await apiRequest("/v1/stories/mine?limit=50") as { items?: NativeStory[] };
+        const current = mine.items?.find(item => item.id === contentId);
+        const mediaIds = (current?.media ?? []).map(item => item.id);
+        if (!mediaIds.length) throw new Error("API belum mengembalikan metadata media Story setelah upload.");
+        let allReady = false;
+        for (let attempt = 0; attempt < 30; attempt += 1) {
+          let pending = false;
+          for (const id of mediaIds) {
+            const status = await apiRequest("/v1/media/" + encodeURIComponent(id)) as {
+              item?: { status?: string; scan_status?: string; processed_at?: string | null };
+            };
+            if (status.item?.status === "failed" || status.item?.status === "deleted" || status.item?.scan_status === "rejected") {
+              throw new Error("Media Story gagal melewati pemindaian atau pemrosesan. Draft tetap tersimpan.");
+            }
+            if (status.item?.status !== "ready" || status.item.scan_status !== "clean" || !status.item.processed_at) pending = true;
+          }
+          if (!pending) { allReady = true; break; }
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+        if (!allReady) throw new Error("Media Story masih diproses. Draft tersimpan; coba kirim kembali setelah pemindaian dan derivative selesai.");
       }
       const result = await apiRequest("/v1/content/" + encodeURIComponent(contentId) + "/publish", { method: "POST" }) as { message?: string };
       setStoryBody(""); setStoryFile(null); setStoryDraftId(""); setStoryUploadId(""); setStoryUploadProgress(0);

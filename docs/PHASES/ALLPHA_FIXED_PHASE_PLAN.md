@@ -1974,3 +1974,10 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 - **Migration-specific recovery evidence:** the ADR-0024 backup/restore workflow now applies the source-only ENG-P13 Cloudinary registry migration only to the isolated PostgreSQL 17 disposable restore, after the restored production snapshot and P03 lifecycle checks.
 - **Assertions:** Cloudinary media schema readiness RPC, service-role-only upload reservation grants, RLS enabled on the canonical media/callback/lifecycle tables, and the private `content-media` bucket. The source migration SHA is recorded in the workflow evidence and `GITHUB_ENV` for the run.
 - **Safety:** no production migration or data changes. This is a migration-specific dry-run/catalog verifier, not approval to apply the source-only migration to production. Any failure will be fixed in source before promotion.
+
+
+## 40.112 — Native Story media lifecycle waits for clean ready state (2026-11-26)
+
+- **Native implementation:** Story composer now refreshes the canonical owner draft before editing, updates caption/visibility using optimistic version checks, and reuses the existing upload idempotency key for retry.
+- **Media lifecycle:** after native direct provider upload (Cloudinary when enabled, TUS rollback path otherwise), the client reads owner-scoped `/v1/stories/mine` metadata and polls each attached `/v1/media/{id}` until every asset is `ready + clean + processed_at`. Failed/rejected media and a processing timeout keep the draft intact; publication is never attempted while media is pending.
+- **Integration:** Native Story uses the same FastAPI Story/content lifecycle as Web and no direct Supabase business writes. Cloudinary rollout remains gated by registry schema, scanner and worker readiness.
