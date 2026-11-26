@@ -26,7 +26,7 @@ permissions:
 
 concurrency:
   group: eng-p02-pre-migration-restore-point
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   create-and-verify:
