@@ -1,5 +1,62 @@
-from allpha_api.media_api import media_item_response
+import uuid
+
+from fastapi import HTTPException
+
+from allpha_api.media_api import UploadIntent, _validate_upload_resource_contract, media_item_response
 from allpha_api.admin_media_api import _operator_media_projection
+
+
+def _upload_intent(domain: str, purpose: str, *, content_id=None, resource_id=None) -> UploadIntent:
+    return UploadIntent(
+        domain=domain,
+        purpose=purpose,
+        content_id=content_id,
+        resource_id=resource_id,
+        filename="photo.jpg",
+        media_type="image/jpeg",
+        size_bytes=123,
+        sha256="a" * 64,
+    )
+
+
+def test_content_upload_resource_contract_requires_owned_content_reference_shape():
+    _validate_upload_resource_contract(
+        _upload_intent("content", "attachment", content_id=uuid.uuid4())
+    )
+
+
+def test_non_content_media_domains_fail_closed_without_resource_authorizers():
+    unsupported = (
+        ("profile", "avatar"),
+        ("profile", "cover"),
+        ("feed", "post_attachment"),
+        ("reels", "reel"),
+        ("stories", "story"),
+        ("cinema", "cinema_poster"),
+        ("cinema", "cinema_asset"),
+        ("agent", "agent_artifact"),
+        ("messaging", "chat_attachment"),
+        ("community", "community_attachment"),
+    )
+    for domain, purpose in unsupported:
+        payload = _upload_intent(domain, purpose, resource_id=uuid.uuid4())
+        try:
+            _validate_upload_resource_contract(payload)
+        except HTTPException as exc:
+            assert exc.status_code == 409
+            assert exc.detail["code"] == "MEDIA_DOMAIN_AUTHORIZATION_UNAVAILABLE"
+        else:
+            raise AssertionError(f"{domain}/{purpose} unexpectedly accepted without resource authorization")
+
+
+def test_unknown_media_domain_or_purpose_is_rejected_as_invalid_contract():
+    try:
+        _validate_upload_resource_contract(_upload_intent("unknown", "attachment", resource_id=uuid.uuid4()))
+    except HTTPException as exc:
+        assert exc.status_code == 422
+        assert exc.detail["code"] == "MEDIA_DOMAIN_PURPOSE_INVALID"
+    else:
+        raise AssertionError("unknown media domain unexpectedly accepted")
 
 
 def test_media_response_projection_never_exposes_provider_or_storage_internals():

@@ -38,6 +38,24 @@ MEDIA_DOMAIN_PURPOSES = {
     "community": {"community_attachment"},
 }
 
+# Only content currently has a complete resource-ownership authorization adapter.
+# Other domains remain listed as contract vocabulary but must fail closed until
+# their canonical resource owner/grant checks are implemented.
+SUPPORTED_MEDIA_UPLOAD_DOMAINS = frozenset({"content"})
+
+
+def _validate_upload_resource_contract(payload: UploadIntent) -> None:
+    if payload.domain not in MEDIA_DOMAIN_PURPOSES or payload.purpose not in MEDIA_DOMAIN_PURPOSES[payload.domain]:
+        raise HTTPException(422, detail={"code": "MEDIA_DOMAIN_PURPOSE_INVALID", "message": "Domain atau purpose media tidak valid."})
+    if payload.domain not in SUPPORTED_MEDIA_UPLOAD_DOMAINS:
+        raise HTTPException(409, detail={
+            "code": "MEDIA_DOMAIN_AUTHORIZATION_UNAVAILABLE",
+            "message": "Domain media belum memiliki adapter otorisasi resource yang lengkap.",
+        })
+    if payload.content_id is None or payload.resource_id is not None:
+        raise HTTPException(422, detail={"code": "MEDIA_RESOURCE_REQUIRED", "message": "content_id wajib untuk domain content."})
+
+
 # Stable columns available before the Cloudinary registry migration. Legacy TUS media
 # must remain readable while the Cloudinary-only schema contract is gated.
 LEGACY_MEDIA_SELECT = (
@@ -157,16 +175,10 @@ async def create_upload_intent(payload: UploadIntent, request: Request, user: di
     token = getattr(request.state, "supabase_access_token", None)
     if not token:
         raise HTTPException(401, detail={"code":"AUTH_CONTEXT_MISSING","message":"Sesi terverifikasi tidak tersedia."})
-    if payload.domain not in MEDIA_DOMAIN_PURPOSES or payload.purpose not in MEDIA_DOMAIN_PURPOSES[payload.domain]:
-        raise HTTPException(422, detail={"code":"MEDIA_DOMAIN_PURPOSE_INVALID","message":"Domain atau purpose media tidak valid."})
-    if payload.domain == "content":
-        if payload.content_id is None or payload.resource_id is not None:
-            raise HTTPException(422, detail={"code":"MEDIA_RESOURCE_REQUIRED","message":"content_id wajib untuk domain content."})
-        rows = await user_db_request("GET","content_items",token,params={"select":"id,status","id":f"eq.{payload.content_id}","owner_id":f"eq.{user['id']}","limit":"1"})
-        if not rows or rows[0].get("status") not in {"draft","failed"}:
-            raise HTTPException(404, detail={"code":"MEDIA_RESOURCE_NOT_FOUND","message":"Draft konten tidak tersedia."})
-    elif payload.content_id is not None or payload.resource_id is None:
-        raise HTTPException(422, detail={"code":"MEDIA_RESOURCE_REQUIRED","message":"resource_id wajib dan content_id harus kosong untuk domain ini."})
+    _validate_upload_resource_contract(payload)
+    rows = await user_db_request("GET","content_items",token,params={"select":"id,status","id":f"eq.{payload.content_id}","owner_id":f"eq.{user['id']}","limit":"1"})
+    if not rows or rows[0].get("status") not in {"draft","failed"}:
+        raise HTTPException(404, detail={"code":"MEDIA_RESOURCE_NOT_FOUND","message":"Draft konten tidak tersedia."})
     if payload.tenant_id is not None or payload.session_id is not None:
         raise HTTPException(422, detail={"code":"MEDIA_TENANT_SESSION_UNSUPPORTED","message":"Tenant dan session binding belum tersedia pada kontrak media ini."})
     try:
