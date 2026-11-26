@@ -191,7 +191,21 @@ jobs:
               select case when to_regclass('public.account_legal_holds') is not null then 'legal_holds=PASS' else 'legal_holds=FAIL' end;
               select case when to_regclass('private.account_export_sources') is not null and (select count(*) from private.account_export_sources where enabled) > 0 then 'export_source_registry=PASS' else 'export_source_registry=FAIL' end;
               select case when exists(select 1 from storage.buckets where id='account-exports' and public=false) then 'private_export_bucket=PASS' else 'private_export_bucket=FAIL' end;
-              select case when (select count(*) from public.account_data_retention_policies where active) = 0 then 'deletion_policy_fail_closed=PASS' else 'deletion_policy_fail_closed=FAIL' end;
+              select case when
+                (select count(*) from public.account_data_retention_policies where active) = 6
+                and (select array_agg(data_class order by data_class)
+                       from public.account_data_retention_policies where active)
+                    = ARRAY['agent_operational','owner_private','published_knowledge','public_catalog','session_scoped','tenant_shared']::text[]
+                and not exists (
+                  select 1 from public.account_data_retention_policies
+                   where active and (
+                     decision_source <> 'product_owner_directive'
+                     or decision_reference is null
+                     or policy_version <> 'owner-directive-2026-11-23-v1'
+                     or retention_days <> 0
+                   )
+                )
+              then 'retention_policy_baseline=PASS' else 'retention_policy_baseline=FAIL' end;
               select case when private.redact_account_export_jsonb(
                 jsonb_build_object('api_key','root','nested',jsonb_build_object('refresh_token','secret','visible','ok'),'items',jsonb_build_array(jsonb_build_object('password','secret','id',1))),
                 array['api_key','refresh_token','password']::text[]
@@ -220,7 +234,7 @@ jobs:
                 from pg_class c join pg_namespace n on n.oid=c.relnamespace
                where n.nspname='public' and c.relname in ('account_export_jobs','account_deletion_requests','account_lifecycle_events','account_data_retention_policies','account_legal_holds');
             " | tee recovery-evidence/p03-disposable-migration-verification.txt
-          for assertion in account_export_jobs account_deletion_requests account_lifecycle_events retention_policies legal_holds export_source_registry private_export_bucket deletion_policy_fail_closed recursive_secret_redaction retention_activation_rpc_grants owner_export_rpc worker_rpc_grants deletion_rpc_grants account_lifecycle_rls; do
+          for assertion in account_export_jobs account_deletion_requests account_lifecycle_events retention_policies legal_holds export_source_registry private_export_bucket retention_policy_baseline recursive_secret_redaction retention_activation_rpc_grants owner_export_rpc worker_rpc_grants deletion_rpc_grants account_lifecycle_rls; do
             grep -q "^$assertion=PASS$" recovery-evidence/p03-disposable-migration-verification.txt
           done
           echo "P03_MIGRATION_BLOB=$(git rev-parse HEAD:"$migration")" >> "$GITHUB_ENV"
