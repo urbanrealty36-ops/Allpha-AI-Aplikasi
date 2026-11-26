@@ -19,34 +19,86 @@ def _upload_intent(domain: str, purpose: str, *, content_id=None, resource_id=No
     )
 
 
-def test_content_upload_resource_contract_requires_owned_content_reference_shape():
+def test_upload_resource_contract_validates_content_and_domain_resource_shapes():
     _validate_upload_resource_contract(
         _upload_intent("content", "attachment", content_id=uuid.uuid4())
     )
-
-
-def test_non_content_media_domains_fail_closed_without_resource_authorizers():
-    unsupported = (
-        ("profile", "avatar"),
-        ("profile", "cover"),
-        ("feed", "post_attachment"),
-        ("reels", "reel"),
-        ("stories", "story"),
-        ("cinema", "cinema_poster"),
-        ("cinema", "cinema_asset"),
-        ("agent", "agent_artifact"),
-        ("messaging", "chat_attachment"),
+    for domain, purpose in (
+        ("profile", "avatar"), ("feed", "post_attachment"), ("reels", "reel"),
+        ("stories", "story"), ("cinema", "cinema_poster"), ("cinema", "cinema_asset"),
+        ("agent", "agent_artifact"), ("messaging", "chat_attachment"),
         ("community", "community_attachment"),
+    ):
+        _validate_upload_resource_contract(_upload_intent(domain, purpose, resource_id=uuid.uuid4()))
+
+
+def test_upload_resource_contract_rejects_mixed_or_missing_resource_references():
+    invalid = (
+        _upload_intent("content", "attachment", resource_id=uuid.uuid4()),
+        _upload_intent("feed", "post_attachment", content_id=uuid.uuid4()),
+        _upload_intent("profile", "avatar"),
     )
-    for domain, purpose in unsupported:
-        payload = _upload_intent(domain, purpose, resource_id=uuid.uuid4())
+    for payload in invalid:
         try:
             _validate_upload_resource_contract(payload)
         except HTTPException as exc:
-            assert exc.status_code == 409
-            assert exc.detail["code"] == "MEDIA_DOMAIN_AUTHORIZATION_UNAVAILABLE"
+            assert exc.status_code == 422
+            assert exc.detail["code"] == "MEDIA_RESOURCE_REQUIRED"
         else:
-            raise AssertionError(f"{domain}/{purpose} unexpectedly accepted without resource authorization")
+            raise AssertionError("invalid resource binding unexpectedly accepted")
+
+
+def test_media_domain_resource_authorization_matches_canonical_owner_adapters(monkeypatch):
+    owner = str(uuid.uuid4())
+    resource = str(uuid.uuid4())
+    calls = []
+
+    async def fake_user_db_request(method, path, access_token, *, params=None, body=None, prefer=None):
+        calls.append((method, path, access_token, params))
+        if path == "community_posts":
+            return [{"id": resource, "community_id": "community-1"}]
+        return [{"id": resource}]
+
+    monkeypatch.setattr("allpha_api.media_api.user_db_request", fake_user_db_request)
+    import asyncio
+    from allpha_api.media_api import _authorize_upload_resource
+
+    domains = (
+        ("content", "attachment", {"content_id": uuid.UUID(resource)}),
+        ("feed", "post_attachment", {"resource_id": uuid.UUID(resource)}),
+        ("reels", "reel", {"resource_id": uuid.UUID(resource)}),
+        ("stories", "story", {"resource_id": uuid.UUID(resource)}),
+        ("profile", "avatar", {"resource_id": uuid.UUID(owner)}),
+        ("cinema", "cinema_poster", {"resource_id": uuid.UUID(resource)}),
+        ("cinema", "cinema_asset", {"resource_id": uuid.UUID(resource)}),
+        ("agent", "agent_artifact", {"resource_id": uuid.UUID(resource)}),
+        ("messaging", "chat_attachment", {"resource_id": uuid.UUID(resource)}),
+        ("community", "community_attachment", {"resource_id": uuid.UUID(resource)}),
+    )
+    for domain, purpose, refs in domains:
+        asyncio.run(_authorize_upload_resource(
+            _upload_intent(domain, purpose, **refs), owner, "verified-user-jwt"
+        ))
+    assert len(calls) >= len(domains)
+    assert all(call[0] == "GET" and call[2] == "verified-user-jwt" for call in calls)
+
+
+def test_media_domain_authorization_denies_unowned_resource(monkeypatch):
+    async def deny(*args, **kwargs):
+        return []
+    monkeypatch.setattr("allpha_api.media_api.user_db_request", deny)
+    import asyncio
+    from allpha_api.media_api import _authorize_upload_resource
+    try:
+        asyncio.run(_authorize_upload_resource(
+            _upload_intent("cinema", "cinema_poster", resource_id=uuid.uuid4()),
+            str(uuid.uuid4()), "verified-user-jwt",
+        ))
+    except HTTPException as exc:
+        assert exc.status_code == 404
+        assert exc.detail["code"] == "MEDIA_RESOURCE_NOT_FOUND"
+    else:
+        raise AssertionError("unowned media resource unexpectedly authorized")
 
 
 def test_unknown_media_domain_or_purpose_is_rejected_as_invalid_contract():

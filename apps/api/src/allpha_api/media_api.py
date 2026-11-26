@@ -38,22 +38,73 @@ MEDIA_DOMAIN_PURPOSES = {
     "community": {"community_attachment"},
 }
 
-# Only content currently has a complete resource-ownership authorization adapter.
-# Other domains remain listed as contract vocabulary but must fail closed until
-# their canonical resource owner/grant checks are implemented.
-SUPPORTED_MEDIA_UPLOAD_DOMAINS = frozenset({"content"})
-
-
 def _validate_upload_resource_contract(payload: UploadIntent) -> None:
     if payload.domain not in MEDIA_DOMAIN_PURPOSES or payload.purpose not in MEDIA_DOMAIN_PURPOSES[payload.domain]:
         raise HTTPException(422, detail={"code": "MEDIA_DOMAIN_PURPOSE_INVALID", "message": "Domain atau purpose media tidak valid."})
-    if payload.domain not in SUPPORTED_MEDIA_UPLOAD_DOMAINS:
-        raise HTTPException(409, detail={
-            "code": "MEDIA_DOMAIN_AUTHORIZATION_UNAVAILABLE",
-            "message": "Domain media belum memiliki adapter otorisasi resource yang lengkap.",
+    if payload.domain == "content":
+        if payload.content_id is None or payload.resource_id is not None:
+            raise HTTPException(422, detail={"code": "MEDIA_RESOURCE_REQUIRED", "message": "content_id wajib dan resource_id harus kosong untuk domain content."})
+    elif payload.content_id is not None or payload.resource_id is None:
+        raise HTTPException(422, detail={"code": "MEDIA_RESOURCE_REQUIRED", "message": "resource_id wajib dan content_id harus kosong untuk domain ini."})
+
+
+async def _authorize_upload_resource(payload: UploadIntent, owner_id: str, access_token: str) -> None:
+    """Authorize each supported media domain against its canonical owner/resource row."""
+    resource_id = str(payload.content_id or payload.resource_id)
+    owner = str(owner_id)
+
+    async def owned(path: str, params: dict[str, str]) -> bool:
+        rows = await user_db_request("GET", path, access_token, params={**params, "limit": "1"})
+        return bool(rows)
+
+    allowed = False
+    if payload.domain == "content":
+        allowed = await owned("content_items", {
+            "select": "id,status", "id": f"eq.{payload.content_id}",
+            "owner_id": f"eq.{owner}", "status": "in.(draft,failed)",
         })
-    if payload.content_id is None or payload.resource_id is not None:
-        raise HTTPException(422, detail={"code": "MEDIA_RESOURCE_REQUIRED", "message": "content_id wajib untuk domain content."})
+    elif payload.domain in {"feed", "reels", "stories"}:
+        allowed = await owned("content_items", {
+            "select": "id,status", "id": f"eq.{resource_id}",
+            "owner_id": f"eq.{owner}", "status": "in.(draft,failed)",
+        })
+    elif payload.domain == "profile":
+        allowed = resource_id == owner and await owned("profiles", {
+            "select": "id", "id": f"eq.{owner}",
+        })
+    elif payload.domain == "cinema" and payload.purpose == "cinema_poster":
+        allowed = await owned("cinema_titles", {
+            "select": "id", "id": f"eq.{resource_id}", "owner_id": f"eq.{owner}",
+        })
+    elif payload.domain == "cinema" and payload.purpose == "cinema_asset":
+        allowed = await owned("cinema_episodes", {
+            "select": "id", "id": f"eq.{resource_id}", "owner_id": f"eq.{owner}",
+        })
+    elif payload.domain == "agent":
+        allowed = await owned("ai_agents", {
+            "select": "id", "id": f"eq.{resource_id}", "created_by": f"eq.{owner}",
+        })
+        if not allowed:
+            allowed = await owned("agent_runtime_tasks", {
+                "select": "id", "id": f"eq.{resource_id}", "owner_user_id": f"eq.{owner}",
+            })
+    elif payload.domain == "messaging":
+        allowed = await owned("conversation_participants", {
+            "select": "conversation_id", "conversation_id": f"eq.{resource_id}",
+            "user_id": f"eq.{owner}",
+        })
+    elif payload.domain == "community":
+        posts = await user_db_request("GET", "community_posts", access_token, params={
+            "select": "id,community_id", "id": f"eq.{resource_id}",
+            "author_id": f"eq.{owner}", "limit": "1",
+        })
+        if posts:
+            allowed = await owned("community_memberships", {
+                "select": "community_id", "community_id": f"eq.{posts[0]['community_id']}",
+                "user_id": f"eq.{owner}", "status": "eq.active",
+            })
+    if not allowed:
+        raise HTTPException(404, detail={"code": "MEDIA_RESOURCE_NOT_FOUND", "message": "Resource media tidak tersedia."})
 
 
 # Stable columns available before the Cloudinary registry migration. Legacy TUS media
@@ -176,9 +227,7 @@ async def create_upload_intent(payload: UploadIntent, request: Request, user: di
     if not token:
         raise HTTPException(401, detail={"code":"AUTH_CONTEXT_MISSING","message":"Sesi terverifikasi tidak tersedia."})
     _validate_upload_resource_contract(payload)
-    rows = await user_db_request("GET","content_items",token,params={"select":"id,status","id":f"eq.{payload.content_id}","owner_id":f"eq.{user['id']}","limit":"1"})
-    if not rows or rows[0].get("status") not in {"draft","failed"}:
-        raise HTTPException(404, detail={"code":"MEDIA_RESOURCE_NOT_FOUND","message":"Draft konten tidak tersedia."})
+    await _authorize_upload_resource(payload, str(user["id"]), token)
     if payload.tenant_id is not None or payload.session_id is not None:
         raise HTTPException(422, detail={"code":"MEDIA_TENANT_SESSION_UNSUPPORTED","message":"Tenant dan session binding belum tersedia pada kontrak media ini."})
     try:

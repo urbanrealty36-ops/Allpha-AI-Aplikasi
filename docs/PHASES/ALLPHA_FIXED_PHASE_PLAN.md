@@ -1943,3 +1943,11 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 - **Correction:** the disposable restore verifier now asserts the legal-hold block and release audit events, `legal_hold_active=false`, transition out of `blocked_legal_hold`, and continued fail-closed block at `ACCOUNT_EXPORT_REQUIRED`; it asserts no deletion-started/completed events. All fixture writes are rolled back.
 - **Safety:** only the recovery workflow and phase evidence were changed. No production DDL/DML, historical migration, audit row or user data was changed.
 - **Gate:** a new backup/restore workflow is required. Even a successful disposable restore does not alone satisfy ADR-0024: PITR/managed-backup state, Storage-object coverage, documented restore access and approved RPO/RTO remain to be independently verified.
+
+
+## 40.108 — P13 canonical media resource authorization adapters implemented (2026-11-26)
+
+- **Implementation:** FastAPI media upload-intent authorization now resolves canonical resource ownership for `content`, `profile`, `feed`, `reels`, `stories`, `cinema` posters/episodes, `agent` identities/runtime tasks, `messaging` conversation participants and `community` posts with active membership. Each lookup uses the caller's verified JWT and canonical Supabase rows before provider signature generation or service-role reservation.
+- **Contract parity:** validates `content_id` only for content; every other domain requires `resource_id` and rejects mixed/empty bindings. Unknown domain/purpose remains 422. Resource denial is a non-enumerating 404. Tenant/session binding remains explicitly unsupported and fail-closed. The canonical `reserve_cloudinary_media_upload` RPC independently repeats owner/resource checks transactionally.
+- **Tests added:** domain/resource shape, owner adapter coverage across all supported domains, verified JWT propagation and denial for an unowned resource. Test execution pending CI.
+- **Boundary:** this is backend authorization implementation. It does not claim that every Web/Native screen yet supplies the correct resource reference, nor that the Cloudinary registry migration, scanner, workers or production media journey is active. No production schema/data changes.
