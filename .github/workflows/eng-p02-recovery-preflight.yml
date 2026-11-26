@@ -3,6 +3,10 @@ name: ENG-P02 Supabase Recovery Preflight
 
 on:
   workflow_dispatch:
+  workflow_run:
+    workflows: ["ENG-P02 Verify Pre-Migration Backup Restore"]
+    types: [completed]
+    branches: [main]
   push:
     branches: [main]
     paths:
@@ -15,6 +19,7 @@ on:
       - docs/PHASES/ALLPHA_FIXED_PHASE_PLAN.md
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -56,8 +61,19 @@ jobs:
             exit 1
           fi
 
+      - name: Download verified disposable database and Storage restore evidence
+        if: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: eng-p02-disposable-restore-verification
+          path: restore-evidence
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
       - name: Produce sanitized recovery evidence
         shell: bash
+        env:
+          RESTORE_VERIFICATION_RUN_ID: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || '' }}
         run: |
           python - <<'PY'
           import json
@@ -111,10 +127,15 @@ jobs:
                   pitr_signals.append({"field": prefix, "value": value})
 
           find_pitr(addons)
+          restore_path = Path("restore-evidence/restore-verification.json")
+          restore = json.loads(restore_path.read_text()) if restore_path.exists() else {}
+          storage_restore = restore.get("storage_restore_verification") or {}
+          restore_completed = restore.get("restore_completed") is True
+          storage_restore_tested = restore.get("storage_restore_tested") is True
           record = {
-              "project_ref": "dvdziauyvuhcnqhrrvww",
+              "project_ref": "dvdziauyvuhcnqhrrrww",
               "captured_at_utc": datetime.now(timezone.utc).isoformat(),
-              "source": "Supabase Management API (read-only GET)",
+              "source": "Supabase Management API (read-only GET) plus GitHub Actions disposable restore evidence",
               "http_status": {
                   "database_backups": (root / "database-backups.status").read_text().strip(),
                   "billing_addons": (root / "billing-addons.status").read_text().strip(),
@@ -123,10 +144,32 @@ jobs:
               "database_backups": redact(backups),
               "billing_addons": redact(addons),
               "pitr_indicators": pitr_signals,
+              "database_logical_backup_verified": restore_completed,
               "storage_objects_included_in_database_backups": False,
-              "storage_backup_coverage": "Not verified by this database-backup API; Storage objects require a separate recovery mechanism.",
-              "rpo_rto": "Not exposed by this capture; owner must record explicit objectives or state that they remain undefined.",
-              "restore_execution": "Not performed. This workflow is read-only and does not initiate restore, migration, or DDL.",
+              "separate_storage_backup_verified": storage_restore_tested,
+              "storage_backup_coverage": (
+                  "Full object archive checksum-verified and restored/read back through isolated local Supabase Storage API."
+                  if storage_restore_tested else
+                  "Separate Storage object backup/restore evidence is not available in this preflight run."
+              ),
+              "storage_object_count": storage_restore.get("storage_object_count"),
+              "storage_total_bytes": storage_restore.get("storage_total_bytes"),
+              "storage_restore_evidence": redact(storage_restore),
+              "restore_verification_run_id": (
+                  int(__import__("os").environ["RESTORE_VERIFICATION_RUN_ID"])
+                  if __import__("os").environ.get("RESTORE_VERIFICATION_RUN_ID") else None
+              ),
+              "recovery_gate_status": (
+                  "DATABASE_AND_STORAGE_LOGICAL_RESTORE_VERIFIED_RPO_RTO_UNDEFINED"
+                  if restore_completed and storage_restore_tested else
+                  "BLOCKED_RECOVERY_EVIDENCE_INCOMPLETE"
+              ),
+              "rpo_rto": "Undefined. The owner has not supplied numeric objectives; production acceptance remains limited until they are recorded.",
+              "restore_execution": (
+                  "Disposable database and local Storage API restore only; production was not touched."
+                  if restore_completed and storage_restore_tested else
+                  "No verified disposable database and Storage restore evidence is attached to this run."
+              ),
           }
           (root / "recovery-preflight.json").write_text(json.dumps(record, indent=2), encoding="utf-8")
           print(json.dumps({
@@ -135,7 +178,11 @@ jobs:
               "http_status": record["http_status"],
               "database_backup_count": record["database_backup_count"],
               "pitr_indicators": pitr_signals,
-              "storage_objects_included_in_database_backups": False,
+              "database_logical_backup_verified": record["database_logical_backup_verified"],
+              "separate_storage_backup_verified": record["separate_storage_backup_verified"],
+              "storage_object_count": record["storage_object_count"],
+              "storage_total_bytes": record["storage_total_bytes"],
+              "recovery_gate_status": record["recovery_gate_status"],
               "rpo_rto": record["rpo_rto"],
               "restore_execution": record["restore_execution"],
           }, indent=2))
