@@ -93,7 +93,11 @@ create function auth.uid() returns uuid language sql stable as $uid$
 $uid$;
 create table auth.users(id uuid primary key);
 create table public.content_items(
- id uuid primary key, owner_id uuid not null references auth.users(id), status text not null default 'draft'
+ id uuid primary key,
+ owner_id uuid not null references auth.users(id),
+ content_type text not null default 'text'
+  check (content_type in ('text','image','video','story','capsule','document','event','spatial','listing')),
+ status text not null default 'draft'
 );
 create table public.profiles(id uuid primary key references auth.users(id));
 create table public.content_retention_holds(
