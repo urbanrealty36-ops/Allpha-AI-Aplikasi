@@ -58,13 +58,16 @@ def parse_size(metadata: dict) -> int | None:
     return size
 
 
-def request_stream(url: str, api_key: str, destination: Path) -> tuple[int, str]:
+def request_stream(url: str, api_key: str, api_key_type: str, destination: Path) -> tuple[int, str]:
+    if api_key_type not in ("secret", "legacy"):
+        fail("Storage backup API key type must be secret or legacy.")
     headers = {
         "apikey": api_key,
-        "Authorization": f"Bearer {api_key}",
         "Accept": "application/octet-stream",
         "User-Agent": "allpha-storage-recovery/1.0",
     }
+    if api_key_type == "legacy":
+        headers["Authorization"] = f"Bearer {api_key}"
     last_error = "unknown download error"
     for attempt in range(1, MAX_ATTEMPTS + 1):
         request = Request(url, headers=headers, method="GET")
@@ -144,8 +147,9 @@ def main() -> None:
     args = parser.parse_args()
 
     api_key = os.environ.get("SUPABASE_STORAGE_BACKUP_KEY", "").strip()
-    if not api_key:
-        fail("SUPABASE_STORAGE_BACKUP_KEY is unavailable; Storage backup cannot proceed.")
+    api_key_type = os.environ.get("SUPABASE_STORAGE_BACKUP_KEY_TYPE", "").strip().lower()
+    if not api_key or api_key_type not in ("secret", "legacy"):
+        fail("A server-only Supabase Storage API key and its type are required.")
     project_url = os.environ.get(
         "SUPABASE_URL", f"https://{args.project_ref}.supabase.co"
     ).rstrip("/")
@@ -193,7 +197,7 @@ def main() -> None:
                 with tempfile.NamedTemporaryFile(prefix="allpha-storage-", delete=False) as temp:
                     temp_path = Path(temp.name)
                 try:
-                    size, sha256 = request_stream(url, api_key, temp_path)
+                    size, sha256 = request_stream(url, api_key, api_key_type, temp_path)
                     if expected_size is not None and size != expected_size:
                         fail("Downloaded Storage object size does not match database metadata.")
                     content_type = str(metadata.get("mimetype") or "application/octet-stream")
@@ -247,6 +251,7 @@ def main() -> None:
                 archive_hash.update(chunk)
         evidence = {
             "storage_objects_included": True,
+            "storage_api_key_type": api_key_type,
             "storage_archive_file": args.archive.name,
             "storage_archive_sha256": archive_hash.hexdigest(),
             "storage_archive_size_bytes": args.archive.stat().st_size,
