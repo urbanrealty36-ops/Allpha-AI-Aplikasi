@@ -39,3 +39,19 @@ The Product Owner explicitly approved continuing WP-05 while WP-04 remains in pr
 - Decision recorded from the Product Owner's explicit instruction on 2026-11-04.
 - Existing worker and readiness code remains fail-closed; no no-op scan bypass is introduced.
 - Migration application, worker runtime, Cloudinary callback, Storage persistence, scheduling, retention executor, cross-client integration and all runtime tests remain NOT VERIFIED.
+
+
+## Superseding owner directive — 2026-11-26
+
+The Product Owner's current ALLPHA AI Master Full Implementation instruction explicitly requires implementation of the P13 malware scanner and activation of the media-processing lifecycle. This supersedes the 2026-11-04 provisioning deferral in this ADR **only for the dedicated P13 media worker**; it does not authorize a no-op scanner, scanner bypass, or promotion of unscanned media.
+
+The selected implementation reuses the existing pinned-identity ClamAV adapter (`allpha_api.media_scanner`) inside a dedicated, resource-eligible worker image (`apps/api/Dockerfile.content-media-worker`). The shared 1 GB Agent Runtime worker must not host a local ClamAV daemon. The dedicated image keeps clamd bound to loopback, downloads the signature database before startup, verifies the exact engine/signature deployment pins, and fails closed on missing or mismatched scanner identity. The canonical `content_worker_host` remains the only owner of media queue consumers; no second media engine or queue is introduced.
+
+Activation remains gated by:
+- the ADR-0024 recovery and migration-specific preflight;
+- Cloudinary registry/RPC readiness and the existing worker schema-readiness RPCs;
+- explicit server-side media worker flags and exact scanner identity pins;
+- a Railway resource allocation suitable for the ClamAV signature database;
+- the existing real scanner, callback, derivative, delivery and deletion lifecycle evidence.
+
+The scanner image and its CI build do not imply that a Railway service has been provisioned, that production workers are enabled, or that media is production-ready. Existing fail-closed behavior remains mandatory until all gates pass.
