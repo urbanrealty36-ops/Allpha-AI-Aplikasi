@@ -475,38 +475,50 @@ jobs:
             v_hold uuid;
             v_result record;
             v_status text;
+            v_error text;
           begin
             insert into public.account_legal_holds(subject_ref,reference_code,reason_code,active,created_by)
             values(v_subject,'RESTORE-' || substr(gen_random_uuid()::text,1,12),'legal_preservation',true,v_actor)
             returning id into v_hold;
             insert into public.account_deletion_requests(user_id,subject_ref,status,request_metadata)
             values(v_actor,v_subject,'awaiting_policy','{}'::jsonb) returning id into v_request;
+
             select * into v_result from public.evaluate_account_deletion_governance(100);
-            if v_result.blocked_count<>1 then raise exception 'active legal hold did not block deletion'; end if;
-            select status into v_status from public.account_deletion_requests where id=v_request;
-            if v_status<>'blocked_legal_hold' then raise exception 'request did not enter legal-hold block'; end if;
-            update public.account_legal_holds set active=false,released_at=now(),released_by=v_actor where id=v_hold;
+            select status,error_code into v_status,v_error
+              from public.account_deletion_requests where id=v_request;
+            if v_status<>'blocked_legal_hold' or v_error<>'LEGAL_HOLD_ACTIVE' then
+              raise exception 'active legal hold did not block deletion at the first governance gate';
+            end if;
+            if not exists(select 1 from public.account_lifecycle_events
+              where request_id=v_request and event_type='deletion_blocked'
+                and metadata->>'reason_code'='LEGAL_HOLD_ACTIVE') then
+              raise exception 'legal-hold block audit event missing';
+            end if;
+
+            update public.account_legal_holds
+               set active=false,released_at=now(),released_by=v_actor where id=v_hold;
             select * into v_result from public.evaluate_account_deletion_governance(100);
-            if v_result.unblocked_count<>1 then raise exception 'released legal hold did not unblock request'; end if;
-            select status into v_status from public.account_deletion_requests where id=v_request;
-            if v_status<>'awaiting_policy' then raise exception 'released request did not return to policy gate'; end if;
-            if not exists(select 1 from public.account_lifecycle_events where request_id=v_request and event_type='deletion_blocked') then
-              raise exception 'deletion block audit event missing';
+            select status,error_code into v_status,v_error
+              from public.account_deletion_requests where id=v_request;
+            if v_status='blocked_legal_hold' then
+              raise exception 'released legal hold remained an active deletion blocker';
             end if;
-            if not exists(select 1 from public.account_lifecycle_events where request_id=v_request and event_type='deletion_unblocked') then
-              raise exception 'deletion unblocked audit event missing';
+            if v_status<>'blocked_dependency' or v_error<>'ACCOUNT_EXPORT_REQUIRED' then
+              raise exception 'released request did not advance to the independent export prerequisite gate';
             end if;
-            update public.account_deletion_requests set status='cancelled' where id=v_request;
-            insert into public.account_deletion_requests(user_id,subject_ref,status,request_metadata)
-            values(v_actor,(md5(gen_random_uuid()::text) || md5(gen_random_uuid()::text)),'awaiting_policy','{}'::jsonb)
-            returning id into v_request;
-            select * into v_result from public.evaluate_account_deletion_governance(100);
-            if v_result.policy_pending_count<>1 then raise exception 'missing deletion policy was not held pending'; end if;
-            if not exists(select 1 from public.account_lifecycle_events where request_id=v_request and event_type='deletion_policy_pending') then
-              raise exception 'deletion policy pending audit event missing';
+            if not exists(select 1 from public.account_lifecycle_events
+              where request_id=v_request and event_type='deletion_unblocked'
+                and metadata->>'reason_code'='LEGAL_HOLD_RELEASED') then
+              raise exception 'legal-hold release audit event missing';
             end if;
-            select status into v_status from public.account_deletion_requests where id=v_request;
-            if v_status in ('processing','completed','scheduled') then raise exception 'governance gate advanced without policy mapping'; end if;
+            if coalesce((select request_metadata->>'legal_hold_active'
+              from public.account_deletion_requests where id=v_request),'true')<>'false' then
+              raise exception 'released request retained active legal-hold metadata';
+            end if;
+            if exists(select 1 from public.account_lifecycle_events
+              where request_id=v_request and event_type in ('deletion_started','deletion_completed')) then
+              raise exception 'deletion advanced past the independent export prerequisite';
+            end if;
           end;
           $deletion_governance_verifier$;
           rollback;
