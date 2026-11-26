@@ -1981,3 +1981,9 @@ The canonical backend TUS contract already exists in `content_api.py`: authentic
 - **Native implementation:** Story composer now refreshes the canonical owner draft before editing, updates caption/visibility using optimistic version checks, and reuses the existing upload idempotency key for retry.
 - **Media lifecycle:** after native direct provider upload (Cloudinary when enabled, TUS rollback path otherwise), the client reads owner-scoped `/v1/stories/mine` metadata and polls each attached `/v1/media/{id}` until every asset is `ready + clean + processed_at`. Failed/rejected media and a processing timeout keep the draft intact; publication is never attempted while media is pending.
 - **Integration:** Native Story uses the same FastAPI Story/content lifecycle as Web and no direct Supabase business writes. Cloudinary rollout remains gated by registry schema, scanner and worker readiness.
+
+
+## 40.113 — Native Story polling uses upload registry IDs, not public projection (2026-11-26)
+
+- **Correction:** Story list projection intentionally exposes only uploaded/ready media, not processing rows. Native readiness polling now uses the idempotent upload IDs returned by the upload flow and stored in the active draft, then checks each owner-scoped `GET /v1/media/{id}` response. This avoids treating a valid processing asset as a missing media row.
+- **Retry behavior:** previously uploaded media IDs remain tracked through retries and all are required to reach `ready + clean + processed_at` before publish. The list is cleared only after the Story is successfully submitted for moderation.

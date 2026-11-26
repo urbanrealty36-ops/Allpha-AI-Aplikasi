@@ -536,6 +536,7 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
   const [storyFile, setStoryFile] = useState<NativeContentFile | null>(null);
   const [storyDraftId, setStoryDraftId] = useState("");
   const [storyUploadId, setStoryUploadId] = useState("");
+  const [storyUploadedMediaIds, setStoryUploadedMediaIds] = useState<string[]>([]);
   const [storyUploadProgress, setStoryUploadProgress] = useState(0);
   const [storyBusy, setStoryBusy] = useState(false);
   const [reelsCursor, setReelsCursor] = useState<string | null>(null);
@@ -1006,11 +1007,11 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
           setStoryUploadProgress, "allpha:story:tus",
         );
         await SecureStore.deleteItemAsync("allpha:story:tus:" + mediaId);
+        setStoryUploadedMediaIds(current => current.includes(mediaId) ? current : [...current, mediaId]);
 
-        const mine = await apiRequest("/v1/stories/mine?limit=50") as { items?: NativeStory[] };
-        const current = mine.items?.find(item => item.id === contentId);
-        const mediaIds = (current?.media ?? []).map(item => item.id);
-        if (!mediaIds.length) throw new Error("API belum mengembalikan metadata media Story setelah upload.");
+        // Poll the upload IDs owned by this draft directly. Story listing intentionally
+        // omits processing media from its display projection, so it is not a status source.
+        const mediaIds = Array.from(new Set([...storyUploadedMediaIds, mediaId]));
         let allReady = false;
         for (let attempt = 0; attempt < 30; attempt += 1) {
           let pending = false;
@@ -1029,7 +1030,7 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
         if (!allReady) throw new Error("Media Story masih diproses. Draft tersimpan; coba kirim kembali setelah pemindaian dan derivative selesai.");
       }
       const result = await apiRequest("/v1/content/" + encodeURIComponent(contentId) + "/publish", { method: "POST" }) as { message?: string };
-      setStoryBody(""); setStoryFile(null); setStoryDraftId(""); setStoryUploadId(""); setStoryUploadProgress(0);
+      setStoryBody(""); setStoryFile(null); setStoryDraftId(""); setStoryUploadId(""); setStoryUploadedMediaIds([]); setStoryUploadProgress(0);
       setMessage(result.message || "Story dikirim untuk moderasi.");
       await loadNativeStories();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Story tidak dapat disimpan."); }
