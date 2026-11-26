@@ -112,3 +112,52 @@ def test_eager_callback_rejects_untrusted_derivative_metadata(mutation):
             "image/jpeg", eager, cloud_name=CLOUD, resource_type="image",
             public_id=PUBLIC_ID, version=VERSION,
         )
+
+
+def test_cloudinary_asset_refuses_legacy_supabase_derivative_delivery(monkeypatch):
+    import asyncio
+
+    from fastapi import HTTPException
+    from allpha_api import content_api
+
+    item = {
+        "id": "12345678-1234-4234-9234-123456789abc",
+        "owner_id": "87654321-4321-4321-8321-cba987654321",
+        "provider_public_id": PUBLIC_ID,
+        "provider_asset_id": "cloudinary-asset",
+        "provider_resource_type": "image",
+        "provider_delivery_type": "authenticated",
+        "provider_format": "jpg",
+        "provider_version": VERSION,
+        "media_type": "image/jpeg",
+        "status": "ready",
+        "derivatives": [{
+            "provider": "supabase_storage",
+            "kind": "thumbnail",
+            "storage_path": "87654321-4321-4321-8321-cba987654321/legacy/thumbnail.webp",
+        }],
+    }
+
+    async def schema_ready():
+        return None
+
+    async def original_url(_item):
+        return "https://res.cloudinary.com/allpha-test/image/authenticated/original.jpg"
+
+    async def forbidden_storage_url(_path):
+        raise AssertionError("Cloudinary derivative must never fall back to Supabase Storage")
+
+    monkeypatch.setattr(content_api, "_require_cloudinary_media_schema", schema_ready)
+    monkeypatch.setattr(content_api, "_signed_cloudinary_original_url", original_url)
+    monkeypatch.setattr(content_api, "_signed_media_preview_url", forbidden_storage_url)
+    monkeypatch.setattr(
+        content_api.CloudinaryConfig,
+        "from_environment",
+        classmethod(lambda _cls: object()),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(content_api._media_preview_projection(item))
+
+    assert exc.value.status_code == 503
+    assert exc.value.detail["code"] == "CONTENT_PROVIDER_DERIVATIVE_UNAVAILABLE"
